@@ -26,24 +26,24 @@ jobs:
 
     - name: Build Debug
       run: |
-        xcodebuild -scheme AirSync -configuration Debug clean build
+        xcodebuild -scheme AirSync -configuration Debug clean build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
 
     - name: Build Release
       run: |
-        xcodebuild -scheme AirSync -configuration Release clean build
+        xcodebuild -scheme AirSync -configuration Release clean build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
 
     - name: Archive Debug Build Artifacts
       if: success()
       run: |
         mkdir -p build-artifacts/Debug
-        cp -R "$(xcodebuild -scheme AirSync -configuration Debug -showBuildSettings | grep -m 1 BUILD_DIR | awk '{print $3}')/Debug/"* build-artifacts/Debug/
+        cp -R "$(xcodebuild -scheme AirSync -configuration Debug -showBuildSettings CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO | grep -m 1 BUILD_DIR | awk '{print $3}')/Debug/"* build-artifacts/Debug/
       shell: bash
 
     - name: Archive Release Build Artifacts
       if: success()
       run: |
         mkdir -p build-artifacts/Release
-        cp -R "$(xcodebuild -scheme AirSync -configuration Release -showBuildSettings | grep -m 1 BUILD_DIR | awk '{print $3}')/Release/"* build-artifacts/Release/
+        cp -R "$(xcodebuild -scheme AirSync -configuration Release -showBuildSettings CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO | grep -m 1 BUILD_DIR | awk '{print $3}')/Release/"* build-artifacts/Release/
       shell: bash
 
     - name: Upload Debug Build Artifacts
