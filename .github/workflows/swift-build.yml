@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-15
 
     steps:
     - name: Checkout repository
@@ -18,28 +18,32 @@ jobs:
     - name: Set up Xcode
       uses: maxim-lobanov/setup-xcode@v1
       with:
-        xcode-version: latest
+        xcode-version: 26.0-beta
+
+    - name: Install xcpretty
+      run: |
+        gem install xcpretty
 
     - name: Build Debug
       run: |
-        xcodebuild -scheme airsync-mac -configuration Debug clean build | xcpretty
+        xcodebuild -scheme AirSync -configuration Debug clean build | xcpretty
 
     - name: Build Release
       run: |
-        xcodebuild -scheme airsync-mac -configuration Release clean build | xcpretty
+        xcodebuild -scheme AirSync -configuration Release clean build | xcpretty
 
     - name: Archive Debug Build Artifacts
       if: success()
       run: |
         mkdir -p build-artifacts/Debug
-        cp -R "$(xcodebuild -scheme airsync-mac -configuration Debug -showBuildSettings | grep -m 1 BUILD_DIR | awk '{print $3}')/Debug/"* build-artifacts/Debug/
+        cp -R "$(xcodebuild -scheme AirSync -configuration Debug -showBuildSettings | grep -m 1 BUILD_DIR | awk '{print $3}')/Debug/"* build-artifacts/Debug/
       shell: bash
 
     - name: Archive Release Build Artifacts
       if: success()
       run: |
         mkdir -p build-artifacts/Release
-        cp -R "$(xcodebuild -scheme airsync-mac -configuration Release -showBuildSettings | grep -m 1 BUILD_DIR | awk '{print $3}')/Release/"* build-artifacts/Release/
+        cp -R "$(xcodebuild -scheme AirSync -configuration Release -showBuildSettings | grep -m 1 BUILD_DIR | awk '{print $3}')/Release/"* build-artifacts/Release/
       shell: bash
 
     - name: Upload Debug Build Artifacts
