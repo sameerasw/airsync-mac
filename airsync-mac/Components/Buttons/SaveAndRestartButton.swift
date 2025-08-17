@@ -60,7 +60,9 @@ extension View {
     @ViewBuilder
     func applyGlassIfAvailable() -> some View {
         if !UIStyle.pretendOlderOS, #available(macOS 26.0, *) {
-            self.buttonStyle(.glass)
+            // TODO: Restore glass button styles when using Xcode 26.0+
+            // self.buttonStyle(.glass)
+            self.buttonStyle(.borderedProminent)
         } else {
             self.buttonStyle(.borderedProminent)
         }

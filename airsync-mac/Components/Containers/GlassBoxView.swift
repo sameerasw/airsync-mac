@@ -43,7 +43,11 @@ extension View {
     @ViewBuilder
     func glassBoxIfAvailable(radius: CGFloat) -> some View {
         if !UIStyle.pretendOlderOS, #available(macOS 26.0, *) {
-            self.glassEffect(in: .rect(cornerRadius: radius))
+            // TODO: Restore glass effects when using Xcode 26.0+
+            // self.glassEffect(in: .rect(cornerRadius: radius))
+            self.background(.thinMaterial, in: .rect(cornerRadius: radius))
+        } else {
+            self.background(.thinMaterial, in: .rect(cornerRadius: radius))
         }
     }
 }
@@ -52,8 +56,10 @@ extension View {
     @ViewBuilder
     func applyGlassViewIfAvailable(cornerRadius: CGFloat = 20) -> some View {
         if !UIStyle.pretendOlderOS, #available(macOS 26.0, *) {
-            self.background(.clear)
-                .glassEffect(in: .rect(cornerRadius: cornerRadius))
+            // TODO: Restore glass effects when using Xcode 26.0+
+            // self.background(.clear)
+            //     .glassEffect(in: .rect(cornerRadius: cornerRadius))
+            self.background(.thinMaterial, in: .rect(cornerRadius: cornerRadius))
         } else {
             self.background(.thinMaterial, in: .rect(cornerRadius: cornerRadius))
         }
