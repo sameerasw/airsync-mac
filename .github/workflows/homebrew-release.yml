@@ -1,0 +1,127 @@
+name: Build and Release for Homebrew
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 2.0.20)'
+        required: true
+        type: string
+
+env:
+  VERSION: ${{ github.event.inputs.version || github.ref_name }}
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest
+
+    - name: Install create-dmg
+      run: |
+        brew install create-dmg
+
+    - name: Build Release for arm64
+      run: |
+        xcodebuild -scheme airsync-mac -configuration Release -arch arm64 clean build ARCHS=arm64 ONLY_ACTIVE_ARCH=NO
+
+    - name: Build Release for x86_64
+      run: |
+        xcodebuild -scheme airsync-mac -configuration Release -arch x86_64 clean build ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO
+
+    - name: Create Release Archives
+      run: |
+        # Find build outputs
+        ARM64_BUILD_DIR=$(xcodebuild -scheme airsync-mac -configuration Release -arch arm64 -showBuildSettings | grep -m 1 "BUILD_DIR" | awk '{print $3}')
+        X86_64_BUILD_DIR=$(xcodebuild -scheme airsync-mac -configuration Release -arch x86_64 -showBuildSettings | grep -m 1 "BUILD_DIR" | awk '{print $3}')
+        
+        # Create arm64 archive
+        mkdir -p release-arm64
+        cp -R "${ARM64_BUILD_DIR}/Release/AirSync.app" release-arm64/
+        cd release-arm64
+        zip -r "../AirSync-arm64.zip" AirSync.app
+        cd ..
+        
+        # Create x86_64 archive
+        mkdir -p release-x86_64
+        cp -R "${X86_64_BUILD_DIR}/Release/AirSync.app" release-x86_64/
+        cd release-x86_64
+        zip -r "../AirSync-x86_64.zip" AirSync.app
+        cd ..
+
+    - name: Calculate SHA256
+      id: sha256
+      run: |
+        ARM64_SHA256=$(shasum -a 256 AirSync-arm64.zip | awk '{print $1}')
+        X86_64_SHA256=$(shasum -a 256 AirSync-x86_64.zip | awk '{print $1}')
+        echo "arm64_sha256=${ARM64_SHA256}" >> $GITHUB_OUTPUT
+        echo "x86_64_sha256=${X86_64_SHA256}" >> $GITHUB_OUTPUT
+        echo "ARM64 SHA256: ${ARM64_SHA256}"
+        echo "X86_64 SHA256: ${X86_64_SHA256}"
+
+    - name: Update Homebrew Formula
+      run: |
+        # Clean version string (remove 'v' prefix if present)
+        CLEAN_VERSION="${VERSION#v}"
+        
+        # Update the formula with new version and SHA256 hashes
+        sed -i '' "s/version \".*\"/version \"${CLEAN_VERSION}\"/" Formula/airsync.rb
+        sed -i '' "s/PLACEHOLDER_ARM64_SHA256/${{ steps.sha256.outputs.arm64_sha256 }}/" Formula/airsync.rb
+        sed -i '' "s/PLACEHOLDER_X86_64_SHA256/${{ steps.sha256.outputs.x86_64_sha256 }}/" Formula/airsync.rb
+        
+        echo "Updated Formula/airsync.rb:"
+        cat Formula/airsync.rb
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ env.VERSION }}
+        name: AirSync ${{ env.VERSION }}
+        body: |
+          ## AirSync ${{ env.VERSION }}
+          
+          Download the appropriate version for your Mac:
+          - **Apple Silicon (M1/M2/M3)**: AirSync-arm64.zip
+          - **Intel**: AirSync-x86_64.zip
+          
+          ### Installation via Homebrew
+          ```bash
+          brew install sameerasw/airsync-mac/airsync
+          ```
+          
+          ### Manual Installation
+          1. Download the appropriate zip file
+          2. Extract and move AirSync.app to Applications
+          3. Run: `xattr -r -d com.apple.quarantine /Applications/AirSync.app`
+          4. Open AirSync from Applications
+          
+          ### SHA256 Checksums
+          - ARM64: `${{ steps.sha256.outputs.arm64_sha256 }}`
+          - X86_64: `${{ steps.sha256.outputs.x86_64_sha256 }}`
+        files: |
+          AirSync-arm64.zip
+          AirSync-x86_64.zip
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Commit Updated Formula
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add Formula/airsync.rb
+        git commit -m "feat: update homebrew formula for version ${{ env.VERSION }}" || exit 0
+        git push
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

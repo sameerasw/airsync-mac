@@ -20,6 +20,10 @@ jobs:
       with:
         xcode-version: latest
 
+    - name: Install xcpretty
+      run: |
+        gem install xcpretty
+
     - name: Build Debug
       run: |
         xcodebuild -scheme airsync-mac -configuration Debug clean build | xcpretty

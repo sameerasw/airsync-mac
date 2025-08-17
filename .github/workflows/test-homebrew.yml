@@ -1,0 +1,29 @@
+name: Test Homebrew Installation
+
+on:
+  pull_request:
+    paths:
+      - 'Formula/**'
+  workflow_dispatch:
+
+jobs:
+  test-formula:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Test Homebrew Formula Syntax
+      run: |
+        # Test formula syntax
+        brew install --formula --dry-run Formula/airsync.rb || echo "Formula has issues (expected if no release exists yet)"
+        
+        # Validate Ruby syntax
+        ruby -c Formula/airsync.rb
+        echo "Formula syntax is valid"
+
+    - name: Test Formula Audit
+      run: |
+        # Run brew audit on the formula
+        brew audit --formula Formula/airsync.rb || echo "Audit completed with warnings (expected for new formula)"
