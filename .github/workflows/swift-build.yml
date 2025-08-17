@@ -26,11 +26,11 @@ jobs:
 
     - name: Build Debug
       run: |
-        xcodebuild -scheme AirSync -configuration Debug clean build | xcpretty
+        xcodebuild -scheme AirSync -configuration Debug clean build
 
     - name: Build Release
       run: |
-        xcodebuild -scheme AirSync -configuration Release clean build | xcpretty
+        xcodebuild -scheme AirSync -configuration Release clean build
 
     - name: Archive Debug Build Artifacts
       if: success()
