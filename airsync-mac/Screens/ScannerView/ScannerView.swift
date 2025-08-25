@@ -18,13 +18,13 @@ struct ScannerView: View {
     private func statusInfo(for status: WebSocketStatus) -> (text: String, icon: String, color: Color) {
         switch status {
         case .stopped:
-            return ("Stopped", "xmark.circle", .gray)
+            return (NSLocalizedString("Stopped", comment: ""), "xmark.circle", .gray)
         case .starting:
-            return ("Starting...", "clock", .orange)
+            return (NSLocalizedString("Starting...", comment: ""), "clock", .orange)
         case .started:
-            return ("Ready", "checkmark.circle", .green)
+            return (NSLocalizedString("Ready", comment: ""), "checkmark.circle", .green)
         case .failed(let error):
-            return ("Failed: \(error)", "exclamationmark.triangle", .red)
+            return (NSLocalizedString("Failed: ", comment: "") + "\(error)", "exclamationmark.triangle", .red)
         }
     }
 

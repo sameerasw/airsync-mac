@@ -1,0 +1,726 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+
+    },
+    "%@ (%@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ (%2$@)"
+          }
+        }
+      }
+    },
+    "%lld" : {
+
+    },
+    "%lld Mbps" : {
+
+    },
+    "%lld%%" : {
+
+    },
+    "└(=^‥^=)┐" : {
+
+    },
+    "2000x1800" : {
+
+    },
+    "2560x1440" : {
+
+    },
+    "2560x1600" : {
+
+    },
+    "About" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Acerca"
+          }
+        }
+      }
+    },
+    "About AirSync BETA" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Acerca de AirSync BETA"
+          }
+        }
+      }
+    },
+    "AirSync" : {
+
+    },
+    "AirSync - %@" : {
+
+    },
+    "AirSync helps you achieving Apple continuity features of mac with Android. This is the macOS client which handles the server. It will utilize a websocket for connectivity between the Android device(s) in the local network." : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AirSync te ayuda a tener las funciones de continuidad de tu Mac con Android. Este es el cliente de macOS que funciona como el servidor. Utiliza un WebSocket para conectarse a los dispositivos Android en la red local."
+          }
+        }
+      }
+    },
+    "AirSync+" : {
+
+    },
+    "Android Mirror" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Proyectar teléfono"
+          }
+        }
+      }
+    },
+    "App Mirroring" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Proyectar aplicación"
+          }
+        }
+      }
+    },
+    "Apps & Desktop mode shared resolution" : {
+
+    },
+    "Auto" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automático"
+          }
+        }
+      }
+    },
+    "Auto connect ADB" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto conectar ADB"
+          }
+        }
+      }
+    },
+    "Blank display" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pantalla vacia"
+          }
+        }
+      }
+    },
+    "Check for Updates..." : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscar por actualizaciones…"
+          }
+        }
+      }
+    },
+    "Clear" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Limpiar"
+          }
+        }
+      }
+    },
+    "Clear all notifications" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descartar notificaciones"
+          }
+        }
+      }
+    },
+    "Clear completed" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descartar completados"
+          }
+        }
+      }
+    },
+    "Continue app after closing" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continuar aplicación al cerrar"
+          }
+        }
+      }
+    },
+    "Desktop and App mirroring" : {
+
+    },
+    "Desktop mode" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modo escritorio"
+          }
+        }
+      }
+    },
+    "Desktop Mode" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modo escritorio"
+          }
+        }
+      }
+    },
+    "Developed by Sameera Wijerathna" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desarrollado por Sameera Wijerathna"
+          }
+        }
+      }
+    },
+    "Device Name" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nombre de dispositivo"
+          }
+        }
+      }
+    },
+    "Direct keyboard input" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entrada directa de teclado"
+          }
+        }
+      }
+    },
+    "Disconnect" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desconectar"
+          }
+        }
+      }
+    },
+    "Disconnect Device" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desconectar dispositivo"
+          }
+        }
+      }
+    },
+    "Dismiss" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descartar"
+          }
+        }
+      }
+    },
+    "Enter license key" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entrar llave de licencia"
+          }
+        }
+      }
+    },
+    "Failed: " : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Error:"
+          }
+        }
+      }
+    },
+    "Generating QR…" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generando código QR..."
+          }
+        }
+      }
+    },
+    "Get started by installing the app on your Android device." : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inicia instalando la aplicación a tu dispositivo Android."
+          }
+        }
+      }
+    },
+    "Help" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ayuda"
+          }
+        }
+      }
+    },
+    "Hide" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esconder"
+          }
+        }
+      }
+    },
+    "Keeps me inspired to continue and maybe even to publish to the Apple app store and Google Play Store. Think of it as a little donation to keep this project alive and evolving.\nThat said, I know not everyone who wants the full experience can afford it. If that’s you, please don’t hesitate to reach out. 😊\n\nThe source code is available on GitHub, and you're more than welcome to build with all Plus features free — for personal use which also opens for contributions which is a win-win!.\nAs a thank-you for supporting the app, AirSync+ unlocks some nice extras: media controls, synced widgets, low battery alerts, wireless ADB, and more to come as I keep adding new features.\n\nEnjoy the app!\n(っ◕‿◕)っ" : {
+
+    },
+    "License inactive" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Licencia inactiva"
+          }
+        }
+      }
+    },
+    "License Info" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Información de licencia"
+          }
+        }
+      }
+    },
+    "License invalid, expired or network error" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Licencia invalida, expirada o error de conexión"
+          }
+        }
+      }
+    },
+    "License Key" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Llave de licencia"
+          }
+        }
+      }
+    },
+    "Liquid Opacity" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opacidad de líquido"
+          }
+        }
+      }
+    },
+    "Manual launch position (x,y)" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Posición manual de lanzamiento (x,y)"
+          }
+        }
+      }
+    },
+    "Max size" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tamaño máximo"
+          }
+        }
+      }
+    },
+    "Menubar text" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Texto de barra de menú"
+          }
+        }
+      }
+    },
+    "Mirror" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Espejo"
+          }
+        }
+      }
+    },
+    "Mirroring Settings" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustes de espejo"
+          }
+        }
+      }
+    },
+    "Mute app" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Silenciar aplicación"
+          }
+        }
+      }
+    },
+    "Muted" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Silenciado"
+          }
+        }
+      }
+    },
+    "Network" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conectividad"
+          }
+        }
+      }
+    },
+    "No audio" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desactivar audio"
+          }
+        }
+      }
+    },
+    "Nothing transferred yet" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay archivos transferidos."
+          }
+        }
+      }
+    },
+    "Plan" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plan"
+          }
+        }
+      }
+    },
+    "QR Code" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Código QR"
+          }
+        }
+      }
+    },
+    "QR Code to download AirSync Android app" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Código QR para descargar aplicación AirSync Android"
+          }
+        }
+      }
+    },
+    "Ready" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Listo"
+          }
+        }
+      }
+    },
+    "Remove all completed transfers from the list" : {
+
+    },
+    "Report issues or suggest features" : {
+
+    },
+    "Reset key - Devices will need to reAuth" : {
+
+    },
+    "Scan the QR code to download the app from GitHub." : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escanea el código QR para descargar la aplicación desde GitHub."
+          }
+        }
+      }
+    },
+    "Scan to connect" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escanea para conectar"
+          }
+        }
+      }
+    },
+    "Server Port" : {
+
+    },
+    "Show %lld More" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar %lld mas"
+          }
+        }
+      }
+    },
+    "Show Less" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar menos"
+          }
+        }
+      }
+    },
+    "Starting..." : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Iniciando…"
+          }
+        }
+      }
+    },
+    "Stay awake (charging)" : {
+
+    },
+    "Stay on top" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mantener encima"
+          }
+        }
+      }
+    },
+    "Stopped" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detenido"
+          }
+        }
+      }
+    },
+    "Switch to expanded view" : {
+
+    },
+    "Switch to stacked view" : {
+
+    },
+    "Sync clipboard" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sincronizar portapapeles"
+          }
+        }
+      }
+    },
+    "Sync notification dismissals" : {
+
+    },
+    "Sync notifications, clipboard, and more between your Mac and Android. First, install AirSync on your Android device." : {
+
+    },
+    "System Notifications" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notificaciones del Sistema"
+          }
+        }
+      }
+    },
+    "Tab" : {
+
+    },
+    "Thank you <3" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¡Gracias! <3"
+          }
+        }
+      }
+    },
+    "Toggle Notification Stacks" : {
+
+    },
+    "Toolbar contrast" : {
+
+    },
+    "Unmute app" : {
+
+    },
+    "Unregister" : {
+
+    },
+    "Video bitrate" : {
+
+    },
+    "View app information and version details" : {
+
+    },
+    "Why plus?" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Por qué Plus?"
+          }
+        }
+      }
+    },
+    "With ❤️ from 🇱🇰" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Con ❤️ desde 🇱🇰"
+          }
+        }
+      }
+    },
+    "x" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "x"
+          }
+        }
+      }
+    },
+    "y" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "y"
+          }
+        }
+      }
+    },
+    "You're all caught up!" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¡Estás atento!"
+          }
+        }
+      }
+    },
+    "Your Android app is outdated" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu aplicación de Android no está actualizada."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.1"
+}
