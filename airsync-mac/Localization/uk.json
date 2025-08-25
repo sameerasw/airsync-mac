@@ -1,6 +1,6 @@
 {
   "app.name": "AirSync",
-  "menu.mirror": "Mirror",
+  "menu.mirror": "Дзеркало",
   "menu.about": "About AirSync",
   "menu.checkUpdates": "Check for Updates…",
   "menu.quit": "Quit",
@@ -13,7 +13,7 @@
   "notifications.actions.dismiss": "Dismiss",
   "notifications.tab": "Notifications",
   "apps.tab": "Apps",
-  "transfers.tab": "Transfers",
+  "transfers.tab": "Передача",
   "settings.tab": "Settings",
   "transfers.empty": "Nothing transferred yet",
   "plus.title": "AirSync+",
