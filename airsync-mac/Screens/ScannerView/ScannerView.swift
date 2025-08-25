@@ -93,7 +93,9 @@ struct ScannerView: View {
                 }
                 .padding()
                 .background(.clear)
-                .glassEffect(in: .rect(cornerRadius: 20))
+                // TODO: Restore glass effects when using Xcode 26.0+
+                // .glassEffect(in: .rect(cornerRadius: 20))
+                .background(.thinMaterial, in: .rect(cornerRadius: 20))
                 .padding()
             } else {
                 Label {
