@@ -32,7 +32,7 @@ struct SidebarView: View {
             .safeAreaInset(edge: .bottom) {
                 HStack{
                     GlassButtonView(
-                        label: "Disconnect",
+                        label: NSLocalizedString("Disconnect", comment: ""),
                         systemImage: "xmark",
                         action: {
                             appState.disconnectDevice()

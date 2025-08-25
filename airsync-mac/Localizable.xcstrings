@@ -542,6 +542,17 @@
         }
       }
     },
+    "Send" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviar"
+          }
+        }
+      }
+    },
     "Server Port" : {
 
     },

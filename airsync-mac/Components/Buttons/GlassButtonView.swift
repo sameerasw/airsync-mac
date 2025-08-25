@@ -29,9 +29,10 @@ struct GlassButtonView: View {
         if customIconSizingActive, iconOnly, let (imgView, altText) = iconImageView() {
             imgView.accessibilityLabel(Text(altText))
         } else {
-            if let systemImage { Label(label.localizedCapitalized, systemImage: systemImage) }
-            else if let image { Label(label.localizedCapitalized, image: image) }
-            else { Text(label.localizedCapitalized) }
+            let translatedLabel = NSLocalizedString(label, comment: "")
+            if let systemImage { Label(translatedLabel, systemImage: systemImage) }
+            else if let image { Label(translatedLabel, image: image) }
+            else { Text(translatedLabel) }
         }
     }
     // Use native system Label sizing when custom sizing is not active
