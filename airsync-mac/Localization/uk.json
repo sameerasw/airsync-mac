@@ -1,6 +1,6 @@
 {
   "app.name": "AirSync",
-  "menu.mirror": "Дзеркало",
+  "menu.mirror": "Дублювання екрану",
   "menu.about": "Про AirSync",
   "menu.checkUpdates": "Перевірка оновлень…",
   "menu.quit": "Вийти",
