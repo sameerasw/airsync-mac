@@ -419,16 +419,40 @@ Raw output:
     }
 
     private static func bundledBinaryPath(_ name: String) -> String? {
-        guard let resourceURL = Bundle.main.resourceURL else { return nil }
-        let binariesURL = resourceURL.appendingPathComponent("Binaries")
-        let candidate = binariesURL.appendingPathComponent(name).path
+        let fm = FileManager.default
 
-        if FileManager.default.isExecutableFile(atPath: candidate) {
-            logBinaryDetection("\(name) found in app bundle at \(candidate).")
-            return candidate
+        // 1. Preferred location: Contents/Helpers
+        let helpersURL = Bundle.main.bundleURL
+            .appendingPathComponent("Contents/Helpers", isDirectory: true)
+        let helpersCandidate = helpersURL.appendingPathComponent(name).path
+        if fm.isExecutableFile(atPath: helpersCandidate) {
+            logBinaryDetection("\(name) found in Helpers at \(helpersCandidate).")
+            return helpersCandidate
         }
+
+        // 2. Legacy location: Resources/Binaries
+        if let resourceURL = Bundle.main.resourceURL {
+            let binariesURL = resourceURL.appendingPathComponent("Binaries")
+            let candidate = binariesURL.appendingPathComponent(name).path
+            if fm.isExecutableFile(atPath: candidate) {
+                logBinaryDetection("\(name) found in Resources/Binaries at \(candidate).")
+                return candidate
+            }
+        }
+
+        // 3. Fallback: same folder as main executable (Contents/MacOS)
+        if let executableURL = Bundle.main.executableURL?.deletingLastPathComponent() {
+            let candidate = executableURL.appendingPathComponent(name).path
+            if fm.isExecutableFile(atPath: candidate) {
+                logBinaryDetection("\(name) found in MacOS at \(candidate).")
+                return candidate
+            }
+        }
+
+        logBinaryDetection("\(name) not found in app bundle.")
         return nil
     }
+
 
 }
 

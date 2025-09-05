@@ -16,8 +16,8 @@
 		B98862D12E6B34CA00F05191 /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
-			dstPath = Binaries;
-			dstSubfolderSpec = 7;
+			dstPath = "";
+			dstSubfolderSpec = 6;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -109,6 +109,7 @@
 				B9673B542E35A2A1006D284A /* Frameworks */,
 				B9673B552E35A2A1006D284A /* Resources */,
 				B98862D12E6B34CA00F05191 /* CopyFiles */,
+				B974F82D2E6B79C300A8A10F /* ShellScript */,
 			);
 			buildRules = (
 			);
@@ -174,6 +175,27 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		B974F82D2E6B79C300A8A10F /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Type a script APP_HELPERS_PATH=\"$CODESIGNING_FOLDER_PATH/Contents/Helpers\"\n\nfor tool in \"$APP_HELPERS_PATH\"/*; do\n  if [ -f \"$tool\" ] && [ -x \"$tool\" ]; then\n    echo \"Signing helper: $tool\"\n    codesign --force --deep --options=runtime --sign \"$EXPANDED_CODE_SIGN_IDENTITY\" \"$tool\"\n  fi\ndone\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		B9673B532E35A2A1006D284A /* Sources */ = {
@@ -319,7 +341,7 @@
 				CODE_SIGN_ENTITLEMENTS = AirSync.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 7;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "airsync-mac/Binaries";
 				DEVELOPMENT_TEAM = WCB4HTANA6;
@@ -350,7 +372,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.6;
-				MARKETING_VERSION = 2.0.29;
+				MARKETING_VERSION = 2.0.31;
 				PRODUCT_BUNDLE_IDENTIFIER = "sameerasw.airsync-mac";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -377,7 +399,7 @@
 				CODE_SIGN_ENTITLEMENTS = AirSync.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 7;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "airsync-mac/Binaries";
 				DEVELOPMENT_TEAM = WCB4HTANA6;
@@ -408,7 +430,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.6;
-				MARKETING_VERSION = 2.0.29;
+				MARKETING_VERSION = 2.0.31;
 				PRODUCT_BUNDLE_IDENTIFIER = "sameerasw.airsync-mac";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
