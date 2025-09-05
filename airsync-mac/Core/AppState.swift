@@ -16,13 +16,13 @@ class AppState: ObservableObject {
     private var clipboardCancellable: AnyCancellable?
     private var lastClipboardValue: String? = nil
     private var shouldSkipSave = false
-    private let licenseDetailsKey = "licenseDetails"
 
     @Published var isOS26: Bool = true
 
 
     init() {
-        self.isPlus = UserDefaults.standard.bool(forKey: "isPlus")
+        // AirSync+ state now session-only (not persisted) pending future StoreKit integration
+        self.isPlus = false
 
 
         // Load from UserDefaults
@@ -53,10 +53,6 @@ class AppState: ObservableObject {
             startClipboardMonitoring()
         }
 
-        Task {
-            await checkLicenseIfNeeded()
-        }
-
         self.scrcpyBitrate = UserDefaults.standard.integer(forKey: "scrcpyBitrate")
         if self.scrcpyBitrate == 0 { self.scrcpyBitrate = 4 }
 
@@ -74,7 +70,6 @@ class AppState: ObservableObject {
             port: port,
             version:appVersion
         )
-        self.licenseDetails = loadLicenseDetailsFromUserDefaults()
 
         loadAppsFromDisk()
 
@@ -134,11 +129,6 @@ class AppState: ObservableObject {
         }
     }
 
-    @Published var licenseDetails: LicenseDetails? {
-        didSet {
-            saveLicenseDetailsToUserDefaults()
-        }
-    }
 
     @Published var adbPort: UInt16 {
         didSet {
@@ -197,22 +187,9 @@ class AppState: ObservableObject {
     // File transfer tracking state
     @Published var transfers: [String: FileTransferSession] = [:]
 
-    // Toggle licensing
-    let licenseCheck: Bool = true
+    @Published var isPlus: Bool // session-only, not persisted
 
-    @Published var isPlus: Bool {
-        didSet {
-            if !shouldSkipSave {
-                UserDefaults.standard.set(isPlus, forKey: "isPlus")
-            }
-        }
-    }
-
-    func setPlusTemporarily(_ value: Bool) {
-        shouldSkipSave = true
-        isPlus = value
-        shouldSkipSave = false
-    }
+    func setPlusTemporarily(_ value: Bool) { isPlus = value }
 
 
     // Remove notification by model instance and system notif center
@@ -470,33 +447,6 @@ class AppState: ObservableObject {
         return deviceWallpapers[key]
     }
 
-    private func saveLicenseDetailsToUserDefaults() {
-        guard let details = licenseDetails else {
-            UserDefaults.standard.removeObject(forKey: licenseDetailsKey)
-            return
-        }
-
-        do {
-            let data = try JSONEncoder().encode(details)
-            UserDefaults.standard.set(data, forKey: licenseDetailsKey)
-        } catch {
-            print("Failed to encode license details: \(error)")
-        }
-    }
-
-    private func loadLicenseDetailsFromUserDefaults() -> LicenseDetails? {
-        guard let data = UserDefaults.standard.data(forKey: licenseDetailsKey) else {
-            return nil
-        }
-
-        do {
-            return try JSONDecoder().decode(LicenseDetails.self, from: data)
-        } catch {
-            print("Failed to decode license details: \(error)")
-            return nil
-        }
-    }
-
     func saveAppsToDisk() {
         let url = appIconsDirectory().appendingPathComponent("apps.json")
         do {
@@ -524,63 +474,6 @@ class AppState: ObservableObject {
         } catch {
             print("Error loading apps: \(error)")
         }
-    }
-    func checkLicenseIfNeeded() async {
-        let now = Date()
-        let calendar = Calendar.current
-
-        // Compare just the year/month/day, ignoring time
-        if let lastCheck = UserDefaults.standard.lastLicenseCheckDate,
-           calendar.isDate(lastCheck, inSameDayAs: now) {
-            print("License was already checked today")
-            return
-        }
-
-        await checkLicense()
-        UserDefaults.standard.lastLicenseCheckDate = now
-    }
-
-    @MainActor
-    func checkLicense() async {
-        guard let key = self.licenseDetails?.key, !key.isEmpty else {
-            self.isPlus = false
-            incrementLicenseFailCount()
-            return
-        }
-
-        let result = try? await checkLicenseKeyValidity(
-            key: key,
-            save: false,
-            isNewRegistration: false
-        )
-
-        if result == true {
-            // License valid — reset fail count
-            UserDefaults.standard.consecutiveLicenseFailCount = 0
-            self.isPlus = true
-        } else {
-            // License invalid
-            incrementLicenseFailCount()
-            self.isPlus = false
-        }
-
-        print("License checked, validity:", isPlus)
-    }
-
-    private func incrementLicenseFailCount() {
-        let failCount = UserDefaults.standard.consecutiveLicenseFailCount + 1
-        UserDefaults.standard.consecutiveLicenseFailCount = failCount
-
-        if failCount >= 3 {
-            clearLicenseDetails()
-            print("License check failed \(failCount) times — license removed")
-        }
-    }
-
-    private func clearLicenseDetails() {
-        self.licenseDetails = nil
-        UserDefaults.standard.removeObject(forKey: "licenseDetailsKey")
-        UserDefaults.standard.consecutiveLicenseFailCount = 0
     }
 
     func updateDockIconVisibility() {

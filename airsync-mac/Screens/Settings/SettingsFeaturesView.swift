@@ -41,10 +41,10 @@ struct SettingsFeaturesView: View {
                     )
                     .labelsHidden()
                     .toggleStyle(.switch)
-                    .disabled(!AppState.shared.isPlus && AppState.shared.licenseCheck)
+                    .disabled(!AppState.shared.isPlus)
 
                     // Transparent tap area on top to show popover even if disabled
-                    if !AppState.shared.isPlus && AppState.shared.licenseCheck {
+                    if !AppState.shared.isPlus {
                         Rectangle()
                             .fill(Color.clear)
                             .contentShape(Rectangle())

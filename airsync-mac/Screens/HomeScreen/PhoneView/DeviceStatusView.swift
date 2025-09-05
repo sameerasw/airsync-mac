@@ -33,7 +33,7 @@ struct DeviceStatusView: View {
                     .help(isMuted ? "Muted" : "\(volume)%")
                     .contentTransition(.symbolEffect)
                     .onTapGesture {
-                        if AppState.shared.isPlus && AppState.shared.licenseCheck {
+                        if AppState.shared.isPlus {
                             if let currentVolume = appState.status?.music.volume {
                                 tempVolume = Double(currentVolume)
                             }

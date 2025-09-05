@@ -32,7 +32,7 @@ struct MediaPlayerView: View {
 
 
                 Group {
-                    if AppState.shared.isPlus && AppState.shared.licenseCheck {
+                    if AppState.shared.isPlus {
                         HStack{
                                 GlassButtonView(
                                     label: "",
@@ -81,9 +81,7 @@ struct MediaPlayerView: View {
         }
         .padding()
         .applyGlassViewIfAvailable(cornerRadius: 20)
-        .onTapGesture {
-            showingPlusPopover = !AppState.shared.isPlus && AppState.shared.licenseCheck
-        }
+    .onTapGesture { showingPlusPopover = !AppState.shared.isPlus }
         .popover(isPresented: $showingPlusPopover, arrowEdge: .bottom) {
             PlusFeaturePopover(message: "Control media with AirSync+")
         }

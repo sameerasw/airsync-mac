@@ -80,7 +80,7 @@ struct SettingsView: View {
                         }
 
                         ConnectionInfoText(
-                            label: "Plus features",
+                            label: "Plus features (session)",
                             icon: "plus.app",
                             text: appState.isPlus ? "Active" : "Not active"
                         )
