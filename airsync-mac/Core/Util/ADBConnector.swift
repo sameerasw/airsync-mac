@@ -38,9 +38,15 @@ struct ADBConnector {
             }
         }
 
-        logBinaryDetection("\(name) not found in PATH or fallback locations.")
+        // Step 3: Try bundled binary
+        if let bundled = bundledBinaryPath(name) {
+            return bundled
+        }
+
+        logBinaryDetection("\(name) not found in PATH, fallback locations, or bundled binaries.")
         return nil
     }
+
 
     private static func getExecutablePath(_ name: String) -> String {
         let process = Process()
@@ -411,6 +417,19 @@ Raw output:
             }
         }
     }
+
+    private static func bundledBinaryPath(_ name: String) -> String? {
+        guard let resourceURL = Bundle.main.resourceURL else { return nil }
+        let binariesURL = resourceURL.appendingPathComponent("Binaries")
+        let candidate = binariesURL.appendingPathComponent(name).path
+
+        if FileManager.default.isExecutableFile(atPath: candidate) {
+            logBinaryDetection("\(name) found in app bundle at \(candidate).")
+            return candidate
+        }
+        return nil
+    }
+
 }
 
 // MARK: - Alert Helper
