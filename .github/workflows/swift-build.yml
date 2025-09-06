@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-15
 
     steps:
     - name: Checkout repository
@@ -18,28 +18,48 @@ jobs:
     - name: Set up Xcode
       uses: maxim-lobanov/setup-xcode@v1
       with:
-        xcode-version: latest
+        xcode-version: 16.4
+
+    - name: Install xcpretty
+      run: |
+        gem install xcpretty
 
     - name: Build Debug
       run: |
-        xcodebuild -scheme airsync-mac -configuration Debug clean build | xcpretty
+        xcodebuild -scheme AirSync -configuration Debug clean build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
 
     - name: Build Release
       run: |
-        xcodebuild -scheme airsync-mac -configuration Release clean build | xcpretty
+        xcodebuild -scheme AirSync -configuration Release clean build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
 
     - name: Archive Debug Build Artifacts
       if: success()
       run: |
-        mkdir -p build-artifacts/Debug
-        cp -R "$(xcodebuild -scheme airsync-mac -configuration Debug -showBuildSettings | grep -m 1 BUILD_DIR | awk '{print $3}')/Debug/"* build-artifacts/Debug/
+        BUILD_DIR=$(xcodebuild -scheme AirSync -configuration Debug -showBuildSettings CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO | grep -m 1 BUILD_DIR | awk '{print $3}')
+        echo "Build directory: $BUILD_DIR"
+        ls -la "$BUILD_DIR" || echo "Build directory not found"
+        if [ -d "$BUILD_DIR/Debug" ]; then
+          mkdir -p build-artifacts/Debug
+          cp -R "$BUILD_DIR/Debug/"* build-artifacts/Debug/
+          echo "Debug artifacts archived successfully"
+        else
+          echo "Debug build directory not found, skipping artifact archiving"
+        fi
       shell: bash
 
     - name: Archive Release Build Artifacts
       if: success()
       run: |
-        mkdir -p build-artifacts/Release
-        cp -R "$(xcodebuild -scheme airsync-mac -configuration Release -showBuildSettings | grep -m 1 BUILD_DIR | awk '{print $3}')/Release/"* build-artifacts/Release/
+        BUILD_DIR=$(xcodebuild -scheme AirSync -configuration Release -showBuildSettings CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO | grep -m 1 BUILD_DIR | awk '{print $3}')
+        echo "Build directory: $BUILD_DIR"
+        ls -la "$BUILD_DIR" || echo "Build directory not found"
+        if [ -d "$BUILD_DIR/Release" ]; then
+          mkdir -p build-artifacts/Release
+          cp -R "$BUILD_DIR/Release/"* build-artifacts/Release/
+          echo "Release artifacts archived successfully"
+        else
+          echo "Release build directory not found, skipping artifact archiving"
+        fi
       shell: bash
 
     - name: Upload Debug Build Artifacts

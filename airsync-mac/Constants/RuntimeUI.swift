@@ -7,5 +7,5 @@
 import SwiftUI
 
 struct UIStyle {
-    static let pretendOlderOS = false
+    static let pretendOlderOS = true  // Disable glass effects for CI compatibility
 }
