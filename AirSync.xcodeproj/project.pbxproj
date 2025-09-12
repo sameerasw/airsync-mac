@@ -122,7 +122,9 @@
 		B9145F8B2E73E33400ADEE2A /* Exceptions for "SCRCPYHelper" folder in "Copy Files" phase from "SCRCPYHelper" target */ = {
 			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
 			attributesByRelativePath = {
+				icon.png = (CodeSignOnCopy, );
 				scrcpy = (CodeSignOnCopy, );
+				"scrcpy-server" = (CodeSignOnCopy, );
 			};
 			buildPhase = B9145F892E73E32D00ADEE2A /* CopyFiles */;
 			membershipExceptions = (
