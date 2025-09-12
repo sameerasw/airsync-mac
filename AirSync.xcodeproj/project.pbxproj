@@ -92,10 +92,8 @@
 		B9145F832E73E17000ADEE2A /* Exceptions for "SCRCPYHelper" folder in "SCRCPYHelper" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				icon.png,
 				Info.plist,
 				scrcpy,
-				"scrcpy-server",
 			);
 			target = B9145F732E73E17000ADEE2A /* SCRCPYHelper */;
 		};
@@ -122,15 +120,11 @@
 		B9145F8B2E73E33400ADEE2A /* Exceptions for "SCRCPYHelper" folder in "Copy Files" phase from "SCRCPYHelper" target */ = {
 			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
 			attributesByRelativePath = {
-				icon.png = (CodeSignOnCopy, );
 				scrcpy = (CodeSignOnCopy, );
-				"scrcpy-server" = (CodeSignOnCopy, );
 			};
 			buildPhase = B9145F892E73E32D00ADEE2A /* CopyFiles */;
 			membershipExceptions = (
-				icon.png,
 				scrcpy,
-				"scrcpy-server",
 			);
 		};
 /* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
