@@ -31,6 +31,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B9145F5A2E73DC0700ADEE2A /* Exceptions for "Scripts" folder in "AirSync" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"sign-embedded-tools.sh",
+				"sign-tools-at-source.sh",
+			);
+			target = B9673B562E35A2A1006D284A /* AirSync */;
+		};
 		B933ED362E3BEC21007393CB /* Exceptions for "airsync-mac" folder in "AirSync" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -45,10 +53,6 @@
 /* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
 		B9145D732E73C6C700ADEE2A /* Exceptions for "airsync-mac" folder in "Copy Files" phase from "AirSync" target */ = {
 			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
-			attributesByRelativePath = {
-				Binaries/adb = (CodeSignOnCopy, );
-				Binaries/scrcpy = (CodeSignOnCopy, );
-			};
 			buildPhase = B9145D702E73C6B800ADEE2A /* CopyFiles */;
 			membershipExceptions = (
 				Binaries/adb,
@@ -58,6 +62,14 @@
 /* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		B9145F592E73DC0700ADEE2A /* Scripts */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B9145F5A2E73DC0700ADEE2A /* Exceptions for "Scripts" folder in "AirSync" target */,
+			);
+			path = Scripts;
+			sourceTree = "<group>";
+		};
 		B9673B592E35A2A1006D284A /* airsync-mac */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -85,6 +97,7 @@
 		B9673B4E2E35A2A1006D284A = {
 			isa = PBXGroup;
 			children = (
+				B9145F592E73DC0700ADEE2A /* Scripts */,
 				B995A3322E4D2B3F00FA7A41 /* AppIcon.icon */,
 				B9673B592E35A2A1006D284A /* airsync-mac */,
 				B9673B582E35A2A1006D284A /* Products */,
@@ -107,6 +120,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = B9673B622E35A2A3006D284A /* Build configuration list for PBXNativeTarget "AirSync" */;
 			buildPhases = (
+				B9145F562E73D9A300ADEE2A /* ShellScript */,
 				B9673B532E35A2A1006D284A /* Sources */,
 				B9673B542E35A2A1006D284A /* Frameworks */,
 				B9673B552E35A2A1006D284A /* Resources */,
@@ -117,6 +131,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
+				B9145F592E73DC0700ADEE2A /* Scripts */,
 				B9673B592E35A2A1006D284A /* airsync-mac */,
 			);
 			name = AirSync;
@@ -176,6 +191,29 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		B9145F562E73D9A300ADEE2A /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Scripts/sign-tools-at-source.sh",
+				"$(SRCROOT)/AirSync.entitlements",
+			);
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\nif [ \"$CONFIGURATION\" = \"Release\" ] || [ \"$CONFIGURATION\" = \"AppStore\" ]; then\n  \"${PROJECT_DIR}/Scripts/sign-tools-at-source.sh\"\nelse\n  echo \"Skipping binary signing for $CONFIGURATION build\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		B9673B532E35A2A1006D284A /* Sources */ = {
