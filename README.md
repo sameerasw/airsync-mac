@@ -1,32 +1,5 @@
 # AirSync 2.0 macOS app written in Swift
 
-## Signing embedded CLI tools for App Store validation
-
-This app embeds `adb` and `scrcpy`. For App Store submission, these executables must be sandboxed and code-signed with entitlements.
-
-We include sandbox entitlements at:
-
-- `airsync-mac/Binaries/adb_sandbox.entitlements`
-- `airsync-mac/Binaries/scrcpy_sandbox.entitlements`
-
-And a helper script:
-
-- `airsync-mac/Scripts/sign-embedded-tools.sh`
-
-Hook this script in Xcode:
-
-1) Target: AirSync → Build Phases → + → New Run Script Phase
-2) Place it after “Copy Files” that embeds the tools into `Contents/MacOS`.
-3) Script:
-
-```
-${SRCROOT}/airsync-mac/Scripts/sign-embedded-tools.sh
-```
-
-Ensure the tools are copied into the app bundle (Contents/MacOS) during build. If not already, add a “Copy Files” phase targeting “Wrapper” and include `airsync-mac/Binaries/adb` and `airsync-mac/Binaries/scrcpy` as inputs, renaming the destination filenames to just `adb` and `scrcpy`.
-
-The script signs them with the sandbox entitlements so validation no longer reports “App sandbox not enabled” for those executables.
-
 Min : macOS 14.5
 
 [![AirSync demo](https://img.youtube.com/vi/HDv0Hu9z294?si=dgycryP1T8QvPJYa/0.jpg)](https://www.youtube.com/watch?v=HDv0Hu9z294?si=dgycryP1T8QvPJYa)

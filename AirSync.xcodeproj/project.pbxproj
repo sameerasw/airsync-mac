@@ -7,13 +7,53 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B9145F6B2E73E15D00ADEE2A /* ADBHelper.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = B9145F5F2E73E15C00ADEE2A /* ADBHelper.xpc */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B9145F7F2E73E17000ADEE2A /* SCRCPYHelper.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = B9145F742E73E17000ADEE2A /* SCRCPYHelper.xpc */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B995A3332E4D2B3F00FA7A41 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = B995A3322E4D2B3F00FA7A41 /* AppIcon.icon */; };
 		B9C3181E2E37AA1D00367F16 /* QRCode in Frameworks */ = {isa = PBXBuildFile; productRef = B9C3181D2E37AA1D00367F16 /* QRCode */; };
 		B9D742FC2E39CF850053128A /* Swifter in Frameworks */ = {isa = PBXBuildFile; productRef = B9D742FB2E39CF850053128A /* Swifter */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		B9145F682E73E15C00ADEE2A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B9673B4F2E35A2A1006D284A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B9145F5E2E73E15C00ADEE2A;
+			remoteInfo = ADBHelper;
+		};
+		B9145F7D2E73E17000ADEE2A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B9673B4F2E35A2A1006D284A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B9145F732E73E17000ADEE2A;
+			remoteInfo = SCRCPYHelper;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXCopyFilesBuildPhase section */
-		B9145D702E73C6B800ADEE2A /* CopyFiles */ = {
+		B9145F6A2E73E15C00ADEE2A /* Embed XPC Services */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/XPCServices";
+			dstSubfolderSpec = 16;
+			files = (
+				B9145F6B2E73E15D00ADEE2A /* ADBHelper.xpc in Embed XPC Services */,
+				B9145F7F2E73E17000ADEE2A /* SCRCPYHelper.xpc in Embed XPC Services */,
+			);
+			name = "Embed XPC Services";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B9145F862E73E30D00ADEE2A /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 6;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B9145F892E73E32D00ADEE2A /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
@@ -26,6 +66,8 @@
 
 /* Begin PBXFileReference section */
 		B9145F4A2E73C87C00ADEE2A /* AirSync.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AirSync.entitlements; sourceTree = "<group>"; };
+		B9145F5F2E73E15C00ADEE2A /* ADBHelper.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = ADBHelper.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
+		B9145F742E73E17000ADEE2A /* SCRCPYHelper.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = SCRCPYHelper.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
 		B9673B572E35A2A1006D284A /* AirSync.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AirSync.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B995A3322E4D2B3F00FA7A41 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -39,11 +81,27 @@
 			);
 			target = B9673B562E35A2A1006D284A /* AirSync */;
 		};
+		B9145F6F2E73E15D00ADEE2A /* Exceptions for "ADBHelper" folder in "ADBHelper" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				adb,
+				Info.plist,
+			);
+			target = B9145F5E2E73E15C00ADEE2A /* ADBHelper */;
+		};
+		B9145F832E73E17000ADEE2A /* Exceptions for "SCRCPYHelper" folder in "SCRCPYHelper" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				icon.png,
+				Info.plist,
+				scrcpy,
+				"scrcpy-server",
+			);
+			target = B9145F732E73E17000ADEE2A /* SCRCPYHelper */;
+		};
 		B933ED362E3BEC21007393CB /* Exceptions for "airsync-mac" folder in "AirSync" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Binaries/adb,
-				Binaries/scrcpy,
 				Info.plist,
 			);
 			target = B9673B562E35A2A1006D284A /* AirSync */;
@@ -51,12 +109,26 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
-		B9145D732E73C6C700ADEE2A /* Exceptions for "airsync-mac" folder in "Copy Files" phase from "AirSync" target */ = {
+		B9145F882E73E32400ADEE2A /* Exceptions for "ADBHelper" folder in "Copy Files" phase from "ADBHelper" target */ = {
 			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
-			buildPhase = B9145D702E73C6B800ADEE2A /* CopyFiles */;
+			attributesByRelativePath = {
+				adb = (CodeSignOnCopy, );
+			};
+			buildPhase = B9145F862E73E30D00ADEE2A /* CopyFiles */;
 			membershipExceptions = (
-				Binaries/adb,
-				Binaries/scrcpy,
+				adb,
+			);
+		};
+		B9145F8B2E73E33400ADEE2A /* Exceptions for "SCRCPYHelper" folder in "Copy Files" phase from "SCRCPYHelper" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			attributesByRelativePath = {
+				scrcpy = (CodeSignOnCopy, );
+			};
+			buildPhase = B9145F892E73E32D00ADEE2A /* CopyFiles */;
+			membershipExceptions = (
+				icon.png,
+				scrcpy,
+				"scrcpy-server",
 			);
 		};
 /* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
@@ -70,11 +142,28 @@
 			path = Scripts;
 			sourceTree = "<group>";
 		};
+		B9145F602E73E15C00ADEE2A /* ADBHelper */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B9145F6F2E73E15D00ADEE2A /* Exceptions for "ADBHelper" folder in "ADBHelper" target */,
+				B9145F882E73E32400ADEE2A /* Exceptions for "ADBHelper" folder in "Copy Files" phase from "ADBHelper" target */,
+			);
+			path = ADBHelper;
+			sourceTree = "<group>";
+		};
+		B9145F752E73E17000ADEE2A /* SCRCPYHelper */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B9145F832E73E17000ADEE2A /* Exceptions for "SCRCPYHelper" folder in "SCRCPYHelper" target */,
+				B9145F8B2E73E33400ADEE2A /* Exceptions for "SCRCPYHelper" folder in "Copy Files" phase from "SCRCPYHelper" target */,
+			);
+			path = SCRCPYHelper;
+			sourceTree = "<group>";
+		};
 		B9673B592E35A2A1006D284A /* airsync-mac */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				B933ED362E3BEC21007393CB /* Exceptions for "airsync-mac" folder in "AirSync" target */,
-				B9145D732E73C6C700ADEE2A /* Exceptions for "airsync-mac" folder in "Copy Files" phase from "AirSync" target */,
 			);
 			path = "airsync-mac";
 			sourceTree = "<group>";
@@ -82,6 +171,20 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		B9145F5C2E73E15C00ADEE2A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B9145F712E73E17000ADEE2A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B9673B542E35A2A1006D284A /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -100,6 +203,8 @@
 				B9145F592E73DC0700ADEE2A /* Scripts */,
 				B995A3322E4D2B3F00FA7A41 /* AppIcon.icon */,
 				B9673B592E35A2A1006D284A /* airsync-mac */,
+				B9145F602E73E15C00ADEE2A /* ADBHelper */,
+				B9145F752E73E17000ADEE2A /* SCRCPYHelper */,
 				B9673B582E35A2A1006D284A /* Products */,
 				B9145F4A2E73C87C00ADEE2A /* AirSync.entitlements */,
 			);
@@ -109,6 +214,8 @@
 			isa = PBXGroup;
 			children = (
 				B9673B572E35A2A1006D284A /* AirSync.app */,
+				B9145F5F2E73E15C00ADEE2A /* ADBHelper.xpc */,
+				B9145F742E73E17000ADEE2A /* SCRCPYHelper.xpc */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -116,19 +223,66 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		B9673B562E35A2A1006D284A /* AirSync */ = {
+		B9145F5E2E73E15C00ADEE2A /* ADBHelper */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = B9673B622E35A2A3006D284A /* Build configuration list for PBXNativeTarget "AirSync" */;
+			buildConfigurationList = B9145F6C2E73E15D00ADEE2A /* Build configuration list for PBXNativeTarget "ADBHelper" */;
 			buildPhases = (
-				B9145F562E73D9A300ADEE2A /* ShellScript */,
-				B9673B532E35A2A1006D284A /* Sources */,
-				B9673B542E35A2A1006D284A /* Frameworks */,
-				B9673B552E35A2A1006D284A /* Resources */,
-				B9145D702E73C6B800ADEE2A /* CopyFiles */,
+				B9145F5B2E73E15C00ADEE2A /* Sources */,
+				B9145F5C2E73E15C00ADEE2A /* Frameworks */,
+				B9145F5D2E73E15C00ADEE2A /* Resources */,
+				B9145F862E73E30D00ADEE2A /* CopyFiles */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B9145F602E73E15C00ADEE2A /* ADBHelper */,
+			);
+			name = ADBHelper;
+			packageProductDependencies = (
+			);
+			productName = ADBHelper;
+			productReference = B9145F5F2E73E15C00ADEE2A /* ADBHelper.xpc */;
+			productType = "com.apple.product-type.xpc-service";
+		};
+		B9145F732E73E17000ADEE2A /* SCRCPYHelper */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B9145F802E73E17000ADEE2A /* Build configuration list for PBXNativeTarget "SCRCPYHelper" */;
+			buildPhases = (
+				B9145F702E73E17000ADEE2A /* Sources */,
+				B9145F712E73E17000ADEE2A /* Frameworks */,
+				B9145F722E73E17000ADEE2A /* Resources */,
+				B9145F892E73E32D00ADEE2A /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B9145F752E73E17000ADEE2A /* SCRCPYHelper */,
+			);
+			name = SCRCPYHelper;
+			packageProductDependencies = (
+			);
+			productName = SCRCPYHelper;
+			productReference = B9145F742E73E17000ADEE2A /* SCRCPYHelper.xpc */;
+			productType = "com.apple.product-type.xpc-service";
+		};
+		B9673B562E35A2A1006D284A /* AirSync */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B9673B622E35A2A3006D284A /* Build configuration list for PBXNativeTarget "AirSync" */;
+			buildPhases = (
+				B9673B532E35A2A1006D284A /* Sources */,
+				B9673B542E35A2A1006D284A /* Frameworks */,
+				B9673B552E35A2A1006D284A /* Resources */,
+				B9145F6A2E73E15C00ADEE2A /* Embed XPC Services */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B9145F692E73E15C00ADEE2A /* PBXTargetDependency */,
+				B9145F7E2E73E17000ADEE2A /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				B9145F592E73DC0700ADEE2A /* Scripts */,
@@ -153,6 +307,12 @@
 				LastSwiftUpdateCheck = 2600;
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
+					B9145F5E2E73E15C00ADEE2A = {
+						CreatedOnToolsVersion = 26.0;
+					};
+					B9145F732E73E17000ADEE2A = {
+						CreatedOnToolsVersion = 26.0;
+					};
 					B9673B562E35A2A1006D284A = {
 						CreatedOnToolsVersion = 26.0;
 					};
@@ -177,11 +337,27 @@
 			projectRoot = "";
 			targets = (
 				B9673B562E35A2A1006D284A /* AirSync */,
+				B9145F5E2E73E15C00ADEE2A /* ADBHelper */,
+				B9145F732E73E17000ADEE2A /* SCRCPYHelper */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		B9145F5D2E73E15C00ADEE2A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B9145F722E73E17000ADEE2A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B9673B552E35A2A1006D284A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -192,30 +368,21 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
-/* Begin PBXShellScriptBuildPhase section */
-		B9145F562E73D9A300ADEE2A /* ShellScript */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
+/* Begin PBXSourcesBuildPhase section */
+		B9145F5B2E73E15C00ADEE2A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"$(SRCROOT)/Scripts/sign-tools-at-source.sh",
-				"$(SRCROOT)/AirSync.entitlements",
-			);
-			outputFileListPaths = (
-			);
-			outputPaths = (
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B9145F702E73E17000ADEE2A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\nif [ \"$CONFIGURATION\" = \"Release\" ] || [ \"$CONFIGURATION\" = \"AppStore\" ]; then\n  \"${PROJECT_DIR}/Scripts/sign-tools-at-source.sh\"\nelse\n  echo \"Skipping binary signing for $CONFIGURATION build\"\nfi\n";
 		};
-/* End PBXShellScriptBuildPhase section */
-
-/* Begin PBXSourcesBuildPhase section */
 		B9673B532E35A2A1006D284A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -225,7 +392,168 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		B9145F692E73E15C00ADEE2A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B9145F5E2E73E15C00ADEE2A /* ADBHelper */;
+			targetProxy = B9145F682E73E15C00ADEE2A /* PBXContainerItemProxy */;
+		};
+		B9145F7E2E73E17000ADEE2A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B9145F732E73E17000ADEE2A /* SCRCPYHelper */;
+			targetProxy = B9145F7D2E73E17000ADEE2A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		B9145F6D2E73E15D00ADEE2A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = AirSync.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = WCB4HTANA6;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = NO;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ADBHelper/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ADBHelper;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = sameerasw.ADBHelper;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B9145F6E2E73E15D00ADEE2A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = AirSync.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = WCB4HTANA6;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = NO;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ADBHelper/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ADBHelper;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = sameerasw.ADBHelper;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		B9145F812E73E17000ADEE2A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = AirSync.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = WCB4HTANA6;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = NO;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SCRCPYHelper/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = SCRCPYHelper;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = sameerasw.SCRCPYHelper;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B9145F822E73E17000ADEE2A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = AirSync.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = WCB4HTANA6;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = NO;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SCRCPYHelper/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = SCRCPYHelper;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = sameerasw.SCRCPYHelper;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 		B9673B602E35A2A3006D284A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -467,6 +795,24 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		B9145F6C2E73E15D00ADEE2A /* Build configuration list for PBXNativeTarget "ADBHelper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B9145F6D2E73E15D00ADEE2A /* Debug */,
+				B9145F6E2E73E15D00ADEE2A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B9145F802E73E17000ADEE2A /* Build configuration list for PBXNativeTarget "SCRCPYHelper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B9145F812E73E17000ADEE2A /* Debug */,
+				B9145F822E73E17000ADEE2A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		B9673B522E35A2A1006D284A /* Build configuration list for PBXProject "AirSync" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

@@ -21,8 +21,32 @@ struct ADBConnector {
         "/usr/local/bin/scrcpy"
     ]
 
+    // Prefer binaries embedded in sandbox-friendly XPCServices bundles
+    private static func xpcExecutablePath(for name: String) -> String? {
+        // Map tool names to their XPC service bundle and executable names
+        let mapping: (service: String, binary: String)? = {
+            switch name {
+            case "adb": return ("ADBHelper", "adb")
+            case "scrcpy": return ("SCRCPYHelper", "scrcpy")
+            default: return nil
+            }
+        }()
+
+        guard let m = mapping else { return nil }
+
+        // e.g. .../AirSync.app/Contents/XPCServices/ADBHelper.xpc/Contents/MacOS/adb
+        let path = Bundle.main.bundlePath + "/Contents/XPCServices/\(m.service).xpc/Contents/MacOS/\(m.binary)"
+        return FileManager.default.isExecutableFile(atPath: path) ? path : nil
+    }
+
     // Try to locate a binary
     static func findExecutable(named name: String, fallbackPaths: [String]) -> String? {
+        // Step 0: Prefer the embedded XPC service binary (App Store sandbox friendly)
+        if let embedded = xpcExecutablePath(for: name) {
+            logBinaryDetection("\(name) found in embedded XPC service — using \(embedded).")
+            return embedded
+        }
+
         // Step 1: Try direct execution from PATH
         if isExecutableAvailable(name) {
             logBinaryDetection("\(name) found in system PATH — using direct command.")
@@ -225,7 +249,7 @@ Raw output:
     }
 
     static func disconnectADB() {
-        guard let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) else {
+    guard let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) else {
             AppState.shared.adbConnectionResult = "ADB not found — cannot disconnect."
             AppState.shared.adbConnected = false
             return
@@ -267,7 +291,7 @@ Raw output:
         desktop: Bool? = false,
         package: String? = nil
     ) {
-        guard let scrcpyPath = findExecutable(named: "scrcpy", fallbackPaths: possibleScrcpyPaths) else {
+    guard let scrcpyPath = findExecutable(named: "scrcpy", fallbackPaths: possibleScrcpyPaths) else {
             DispatchQueue.main.async {
                 AppState.shared.adbConnectionResult = "scrcpy not found. Please install via Homebrew: brew install scrcpy"
 
