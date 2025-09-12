@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleExecutable</key>
-	<string>${PROJECT_DIR}/ADBHelper/scrcpy</string>
+	<string>${PROJECT_DIR}/ADBHelper/ADBHelper</string>
 	<key>CFBundlePackageType</key>
 	<string>XPC!</string>
 </dict>

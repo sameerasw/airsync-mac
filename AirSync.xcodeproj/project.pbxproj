@@ -76,16 +76,14 @@
 		B9145F6F2E73E15D00ADEE2A /* Exceptions for "ADBHelper" folder in "ADBHelper" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				adb,
-				Info.plist,
+				ADBHelper,
 			);
 			target = B9145F5E2E73E15C00ADEE2A /* ADBHelper */;
 		};
 		B9145F832E73E17000ADEE2A /* Exceptions for "SCRCPYHelper" folder in "SCRCPYHelper" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Info.plist,
-				scrcpy,
+				SCRCPYHelper,
 			);
 			target = B9145F732E73E17000ADEE2A /* SCRCPYHelper */;
 		};
@@ -102,21 +100,21 @@
 		B9145F882E73E32400ADEE2A /* Exceptions for "ADBHelper" folder in "Copy Files" phase from "ADBHelper" target */ = {
 			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
 			attributesByRelativePath = {
-				adb = (CodeSignOnCopy, );
+				ADBHelper = (CodeSignOnCopy, );
 			};
 			buildPhase = B9145F862E73E30D00ADEE2A /* CopyFiles */;
 			membershipExceptions = (
-				adb,
+				ADBHelper,
 			);
 		};
 		B9145F8B2E73E33400ADEE2A /* Exceptions for "SCRCPYHelper" folder in "Copy Files" phase from "SCRCPYHelper" target */ = {
 			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
 			attributesByRelativePath = {
-				scrcpy = (CodeSignOnCopy, );
+				SCRCPYHelper = (CodeSignOnCopy, );
 			};
 			buildPhase = B9145F892E73E32D00ADEE2A /* CopyFiles */;
 			membershipExceptions = (
-				scrcpy,
+				SCRCPYHelper,
 			);
 		};
 /* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
@@ -387,7 +385,8 @@
 		B9145F6D2E73E15D00ADEE2A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = AirSync.entitlements;
+				CODE_SIGN_ENTITLEMENTS = ADBHelper/AirSyncADB.entitlements;
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -405,10 +404,10 @@
 				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = ADBHelper/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ADBHelper;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				MARKETING_VERSION = 1.0;
+				OTHER_CODE_SIGN_FLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = sameerasw.ADBHelper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -424,7 +423,8 @@
 		B9145F6E2E73E15D00ADEE2A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = AirSync.entitlements;
+				CODE_SIGN_ENTITLEMENTS = ADBHelper/AirSyncADB.entitlements;
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -442,10 +442,10 @@
 				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = ADBHelper/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ADBHelper;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				MARKETING_VERSION = 1.0;
+				OTHER_CODE_SIGN_FLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = sameerasw.ADBHelper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -461,7 +461,8 @@
 		B9145F812E73E17000ADEE2A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = AirSync.entitlements;
+				CODE_SIGN_ENTITLEMENTS = SCRCPYHelper/AirSyncSCRCPY.entitlements;
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -479,10 +480,10 @@
 				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = SCRCPYHelper/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = SCRCPYHelper;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				MARKETING_VERSION = 1.0;
+				OTHER_CODE_SIGN_FLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = sameerasw.SCRCPYHelper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -498,7 +499,8 @@
 		B9145F822E73E17000ADEE2A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = AirSync.entitlements;
+				CODE_SIGN_ENTITLEMENTS = SCRCPYHelper/AirSyncSCRCPY.entitlements;
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -516,10 +518,10 @@
 				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = SCRCPYHelper/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = SCRCPYHelper;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				MARKETING_VERSION = 1.0;
+				OTHER_CODE_SIGN_FLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = sameerasw.SCRCPYHelper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -687,7 +689,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "airsync-mac/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = AirSync;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = NO;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -744,7 +746,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "airsync-mac/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = AirSync;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = NO;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
