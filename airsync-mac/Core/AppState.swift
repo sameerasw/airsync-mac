@@ -16,13 +16,13 @@ class AppState: ObservableObject {
     private var clipboardCancellable: AnyCancellable?
     private var lastClipboardValue: String? = nil
     private var shouldSkipSave = false
-    private let licenseDetailsKey = "licenseDetails"
 
     @Published var isOS26: Bool = true
 
 
     init() {
-        self.isPlus = UserDefaults.standard.bool(forKey: "isPlus")
+        // In-memory default; not persisted
+        self.isPlus = false
 
 
         // Load from UserDefaults
@@ -33,7 +33,7 @@ class AppState: ObservableObject {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
 
         self.adbPort = adbPortValue == 0 ? 5555 : UInt16(adbPortValue)
-        self.mirroringPlus = UserDefaults.standard.bool(forKey: "mirroringPlus")
+    self.mirroringPlus = UserDefaults.standard.bool(forKey: "mirroringPlus")
         self.adbEnabled = UserDefaults.standard.bool(forKey: "adbEnabled")
         self.showMenubarText = UserDefaults.standard.bool(forKey: "showMenubarText")
 
@@ -53,9 +53,7 @@ class AppState: ObservableObject {
             startClipboardMonitoring()
         }
 
-        Task {
-            await checkLicenseIfNeeded()
-        }
+    // License checks removed for App Store build
 
         self.scrcpyBitrate = UserDefaults.standard.integer(forKey: "scrcpyBitrate")
         if self.scrcpyBitrate == 0 { self.scrcpyBitrate = 4 }
@@ -74,7 +72,7 @@ class AppState: ObservableObject {
             port: port,
             version:appVersion
         )
-        self.licenseDetails = loadLicenseDetailsFromUserDefaults()
+    // License details removed for App Store build
 
         loadAppsFromDisk()
 
@@ -134,11 +132,7 @@ class AppState: ObservableObject {
         }
     }
 
-    @Published var licenseDetails: LicenseDetails? {
-        didSet {
-            saveLicenseDetailsToUserDefaults()
-        }
-    }
+    // LicenseDetails removed for App Store build
 
     @Published var adbPort: UInt16 {
         didSet {
@@ -197,21 +191,11 @@ class AppState: ObservableObject {
     // File transfer tracking state
     @Published var transfers: [String: FileTransferSession] = [:]
 
-    // Toggle licensing
-    let licenseCheck: Bool = true
-
-    @Published var isPlus: Bool {
-        didSet {
-            if !shouldSkipSave {
-                UserDefaults.standard.set(isPlus, forKey: "isPlus")
-            }
-        }
-    }
+    // In-memory paid-features flag (no persistence)
+    @Published var isPlus: Bool
 
     func setPlusTemporarily(_ value: Bool) {
-        shouldSkipSave = true
         isPlus = value
-        shouldSkipSave = false
     }
 
 
@@ -324,7 +308,7 @@ class AppState: ObservableObject {
         // Build action list (Android actions + optional View action if mirroring conditions)
         let actionDefinitions: [NotificationAction] = actions
         var includeView = false
-        if let pkg = package, pkg != "com.sameerasw.airsync", adbConnected, mirroringPlus {
+    if let pkg = package, pkg != "com.sameerasw.airsync", adbConnected, mirroringPlus {
             includeView = true
         }
 
@@ -503,32 +487,7 @@ class AppState: ObservableObject {
         return deviceWallpapers[key]
     }
 
-    private func saveLicenseDetailsToUserDefaults() {
-        guard let details = licenseDetails else {
-            UserDefaults.standard.removeObject(forKey: licenseDetailsKey)
-            return
-        }
-
-        do {
-            let data = try JSONEncoder().encode(details)
-            UserDefaults.standard.set(data, forKey: licenseDetailsKey)
-        } catch {
-            print("Failed to encode license details: \(error)")
-        }
-    }
-
-    private func loadLicenseDetailsFromUserDefaults() -> LicenseDetails? {
-        guard let data = UserDefaults.standard.data(forKey: licenseDetailsKey) else {
-            return nil
-        }
-
-        do {
-            return try JSONDecoder().decode(LicenseDetails.self, from: data)
-        } catch {
-            print("Failed to decode license details: \(error)")
-            return nil
-        }
-    }
+    // License persistence removed
 
     func saveAppsToDisk() {
         let url = appIconsDirectory().appendingPathComponent("apps.json")
@@ -558,63 +517,7 @@ class AppState: ObservableObject {
             print("Error loading apps: \(error)")
         }
     }
-    func checkLicenseIfNeeded() async {
-        let now = Date()
-        let calendar = Calendar.current
-
-        // Compare just the year/month/day, ignoring time
-        if let lastCheck = UserDefaults.standard.lastLicenseCheckDate,
-           calendar.isDate(lastCheck, inSameDayAs: now) {
-            print("License was already checked today")
-            return
-        }
-
-        await checkLicense()
-        UserDefaults.standard.lastLicenseCheckDate = now
-    }
-
-    @MainActor
-    func checkLicense() async {
-        guard let key = self.licenseDetails?.key, !key.isEmpty else {
-            self.isPlus = false
-            incrementLicenseFailCount()
-            return
-        }
-
-        let result = try? await checkLicenseKeyValidity(
-            key: key,
-            save: false,
-            isNewRegistration: false
-        )
-
-        if result == true {
-            // License valid — reset fail count
-            UserDefaults.standard.consecutiveLicenseFailCount = 0
-            self.isPlus = true
-        } else {
-            // License invalid
-            incrementLicenseFailCount()
-            self.isPlus = false
-        }
-
-        print("License checked, validity:", isPlus)
-    }
-
-    private func incrementLicenseFailCount() {
-        let failCount = UserDefaults.standard.consecutiveLicenseFailCount + 1
-        UserDefaults.standard.consecutiveLicenseFailCount = failCount
-
-        if failCount >= 3 {
-            clearLicenseDetails()
-            print("License check failed \(failCount) times — license removed")
-        }
-    }
-
-    private func clearLicenseDetails() {
-        self.licenseDetails = nil
-        UserDefaults.standard.removeObject(forKey: "licenseDetailsKey")
-        UserDefaults.standard.consecutiveLicenseFailCount = 0
-    }
+    // License checks removed for App Store build
 
     func updateDockIconVisibility() {
         DispatchQueue.main.async {

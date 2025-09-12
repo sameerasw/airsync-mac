@@ -7,28 +7,6 @@
 
 import Foundation
 
-/// Represents which paid plan the user selected before activating a license.
-/// Stored in UserDefaults via the `licensePlanType` key so the verification
-/// Choose the correct Gumroad product id.
-enum LicensePlanType: String, CaseIterable, Codable, Identifiable {
-    case membership
-    case oneTime
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .membership: return "Membership"
-        case .oneTime: return "One-Time"
-        }
-    }
-}
-
-extension UserDefaults {
-    private static let licensePlanTypeKey = "licensePlanType"
-
-    var licensePlanType: LicensePlanType {
-        get { LicensePlanType(rawValue: string(forKey: Self.licensePlanTypeKey) ?? "") ?? .membership }
-        set { set(newValue.rawValue, forKey: Self.licensePlanTypeKey) }
-    }
-}
+// Deprecated: Licensing removed for App Store build. Placeholder to avoid references.
+enum LicensePlanType: String, CaseIterable, Codable, Identifiable { case membership, oneTime; var id: String { rawValue }; var displayName: String { rawValue } }
+extension UserDefaults { var licensePlanType: LicensePlanType { get { .membership } set { } } }

@@ -32,6 +32,26 @@ struct SettingsView: View {
                         .background(.background.opacity(0.3))
                         .cornerRadius(12.0)
 
+                    // Temporary paid features toggle (no persistence)
+                    VStack {
+                        HStack {
+                            Label("Paid features (temporary)", systemImage: "lock.open")
+                            Spacer()
+                            Toggle("", isOn: $appState.isPlus)
+                                .toggleStyle(.switch)
+                        }
+                        .padding(.vertical, 4)
+                        HStack {
+                            Label("Status", systemImage: "plus.app")
+                            Spacer()
+                            Text(appState.isPlus ? "Active" : "Not active")
+                                .foregroundColor(appState.isPlus ? .green : .secondary)
+                        }
+                    }
+                    .padding()
+                    .background(.background.opacity(0.3))
+                    .cornerRadius(12.0)
+
                     // Info Section
                     VStack {
                         HStack {
@@ -182,10 +202,7 @@ struct SettingsView: View {
                     .background(.background.opacity(0.3))
                     .cornerRadius(12.0)
 
-                    SettingsPlusView()
-                        .padding()
-                        .background(.background.opacity(0.3))
-                        .cornerRadius(12.0)
+                    // Licensing UI removed for App Store build
                 }
                 .padding()
             }
