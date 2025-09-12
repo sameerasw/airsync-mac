@@ -77,12 +77,14 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				ADBHelper,
+				Info.plist,
 			);
 			target = B9145F5E2E73E15C00ADEE2A /* ADBHelper */;
 		};
 		B9145F832E73E17000ADEE2A /* Exceptions for "SCRCPYHelper" folder in "SCRCPYHelper" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Info.plist,
 				SCRCPYHelper,
 			);
 			target = B9145F732E73E17000ADEE2A /* SCRCPYHelper */;

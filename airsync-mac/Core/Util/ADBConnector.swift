@@ -10,24 +10,14 @@ import AppKit
 
 struct ADBConnector {
 
-    // Potential fallback paths
-    static let possibleADBPaths = [
-        "/opt/homebrew/bin/adb",  // Apple Silicon Homebrew
-        "/usr/local/bin/adb"      // Intel Homebrew
-    ]
-    static let possibleScrcpyPaths = [
-        "/opt/scrcpy/scrcpy",
-        "/opt/homebrew/bin/scrcpy",
-        "/usr/local/bin/scrcpy"
-    ]
 
     // Prefer binaries embedded in sandbox-friendly XPCServices bundles
     private static func xpcExecutablePath(for name: String) -> String? {
         // Map tool names to their XPC service bundle and executable names
         let mapping: (service: String, binary: String)? = {
             switch name {
-            case "adb": return ("ADBHelper", "adb")
-            case "scrcpy": return ("SCRCPYHelper", "scrcpy")
+            case "adb": return ("ADBHelper", "ADBHelper")
+            case "scrcpy": return ("SCRCPYHelper", "SCRCPYHelper")
             default: return nil
             }
         }()
@@ -40,29 +30,21 @@ struct ADBConnector {
     }
 
     // Try to locate a binary
-    static func findExecutable(named name: String, fallbackPaths: [String]) -> String? {
+    static func findExecutable(named name: String) -> String? {
         // Step 0: Prefer the embedded XPC service binary (App Store sandbox friendly)
         if let embedded = xpcExecutablePath(for: name) {
             logBinaryDetection("\(name) found in embedded XPC service — using \(embedded).")
             return embedded
         }
 
-        // Step 1: Try direct execution from PATH
+        // Optional: Try direct execution from PATH (developer builds)
         if isExecutableAvailable(name) {
             logBinaryDetection("\(name) found in system PATH — using direct command.")
             let path = getExecutablePath(name)
             return path
         }
 
-        // Step 2: Try fallback paths
-        for path in fallbackPaths {
-            if FileManager.default.isExecutableFile(atPath: path) {
-                logBinaryDetection("\(name) found at \(path) — using fallback path.")
-                return path
-            }
-        }
-
-        logBinaryDetection("\(name) not found in PATH or fallback locations.")
+        logBinaryDetection("\(name) not found in embedded helper or PATH.")
         return nil
     }
 
@@ -101,8 +83,8 @@ struct ADBConnector {
     static func connectToADB(ip: String) {
         DispatchQueue.main.async { AppState.shared.adbConnecting = true }
         // Find adb
-        guard let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) else {
-            AppState.shared.adbConnectionResult = "ADB not found. Please install via Homebrew: brew install android-platform-tools"
+        guard let adbPath = findExecutable(named: "adb") else {
+            AppState.shared.adbConnectionResult = "Embedded ADB helper not found. Please reinstall the app from the App Store and try again."
             AppState.shared.adbConnected = false
             DispatchQueue.main.async { AppState.shared.adbConnecting = false }
             return
@@ -249,7 +231,7 @@ Raw output:
     }
 
     static func disconnectADB() {
-    guard let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) else {
+    guard let adbPath = findExecutable(named: "adb") else {
             AppState.shared.adbConnectionResult = "ADB not found — cannot disconnect."
             AppState.shared.adbConnected = false
             return
@@ -291,13 +273,13 @@ Raw output:
         desktop: Bool? = false,
         package: String? = nil
     ) {
-    guard let scrcpyPath = findExecutable(named: "scrcpy", fallbackPaths: possibleScrcpyPaths) else {
+    guard let scrcpyPath = findExecutable(named: "scrcpy") else {
             DispatchQueue.main.async {
-                AppState.shared.adbConnectionResult = "scrcpy not found. Please install via Homebrew: brew install scrcpy"
+                AppState.shared.adbConnectionResult = "Embedded SCRCPY helper not found. Please reinstall the app from the App Store and try again."
 
                 presentScrcpyAlert(
-                    title: "scrcpy Not Found",
-                    informative: "AirSync couldn't find the scrcpy binary.\n\nFix suggestions:\n• Install via Homebrew: brew install scrcpy\n.\n\nAfter installing, try mirroring again. Might need the app to be restarted.")
+                    title: "Helper Not Found",
+                    informative: "AirSync couldn't find its embedded mirroring helper.\n\nFix suggestions:\n• Reinstall the app from the App Store\n• If you’re running a dev build, Clean Build Folder and rebuild\n\nAfter reinstalling, try mirroring again.")
             }
             return
         }
@@ -376,7 +358,7 @@ Raw output:
 
         //  Inject adb into scrcpy's environment, and point to embedded server if available
         var env = ProcessInfo.processInfo.environment
-        if let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) {
+    if let adbPath = findExecutable(named: "adb") {
             let adbDir = URL(fileURLWithPath: adbPath).deletingLastPathComponent().path
             env["PATH"] = "\(adbDir):" + (env["PATH"] ?? "")
             env["ADB"] = adbPath
@@ -407,13 +389,13 @@ Raw output:
                 let hasErrorKeyword = errorKeywords.contains { lowered.contains($0) }
                 let nonZero = process.terminationStatus != 0
 
-                if nonZero || hasErrorKeyword {
+        if nonZero || hasErrorKeyword {
                     var hint = "General troubleshooting:\n• Ensure only one mirroring/ADB tool is using the device\n• adb kill-server then retry\n• Re‑enable Wireless debugging\n• If using Desktop/App mode, ensure Android 15+ / vendor support\n• Try a lower resolution or bitrate.\n\nSee ADB Console in Settings for full output."
 
                     if lowered.contains("protocol fault") || lowered.contains("connection reset") {
                         hint = "Another active ADB/scrcpy session is likely holding the device.\n• Close any existing scrcpy or Android Studio emulator sessions\n• Run: adb kill-server\n• Retry mirroring."
                     } else if lowered.contains("permission denied") {
-                        hint = "Permission denied starting scrcpy.\n• Verify scrcpy binary has execute permission (chmod +x)\n• Reinstall via Homebrew (brew reinstall scrcpy)."
+            hint = "Permission denied starting the helper.\n• Ensure the app is properly installed\n• Reinstall the app if the helper appears corrupted."
                     } else if lowered.contains("could not"), lowered.contains("configure") || lowered.contains("video") {
                         hint = "Video initialization failed.\n• Lower bitrate or resolution in Settings\n• Toggle Desktop/App mode off\n• Reconnect ADB then retry."
                     }
@@ -436,7 +418,7 @@ Raw output:
                 AppState.shared.adbConnectionResult = "┐('～`；)┌ Failed to start scrcpy: \(error.localizedDescription)"
                 presentScrcpyAlert(
                     title: "Failed to Start Mirroring",
-                    informative: "scrcpy couldn't launch.\nReason: \(error.localizedDescription)\n\nFix suggestions:\n• Ensure the device is still connected via ADB (reconnect if needed)\n• Close other scrcpy/ADB sessions\n• Reinstall scrcpy if the binary is corrupt\n• Lower bitrate/resolution then retry."
+                    informative: "The mirroring helper couldn't launch.\nReason: \(error.localizedDescription)\n\nFix suggestions:\n• Ensure the device is still connected via ADB (reconnect if needed)\n• Close other ADB/scrcpy sessions\n• Reinstall the app if the helper is missing or corrupted\n• Lower bitrate/resolution then retry."
                 )
             }
         }
@@ -450,7 +432,7 @@ Raw output:
     static func prepareScrcpyRuntimeResourcesAtLaunch() {
         // Construct expected embedded scrcpy binary path
         let bundlePath = Bundle.main.bundlePath
-        let scrcpyBinaryPath = bundlePath + "/Contents/XPCServices/SCRCPYHelper.xpc/Contents/MacOS/scrcpy"
+    let scrcpyBinaryPath = bundlePath + "/Contents/XPCServices/SCRCPYHelper.xpc/Contents/MacOS/SCRCPYHelper"
 
         // Ensure the embedded binary exists; if not, nothing to do
         guard FileManager.default.isExecutableFile(atPath: scrcpyBinaryPath) else {

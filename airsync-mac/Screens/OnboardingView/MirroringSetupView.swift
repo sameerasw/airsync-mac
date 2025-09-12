@@ -46,28 +46,12 @@ struct MirroringSetupView: View {
                     }
 
                     if !adbAvailable || !scrcpyAvailable {
-                        Text("Install with Homebrew running the following commands terminal:")
+                        Text("AirSync didn't find its embedded mirroring helpers. Please reinstall the app from the App Store or rebuild the project, then try again.")
                             .font(.body)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
                             .frame(maxWidth: 500)
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            if !adbAvailable {
-                                commandRow("brew install android-platform-tools")
-                            }
-                            if !scrcpyAvailable {
-                                commandRow("brew install scrcpy")
-                            }
-                        }
-                        .padding()
-                        .background(Color.secondary.opacity(0.1))
-                        .cornerRadius(8)
-
-                        Text("After installing, click 'Check Again' to verify.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
 
                         GlassButtonView(
                             label: "Check Again",
@@ -114,8 +98,8 @@ struct MirroringSetupView: View {
 
     private func checkDependencies() {
         DispatchQueue.global(qos: .background).async {
-            let adbFound = ADBConnector.findExecutable(named: "adb", fallbackPaths: ADBConnector.possibleADBPaths) != nil
-            let scrcpyFound = ADBConnector.findExecutable(named: "scrcpy", fallbackPaths: ADBConnector.possibleScrcpyPaths) != nil
+            let adbFound = ADBConnector.findExecutable(named: "adb") != nil
+            let scrcpyFound = ADBConnector.findExecutable(named: "scrcpy") != nil
 
             // let scrcpyFound = false
 
@@ -127,28 +111,7 @@ struct MirroringSetupView: View {
         }
     }
 
-    @ViewBuilder
-    private func commandRow(_ command: String) -> some View {
-        HStack {
-            Text(command)
-                .font(.system(.body, design: .monospaced))
-                .foregroundColor(.primary)
-            Spacer()
-            Button(action: {
-                copyToClipboard(command)
-            }) {
-                Image(systemName: "doc.on.doc")
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private func copyToClipboard(_ text: String) {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-    }
+    // No command rows needed anymore (embedded helpers)
 }
 
 #Preview {
