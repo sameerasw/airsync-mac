@@ -374,14 +374,20 @@ Raw output:
     task.executableURL = URL(fileURLWithPath: scrcpyPath)
     task.arguments = args
 
-        //  Inject adb into scrcpy's environment
+        //  Inject adb into scrcpy's environment, and point to embedded server if available
+        var env = ProcessInfo.processInfo.environment
         if let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) {
-            var env = ProcessInfo.processInfo.environment
             let adbDir = URL(fileURLWithPath: adbPath).deletingLastPathComponent().path
             env["PATH"] = "\(adbDir):" + (env["PATH"] ?? "")
             env["ADB"] = adbPath
-            task.environment = env
         }
+        // Fallback: in case copying scrcpy-server beside the binary failed due to a read-only bundle,
+        // inform scrcpy where the server is located inside the embedded XPC Resources.
+        let serverPathInResources = Bundle.main.bundlePath + "/Contents/XPCServices/SCRCPYHelper.xpc/Contents/Resources/scrcpy-server"
+        if FileManager.default.fileExists(atPath: serverPathInResources) {
+            env["SCRCPY_SERVER_PATH"] = serverPathInResources
+        }
+        task.environment = env
 
         UserDefaults.standard.lastADBCommand = "scrcpy \(args.joined(separator: " "))"
 
@@ -432,6 +438,52 @@ Raw output:
                     title: "Failed to Start Mirroring",
                     informative: "scrcpy couldn't launch.\nReason: \(error.localizedDescription)\n\nFix suggestions:\n• Ensure the device is still connected via ADB (reconnect if needed)\n• Close other scrcpy/ADB sessions\n• Reinstall scrcpy if the binary is corrupt\n• Lower bitrate/resolution then retry."
                 )
+            }
+        }
+    }
+
+    // MARK: - One-time setup at app launch
+    /// Copies auxiliary files required by the embedded scrcpy XPC service
+    /// from its Resources into its MacOS directory so they sit next to the
+    /// scrcpy executable. This happens at runtime to avoid archiving issues
+    /// from placing non-binary files under MacOS at build time.
+    static func prepareScrcpyRuntimeResourcesAtLaunch() {
+        // Construct expected embedded scrcpy binary path
+        let bundlePath = Bundle.main.bundlePath
+        let scrcpyBinaryPath = bundlePath + "/Contents/XPCServices/SCRCPYHelper.xpc/Contents/MacOS/scrcpy"
+
+        // Ensure the embedded binary exists; if not, nothing to do
+        guard FileManager.default.isExecutableFile(atPath: scrcpyBinaryPath) else {
+            return
+        }
+
+        let scrcpyBinaryURL = URL(fileURLWithPath: scrcpyBinaryPath)
+        let macOSDir = scrcpyBinaryURL.deletingLastPathComponent()
+        // .../Contents/MacOS -> .../Contents
+        let contentsDir = macOSDir.deletingLastPathComponent()
+        let resourcesDir = contentsDir.appendingPathComponent("Resources", isDirectory: true)
+
+        let filesToPlaceBesideBinary = [
+            "scrcpy-server",
+            "icon.png"
+        ]
+
+        for name in filesToPlaceBesideBinary {
+            let src = resourcesDir.appendingPathComponent(name, isDirectory: false)
+            let dst = macOSDir.appendingPathComponent(name, isDirectory: false)
+
+            // Only attempt if source exists and destination missing
+            var isDir: ObjCBool = false
+            let srcExists = FileManager.default.fileExists(atPath: src.path, isDirectory: &isDir) && !isDir.boolValue
+            let dstExists = FileManager.default.fileExists(atPath: dst.path, isDirectory: &isDir) && !isDir.boolValue
+            guard srcExists, !dstExists else { continue }
+
+            do {
+                try FileManager.default.copyItem(at: src, to: dst)
+                logBinaryDetection("Placed \(name) next to scrcpy binary at runtime: \(dst.path)")
+            } catch {
+                // Silently ignore to avoid breaking startup on read-only bundles (e.g., App Store installs)
+                print("[Binary Detection] Failed to place \(name) beside scrcpy: \(error.localizedDescription)")
             }
         }
     }

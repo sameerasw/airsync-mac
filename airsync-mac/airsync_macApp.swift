@@ -46,6 +46,11 @@ struct airsync_macApp: App {
         loadCachedIcons()
         loadCachedWallpapers()
 
+    // Prepare scrcpy runtime resources beside the embedded binary to ensure
+    // scrcpy-server and icon.png are co-located. Done at runtime to avoid
+    // archiving issues with non-binaries in MacOS directory.
+    ADBConnector.prepareScrcpyRuntimeResourcesAtLaunch()
+
     }
 
     var body: some Scene {
