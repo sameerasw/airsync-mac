@@ -13,6 +13,18 @@
 		B9D742FC2E39CF850053128A /* Swifter in Frameworks */ = {isa = PBXBuildFile; productRef = B9D742FB2E39CF850053128A /* Swifter */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		B9145D702E73C6B800ADEE2A /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 6;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		B9673B572E35A2A1006D284A /* AirSync.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AirSync.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B995A3322E4D2B3F00FA7A41 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
@@ -22,17 +34,35 @@
 		B933ED362E3BEC21007393CB /* Exceptions for "airsync-mac" folder in "AirSync" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Binaries/adb,
+				Binaries/scrcpy,
 				Info.plist,
 			);
 			target = B9673B562E35A2A1006D284A /* AirSync */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		B9145D732E73C6C700ADEE2A /* Exceptions for "airsync-mac" folder in "Copy Files" phase from "AirSync" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			attributesByRelativePath = {
+				Binaries/adb = (CodeSignOnCopy, );
+				Binaries/scrcpy = (CodeSignOnCopy, );
+			};
+			buildPhase = B9145D702E73C6B800ADEE2A /* CopyFiles */;
+			membershipExceptions = (
+				Binaries/adb,
+				Binaries/scrcpy,
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		B9673B592E35A2A1006D284A /* airsync-mac */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				B933ED362E3BEC21007393CB /* Exceptions for "airsync-mac" folder in "AirSync" target */,
+				B9145D732E73C6C700ADEE2A /* Exceptions for "airsync-mac" folder in "Copy Files" phase from "AirSync" target */,
 			);
 			path = "airsync-mac";
 			sourceTree = "<group>";
@@ -80,6 +110,7 @@
 				B9673B532E35A2A1006D284A /* Sources */,
 				B9673B542E35A2A1006D284A /* Frameworks */,
 				B9673B552E35A2A1006D284A /* Resources */,
+				B9145D702E73C6B800ADEE2A /* CopyFiles */,
 			);
 			buildRules = (
 			);
