@@ -73,14 +73,6 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		B9145F5A2E73DC0700ADEE2A /* Exceptions for "Scripts" folder in "AirSync" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				"sign-embedded-tools.sh",
-				"sign-tools-at-source.sh",
-			);
-			target = B9673B562E35A2A1006D284A /* AirSync */;
-		};
 		B9145F6F2E73E15D00ADEE2A /* Exceptions for "ADBHelper" folder in "ADBHelper" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -130,14 +122,6 @@
 /* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		B9145F592E73DC0700ADEE2A /* Scripts */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				B9145F5A2E73DC0700ADEE2A /* Exceptions for "Scripts" folder in "AirSync" target */,
-			);
-			path = Scripts;
-			sourceTree = "<group>";
-		};
 		B9145F602E73E15C00ADEE2A /* ADBHelper */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -196,7 +180,6 @@
 		B9673B4E2E35A2A1006D284A = {
 			isa = PBXGroup;
 			children = (
-				B9145F592E73DC0700ADEE2A /* Scripts */,
 				B995A3322E4D2B3F00FA7A41 /* AppIcon.icon */,
 				B9673B592E35A2A1006D284A /* airsync-mac */,
 				B9145F602E73E15C00ADEE2A /* ADBHelper */,
@@ -281,7 +264,6 @@
 				B9145F7E2E73E17000ADEE2A /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				B9145F592E73DC0700ADEE2A /* Scripts */,
 				B9673B592E35A2A1006D284A /* airsync-mac */,
 			);
 			name = AirSync;
