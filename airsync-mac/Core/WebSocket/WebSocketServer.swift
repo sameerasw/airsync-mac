@@ -18,7 +18,7 @@ import CryptoKit
 enum WebSocketStatus {
     case stopped
     case starting
-    case started(port: UInt16, ip: String?)
+    case started(port: UInt32, ip: String?)
     case failed(error: String)
 }
 
@@ -29,7 +29,7 @@ class WebSocketServer: ObservableObject {
     private var activeSessions: [WebSocketSession] = []
     @Published var symmetricKey: SymmetricKey?
 
-    @Published var localPort: UInt16?
+    @Published var localPort: UInt32?
     @Published var localIPAddress: String?
 
     @Published var connectedDevice: Device?
@@ -70,14 +70,23 @@ class WebSocketServer: ObservableObject {
         }
     }
 
-    func start(port: UInt16 = Defaults.serverPort) {
+    func start(port: UInt32 = Defaults.serverPort) {
         DispatchQueue.main.async {
             AppState.shared.webSocketStatus = .starting
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
             do {
-                try self.server.start(port)
+                guard port > 0 && port <= 65_535 else {
+                    let msg = "[websocket] Invalid port \(port). Must be in 1...65535."
+                    DispatchQueue.main.async {
+                        AppState.shared.webSocketStatus = .failed(error: msg)
+                    }
+                    print(msg)
+                    return
+                }
+
+                try self.server.start(in_port_t(port))
                 let ip = self.getLocalIPAddress(adapterName: AppState.shared.selectedNetworkAdapterName)
 
                 DispatchQueue.main.async {
@@ -304,13 +313,13 @@ class WebSocketServer: ObservableObject {
                 }
 
 				// mark first-time pairing
-				if UserDefaults.standard.hasPairedDeviceOnce == false {
-					UserDefaults.standard.hasPairedDeviceOnce = true
-				}
-				
-				// Send Mac info response to Android
-				sendMacInfoResponse()
-            }
+                if UserDefaults.standard.hasPairedDeviceOnce == false {
+                    UserDefaults.standard.hasPairedDeviceOnce = true
+                }
+                
+                // Send Mac info response to Android
+                sendMacInfoResponse()
+               }
 
 
         case .notification:

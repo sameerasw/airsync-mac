@@ -44,7 +44,7 @@ struct SettingsView: View {
                             currentIPAddress = WebSocketServer.shared.getLocalIPAddress(adapterName: appState.selectedNetworkAdapterName) ?? "N/A"
                             
                             WebSocketServer.shared.stop()
-                            if let port = UInt16(port) {
+                            if let port = UInt32(port) {
                                 WebSocketServer.shared.start(port: port)
                             } else {
                                 WebSocketServer.shared.start()
