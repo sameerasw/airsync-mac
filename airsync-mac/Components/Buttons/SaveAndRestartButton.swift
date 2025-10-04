@@ -15,14 +15,14 @@ struct SaveAndRestartButton: View {
     let port: String
     let version: String
     let onSave: ((Device) -> Void)?
-    let onRestart: ((UInt16) -> Void)?
+    let onRestart: ((UInt32) -> Void)?
 
     @ObservedObject var appState: AppState = .shared
 
     var body: some View {
         HStack {
             Button(title, systemImage: systemImage) {
-                let portNumber = UInt16(port) ?? Defaults.serverPort
+                let portNumber = UInt32(port) ?? Defaults.serverPort
                 let ipAddress = WebSocketServer.shared.getLocalIPAddress(
                     adapterName: appState.selectedNetworkAdapterName
                 ) ?? "N/A"

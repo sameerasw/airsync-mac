@@ -112,15 +112,15 @@ Raw output:
             }
 
             let lines = trimmedMDNSOutput.components(separatedBy: .newlines)
-            var tlsPort: UInt16?
-            var normalPort: UInt16?
+            var tlsPort: UInt32?
+            var normalPort: UInt32?
 
             for line in lines {
                 guard let range = line.range(of: "\(ip):") else { continue }
 
                 let remaining = line[range.upperBound...]
                 if let portStr = remaining.split(separator: " ").first,
-                   let port = UInt16(portStr) {
+                   let port = UInt32(portStr) {
                     if line.contains("_adb-tls-connect._tcp"), tlsPort == nil {
                         tlsPort = port
                     } else if line.contains("_adb._tcp"), normalPort == nil {
@@ -262,7 +262,7 @@ Raw output:
 
     static func startScrcpy(
         ip: String,
-        port: UInt16,
+        port: UInt32,
         deviceName: String,
         desktop: Bool? = false,
         package: String? = nil
