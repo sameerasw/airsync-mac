@@ -42,8 +42,16 @@ struct airsync_macApp: App {
             }
         }
 
-        let devicePort = UInt16(AppState.shared.myDevice?.port ?? Int(Defaults.serverPort))
-        WebSocketServer.shared.start(port: devicePort)
+        let rawPortInt = AppState.shared.myDevice?.port ?? Int(Defaults.serverPort)
+        let chosenPort: UInt32
+        if rawPortInt <= 0 || rawPortInt > 65_535 {
+            print("[main-app] Invalid configured port \(rawPortInt). Falling back to 8080.")
+            chosenPort = UInt32(8080)
+        }
+        else {
+            chosenPort = UInt32(rawPortInt)
+        }
+        WebSocketServer.shared.start(port: UInt32(chosenPort))
 
         Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in
             AppState.shared.syncWithSystemNotifications()
@@ -112,7 +120,7 @@ struct airsync_macApp: App {
                     if let device = appState.device, appState.adbConnected {
                         ADBConnector.startScrcpy(
                             ip: device.ipAddress,
-                            port: appState.adbPort,
+                            port: UInt32(appState.adbPort),
                             deviceName: device.name,
                             package: nil
                         )
@@ -129,7 +137,7 @@ struct airsync_macApp: App {
                             if let device = appState.device {
                                 ADBConnector.startScrcpy(
                                     ip: device.ipAddress,
-                                    port: appState.adbPort,
+                                    port: UInt32(appState.adbPort),
                                     deviceName: device.name,
                                     package: app.packageName
                                 )
