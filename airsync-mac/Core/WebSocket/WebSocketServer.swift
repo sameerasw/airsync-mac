@@ -18,7 +18,7 @@ import CryptoKit
 enum WebSocketStatus {
     case stopped
     case starting
-    case started(port: UInt32, ip: String?)
+    case started(port: UInt16, ip: String?)
     case failed(error: String)
 }
 
@@ -29,7 +29,7 @@ class WebSocketServer: ObservableObject {
     private var activeSessions: [WebSocketSession] = []
     @Published var symmetricKey: SymmetricKey?
 
-    @Published var localPort: UInt32?
+    @Published var localPort: UInt16?
     @Published var localIPAddress: String?
 
     @Published var connectedDevice: Device?
@@ -51,7 +51,7 @@ class WebSocketServer: ObservableObject {
     private var outgoingAcks: [String: Set<Int>] = [:]
 
     private let maxChunkRetries = 3
-    private let ackWaitMs: UInt32 = 2000 // 2s
+    private let ackWaitMs: UInt16 = 2000 // 2s
 
     private var lastKnownAdapters: [(name: String, address: String)] = []
     // Track last adapter selection we logged to avoid repetitive logs
@@ -70,7 +70,7 @@ class WebSocketServer: ObservableObject {
         }
     }
 
-    func start(port: UInt32 = Defaults.serverPort) {
+    func start(port: UInt16 = Defaults.serverPort) {
         DispatchQueue.main.async {
             AppState.shared.webSocketStatus = .starting
         }

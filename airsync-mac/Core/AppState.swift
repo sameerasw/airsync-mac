@@ -30,7 +30,7 @@ class AppState: ObservableObject {
         let adbPortValue = UserDefaults.standard.integer(forKey: "adbPort")
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
 
-        self.adbPort = adbPortValue == 0 ? 5555 : UInt32(adbPortValue)
+        self.adbPort = adbPortValue == 0 ? 5555 : UInt16(adbPortValue)
         self.mirroringPlus = UserDefaults.standard.bool(forKey: "mirroringPlus")
         self.adbEnabled = UserDefaults.standard.bool(forKey: "adbEnabled")
         self.showMenubarText = UserDefaults.standard.bool(forKey: "showMenubarText")
@@ -120,7 +120,7 @@ class AppState: ObservableObject {
     @Published var notifications: [Notification] = []
     @Published var status: DeviceStatus? = nil
     @Published var myDevice: Device? = nil
-    @Published var port: UInt32 = Defaults.serverPort
+    @Published var port: UInt16 = Defaults.serverPort
     @Published var androidApps: [String: AndroidApp] = [:]
 
     @Published var deviceWallpapers: [String: String] = [:] // key = deviceName-ip, value = file path
@@ -182,7 +182,7 @@ class AppState: ObservableObject {
         }
     }
 
-    @Published var adbPort: UInt32 {
+    @Published var adbPort: UInt16 {
         didSet {
             UserDefaults.standard.set(adbPort, forKey: "adbPort")
         }

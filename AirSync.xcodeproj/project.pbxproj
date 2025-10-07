@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		B995A3332E4D2B3F00FA7A41 /* AppIcon-uni.icon in Resources */ = {isa = PBXBuildFile; fileRef = B995A3322E4D2B3F00FA7A41 /* AppIcon-uni.icon */; };
 		B9AEBC0A2E6235D3006BA027 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B9AEBC092E6235D3006BA027 /* Sparkle */; };
+		B9B1C00D2E94E15D0005F6CB /* LottieUI in Frameworks */ = {isa = PBXBuildFile; productRef = B9B1C00C2E94E15D0005F6CB /* LottieUI */; };
 		B9C3181E2E37AA1D00367F16 /* QRCode in Frameworks */ = {isa = PBXBuildFile; productRef = B9C3181D2E37AA1D00367F16 /* QRCode */; };
 		B9D742FC2E39CF850053128A /* Swifter in Frameworks */ = {isa = PBXBuildFile; productRef = B9D742FB2E39CF850053128A /* Swifter */; };
 /* End PBXBuildFile section */
@@ -47,6 +48,7 @@
 				B9AEBC0A2E6235D3006BA027 /* Sparkle in Frameworks */,
 				B9D742FC2E39CF850053128A /* Swifter in Frameworks */,
 				B9C3181E2E37AA1D00367F16 /* QRCode in Frameworks */,
+				B9B1C00D2E94E15D0005F6CB /* LottieUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -93,6 +95,7 @@
 				B9C3181D2E37AA1D00367F16 /* QRCode */,
 				B9D742FB2E39CF850053128A /* Swifter */,
 				B9AEBC092E6235D3006BA027 /* Sparkle */,
+				B9B1C00C2E94E15D0005F6CB /* LottieUI */,
 			);
 			productName = "airsync-mac";
 			productReference = B9673B572E35A2A1006D284A /* AirSync.app */;
@@ -126,6 +129,7 @@
 				B9C3181C2E37AA1D00367F16 /* XCRemoteSwiftPackageReference "QRCode" */,
 				B9D742FA2E39CF850053128A /* XCRemoteSwiftPackageReference "swifter" */,
 				B9AEBC082E6235D3006BA027 /* XCRemoteSwiftPackageReference "Sparkle" */,
+				B9B1C00B2E94E15D0005F6CB /* XCRemoteSwiftPackageReference "LottieUI" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B9673B582E35A2A1006D284A /* Products */;
@@ -407,6 +411,14 @@
 				minimumVersion = 2.7.1;
 			};
 		};
+		B9B1C00B2E94E15D0005F6CB /* XCRemoteSwiftPackageReference "LottieUI" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/tfmart/LottieUI";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.3.1;
+			};
+		};
 		B9C3181C2E37AA1D00367F16 /* XCRemoteSwiftPackageReference "QRCode" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/dagronf/QRCode";
@@ -430,6 +442,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B9AEBC082E6235D3006BA027 /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
+		};
+		B9B1C00C2E94E15D0005F6CB /* LottieUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B9B1C00B2E94E15D0005F6CB /* XCRemoteSwiftPackageReference "LottieUI" */;
+			productName = LottieUI;
 		};
 		B9C3181D2E37AA1D00367F16 /* QRCode */ = {
 			isa = XCSwiftPackageProductDependency;
