@@ -19,6 +19,9 @@
 - Min : macOS 14.5
 - Opt: scrcpy, adb & media-control brew installs
 
+## Building Locally
+In XCode, select the `AirSync Self Compiled` Scheme. Then at the menu bar, select `Product -> Archive`. Once this process is finished, the organizer window will pop up. Select `Distribute`, then `Custom`. Select `Copy App`, then select the folder for output. `AirSync.app` will be located in that folder.
+
 ## Contributors <3
 
 <a href="https://github.com/sameerasw/airsync-mac/graphs/contributors">
