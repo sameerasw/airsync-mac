@@ -70,6 +70,11 @@ struct SettingsPlusView: View {
                         label: "Activate",
                         systemImage: "checkmark.seal",
                         action: {
+                            #if SELF_COMPILED
+                            licenseValid = true
+                            showPlusUnlockedSheet = true
+                            #else
+                            
                             Task {
                                 isCheckingLicense = true
                                 licenseValid = nil
@@ -86,6 +91,7 @@ struct SettingsPlusView: View {
                                     showPlusUnlockedSheet = true
                                 }
                             }
+                            #endif
                         }
                     )
                     .disabled(licenseKey.isEmpty || isCheckingLicense)
@@ -113,6 +119,20 @@ struct SettingsPlusView: View {
             }
 
             // License info display
+            #if SELF_COMPILED
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("License Info")
+                        .font(.headline)
+                    Spacer()
+                    Text(appState.isPlus ? "Self Compiled" : "License inactive")
+                        .font(.subheadline)
+                        .foregroundColor(appState.isPlus ? .green : .red)
+                }
+                
+                Divider()
+            }
+            #else
             if let details = appState.licenseDetails {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -183,6 +203,7 @@ struct SettingsPlusView: View {
                         .foregroundColor(.red)
                 }
             }
+            #endif
         }
         .sheet(isPresented: $showPlusUnlockedSheet) {
             PlusUnlockedSheet()

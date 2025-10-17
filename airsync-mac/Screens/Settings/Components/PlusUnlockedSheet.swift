@@ -45,6 +45,7 @@ struct PlusUnlockedSheet: View {
                 }
 
                 HStack(spacing: 8) {
+                    #if !SELF_COMPILED
                     GlassButtonView(
                         label: "Unregister",
                         systemImage: "xmark.circle",
@@ -55,6 +56,7 @@ struct PlusUnlockedSheet: View {
                         }
                     )
                     .focusable(false)
+                    #endif
 
                     GlassButtonView(
                         label: "Awesome",
