@@ -33,6 +33,7 @@ struct DockTabBar: View {
         .padding(.horizontal, 20)
         .padding(.bottom, bottomMargin)
         .animation(.easeInOut(duration: 0.3), value: appState.pinnedApps.count)
+        .animation(.easeInOut(duration: 0.3), value: showPinnedSection)
     }
 }
 
@@ -175,6 +176,10 @@ private struct DockTabsSection: View {
                     }
                 }
             )
+            .transition(.asymmetric(
+                insertion: .scale(scale: 0.5).combined(with: .opacity),
+                removal: .scale(scale: 0.5).combined(with: .opacity)
+            ))
         }
     }
 }
@@ -188,7 +193,10 @@ private struct DockSeparatorSection: View {
         if showPinnedSection && !appState.pinnedApps.isEmpty {
             Divider()
                 .frame(height: 32)
-                .transition(.opacity)
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.5).combined(with: .opacity),
+                    removal: .scale(scale: 0.5).combined(with: .opacity)
+                ))
         }
     }
 }
