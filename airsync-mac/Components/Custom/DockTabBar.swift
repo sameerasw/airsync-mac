@@ -31,10 +31,7 @@ struct DockTabBar: View {
         .padding(.horizontal, dockPadding)
         .padding(.vertical, dockPadding)
         .frame(height: dockItemSize + (dockPadding * 2))
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Material.ultraThick)
-        )
+        .glassBoxIfAvailable(radius: 25)
         .padding(.horizontal, 20)
         .padding(.bottom, bottomMargin)
         .animation(.easeInOut(duration: 0.3), value: appState.pinnedApps.count)
