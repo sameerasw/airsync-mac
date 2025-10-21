@@ -49,7 +49,7 @@ struct AppGridView: View {
 private struct AppGridItemView: View {
     let app: AndroidApp
     @ObservedObject var appState = AppState.shared
-    
+
     var body: some View {
         ZStack(alignment: .topTrailing) {
             AppIconButtonView(app: app)
@@ -60,7 +60,7 @@ private struct AppGridItemView: View {
                     AppContextMenuContent(app: app)
                 }
                 .onDrag(createDragProvider)
-            
+
             // Notification mute indicator
             if !app.listening {
                 Image(systemName: "bell.slash")
@@ -70,7 +70,7 @@ private struct AppGridItemView: View {
             }
         }
     }
-    
+
     private func handleTap() {
         if let device = appState.device, appState.adbConnected {
             ADBConnector.startScrcpy(
@@ -81,11 +81,12 @@ private struct AppGridItemView: View {
             )
         }
     }
-    
+
     private func createDragProvider() -> NSItemProvider {
         let provider = NSItemProvider()
-        
-        if let jsonData = try? JSONEncoder().encode(app) {
+
+        do {
+            let jsonData = try JSONEncoder().encode(app)
             provider.registerDataRepresentation(
                 forTypeIdentifier: "com.sameerasw.airsync.app",
                 visibility: .all
@@ -93,8 +94,20 @@ private struct AppGridItemView: View {
                 completion(jsonData, nil)
                 return nil
             }
+
+            provider.registerDataRepresentation(
+                forTypeIdentifier: "public.json",
+                visibility: .all
+            ) { completion in
+                completion(jsonData, nil)
+                return nil
+            }
+
+            print("[drag] Registered drag provider for app: \(app.name), size: \(jsonData.count) bytes")
+        } catch {
+            print("[drag] Error encoding app for drag: \(error)")
         }
-        
+
         return provider
     }
 }
@@ -102,7 +115,7 @@ private struct AppGridItemView: View {
 // MARK: - App Icon View
 private struct AppIconButtonView: View {
     let app: AndroidApp
-    
+
     var body: some View {
         VStack(spacing: 8) {
             if let iconPath = app.iconUrl,
@@ -133,7 +146,7 @@ private struct AppIconButtonView: View {
 private struct AppContextMenuContent: View {
     let app: AndroidApp
     @ObservedObject var appState = AppState.shared
-    
+
     var isPinned: Bool {
         appState.pinnedApps.contains(where: { $0.packageName == app.packageName })
     }
@@ -154,10 +167,10 @@ private struct AppContextMenuContent: View {
                     Label("Unpin from Dock", systemImage: "pin.slash")
                 }
             }
-            
+
             Divider()
         }
-        
+
         // Notification toggle
         Button {
             WebSocketServer.shared
