@@ -11,10 +11,13 @@ import SwiftUI
 struct DockTabBar: View {
     @ObservedObject var appState = AppState.shared
 
-    private let dockItemSize: CGFloat = 48
     private let dockPadding: CGFloat = 12
     private let dockSpacing: CGFloat = 8
     private let bottomMargin: CGFloat = 8
+
+    var dockItemSize: CGFloat {
+        appState.dockSize
+    }
 
     var showPinnedSection: Bool {
         appState.adbConnected && appState.isPlus && appState.device != nil
@@ -34,6 +37,7 @@ struct DockTabBar: View {
         .padding(.bottom, bottomMargin)
         .animation(.easeInOut(duration: 0.3), value: appState.pinnedApps.count)
         .animation(.easeInOut(duration: 0.3), value: showPinnedSection)
+        .animation(.easeInOut(duration: 0.2), value: appState.dockSize)
     }
 }
 
@@ -42,8 +46,8 @@ private struct DockTabItem: View {
     let tab: TabIdentifier
     let isSelected: Bool
     let action: () -> Void
+    let dockItemSize: CGFloat
 
-    private let dockItemSize: CGFloat = 48
     private let selectedScale: CGFloat = 1.15
     private let hoverScale: CGFloat = 1.05
 
@@ -52,16 +56,16 @@ private struct DockTabItem: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: tab.icon)
-                .font(.system(size: 20, weight: .semibold))
+                .font(.system(size: dockItemSize * 0.4, weight: .semibold))
                 .foregroundColor(isSelected ? .accentColor : .secondary)
                 .frame(width: dockItemSize, height: dockItemSize)
                 .background(
                     Group {
                         if isSelected {
-                            RoundedRectangle(cornerRadius: 15)
+                            RoundedRectangle(cornerRadius: dockItemSize * 0.3)
                                 .fill(Color.accentColor.opacity(0.15))
                         } else if isHovering {
-                            RoundedRectangle(cornerRadius: 15)
+                            RoundedRectangle(cornerRadius: dockItemSize * 0.3)
                                 .fill(Color.gray.opacity(0.1))
                         }
                     }
@@ -82,9 +86,9 @@ private struct DockTabItem: View {
 /// Individual dock item representing a pinned app
 private struct DockPinnedAppItem: View {
     let pinnedApp: PinnedApp
+    let dockItemSize: CGFloat
     @ObservedObject var appState = AppState.shared
 
-    private let dockItemSize: CGFloat = 48
     private let hoverScale: CGFloat = 1.05
 
     @State private var isHovering = false
@@ -92,13 +96,13 @@ private struct DockPinnedAppItem: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Button(action: launchApp, label: {
-                PinnedAppIconView(pinnedApp: pinnedApp)
+                PinnedAppIconView(pinnedApp: pinnedApp, dockItemSize: dockItemSize)
             })
             .frame(width: dockItemSize, height: dockItemSize)
             .background(
                 Group {
                     if isHovering {
-                        RoundedRectangle(cornerRadius: 15)
+                        RoundedRectangle(cornerRadius: dockItemSize * 0.3)
                             .fill(Color.gray.opacity(0.1))
                     }
                 }
@@ -141,20 +145,23 @@ private struct DockPinnedAppItem: View {
 // MARK: - Pinned App Icon View
 private struct PinnedAppIconView: View {
     let pinnedApp: PinnedApp
+    let dockItemSize: CGFloat
 
     var body: some View {
+        let iconSize = dockItemSize * 0.85
+        
         if let iconPath = pinnedApp.iconUrl,
            let image = Image(filePath: iconPath) {
             image
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 40, height: 40)
-                .cornerRadius(8)
+                .frame(width: iconSize, height: iconSize)
+                .cornerRadius(dockItemSize * 0.2)
         } else {
             Image(systemName: "app.badge")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 40, height: 40)
+                .frame(width: iconSize, height: iconSize)
                 .foregroundColor(.gray)
         }
     }
@@ -174,7 +181,8 @@ private struct DockTabsSection: View {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         appState.selectedTab = tab
                     }
-                }
+                },
+                dockItemSize: appState.dockSize
             )
             .transition(.asymmetric(
                 insertion: .scale(scale: 0.5).combined(with: .opacity),
@@ -209,7 +217,7 @@ private struct DockPinnedAppsSection: View {
     var body: some View {
         if showPinnedSection {
             ForEach(appState.pinnedApps) { pinnedApp in
-                DockPinnedAppItem(pinnedApp: pinnedApp)
+                DockPinnedAppItem(pinnedApp: pinnedApp, dockItemSize: appState.dockSize)
                     .transition(.asymmetric(
                         insertion: .scale(scale: 0.5).combined(with: .opacity),
                         removal: .scale(scale: 0.5).combined(with: .opacity)

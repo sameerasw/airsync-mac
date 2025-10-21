@@ -35,6 +35,8 @@ class AppState: ObservableObject {
         self.adbEnabled = UserDefaults.standard.bool(forKey: "adbEnabled")
         self.showMenubarText = UserDefaults.standard.bool(forKey: "showMenubarText")
 
+        let savedDockSize = UserDefaults.standard.double(forKey: "dockSize")
+        self.dockSize = savedDockSize > 0 ? savedDockSize : 48.0
         // Default to true if not previously set
         let showNameObj = UserDefaults.standard.object(forKey: "showMenubarDeviceName")
         self.showMenubarDeviceName = showNameObj == nil
@@ -78,6 +80,7 @@ class AppState: ObservableObject {
 
     // Initialize persisted UI toggles
     self.isMusicCardHidden = UserDefaults.standard.bool(forKey: "isMusicCardHidden")
+
 
         // Load and validate saved network adapter
         let savedAdapterName = UserDefaults.standard.string(forKey: "selectedNetworkAdapterName")
@@ -257,6 +260,12 @@ class AppState: ObservableObject {
     @Published var isMusicCardHidden: Bool = false {
         didSet {
             UserDefaults.standard.set(isMusicCardHidden, forKey: "isMusicCardHidden")
+        }
+    }
+
+    @Published var dockSize: CGFloat {
+        didSet {
+            UserDefaults.standard.set(dockSize, forKey: "dockSize")
         }
     }
 
