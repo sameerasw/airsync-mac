@@ -17,10 +17,13 @@ struct DockTabBar: View {
     private let dockCornerRadius: CGFloat = 18
     private let bottomMargin: CGFloat = 8
     
+    @State private var isDropTarget = false
+    
     var body: some View {
         HStack(spacing: dockSpacing) {
+            // System tabs
             ForEach(TabIdentifier.availableTabs) { tab in
-                DockItem(
+                DockTabItem(
                     tab: tab,
                     isSelected: appState.selectedTab == tab,
                     action: {
@@ -34,6 +37,24 @@ struct DockTabBar: View {
                     modifiers: .command
                 )
             }
+            
+            // Separator if there are pinned apps
+            if !appState.pinnedApps.isEmpty && appState.adbConnected && appState.isPlus && appState.device != nil {
+                Divider()
+                    .frame(height: 32)
+            }
+            
+            // Pinned apps - only show if Plus member, ADB connected, and device connected
+            if appState.adbConnected && appState.isPlus && appState.device != nil {
+                ForEach(appState.pinnedApps) { pinnedApp in
+                    DockPinnedAppItem(pinnedApp: pinnedApp)
+                }
+            }
+            
+            // Drop zone for pinning new apps
+            if appState.adbConnected && appState.isPlus && appState.device != nil && appState.pinnedApps.count < 3 {
+                DropZoneItem(pinnedAppsCount: appState.pinnedApps.count)
+            }
         }
         .padding(.horizontal, dockPadding)
         .padding(.vertical, dockPadding)
@@ -44,8 +65,55 @@ struct DockTabBar: View {
     }
 }
 
-/// Individual dock item representing a tab
-private struct DockItem: View {
+/// Drop zone to add new pinned apps
+private struct DropZoneItem: View {
+    @ObservedObject var appState = AppState.shared
+    let pinnedAppsCount: Int
+    
+    private let dockItemSize: CGFloat = 48
+    
+    @State private var isDropTarget = false
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            Image(systemName: "plus")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(.secondary)
+                .frame(width: dockItemSize, height: dockItemSize)
+                .background(
+                    RoundedRectangle(cornerRadius: 15)
+                        .stroke(style: StrokeStyle(lineWidth: 2, dash: [4]))
+                        .foregroundColor(isDropTarget ? .accentColor : .secondary.opacity(0.3))
+                )
+                .contentShape(Rectangle())
+        }
+        .help("Drag apps here to pin them (max 3)")
+        .onDrop(of: ["com.sameerasw.airsync.app"], isTargeted: $isDropTarget) { providers in
+            handleDrop(providers: providers)
+            return true
+        }
+    }
+    
+    private func handleDrop(providers: [NSItemProvider]) {
+        for provider in providers {
+            provider.loadDataRepresentation(forTypeIdentifier: "com.sameerasw.airsync.app") { data, _ in
+                if let data = data {
+                    DispatchQueue.main.async {
+                        do {
+                            let app = try JSONDecoder().decode(AndroidApp.self, from: data)
+                            _ = appState.addPinnedApp(app)
+                        } catch {
+                            print("[dock] Error decoding app: \(error)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Individual dock item representing a system tab
+private struct DockTabItem: View {
     let tab: TabIdentifier
     let isSelected: Bool
     let action: () -> Void
@@ -88,25 +156,84 @@ private struct DockItem: View {
     }
 }
 
-/// Visual effect view for macOS-style background
-private struct VisualEffectView: NSViewRepresentable {
-    let material: NSVisualEffectView.Material
-    let blendingMode: NSVisualEffectView.BlendingMode
+/// Individual dock item representing a pinned app
+private struct DockPinnedAppItem: View {
+    let pinnedApp: PinnedApp
+    @ObservedObject var appState = AppState.shared
     
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = material
-        view.blendingMode = blendingMode
-        return view
+    private let dockItemSize: CGFloat = 48
+    private let hoverScale: CGFloat = 1.05
+    
+    @State private var isHovering = false
+    
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Button(action: launchApp) {
+                VStack(spacing: 0) {
+                    if let iconPath = pinnedApp.iconUrl,
+                       let image = Image(filePath: iconPath) {
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 40, height: 40)
+                            .cornerRadius(8)
+                    } else {
+                        Image(systemName: "app.badge")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 40, height: 40)
+                            .foregroundColor(.gray)
+                    }
+                }
+                .frame(width: dockItemSize, height: dockItemSize)
+                .background(
+                    Group {
+                        if isHovering {
+                            RoundedRectangle(cornerRadius: 15)
+                                .fill(Color.gray.opacity(0.1))
+                        }
+                    }
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(pinnedApp.appName)
+            .scaleEffect(isHovering ? hoverScale : 1.0)
+            .onHover { hovering in
+                isHovering = hovering
+            }
+            .animation(.easeInOut(duration: 0.15), value: isHovering)
+            .contextMenu {
+                Button(role: .destructive) {
+                    appState.removePinnedApp(pinnedApp.packageName)
+                } label: {
+                    Label("Unpin", systemImage: "pin.slash")
+                }
+            }
+            
+            // Remove button overlay
+            Button(action: {
+                appState.removePinnedApp(pinnedApp.packageName)
+            }) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(.gray)
+                    .background(Color.white.clipShape(Circle()))
+            }
+            .buttonStyle(.plain)
+            .offset(x: 6, y: -6)
+            .opacity(isHovering ? 1 : 0)
+        }
     }
     
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        nsView.material = material
-        nsView.blendingMode = blendingMode
+    private func launchApp() {
+        if let device = appState.device, appState.adbConnected {
+            ADBConnector.startScrcpy(
+                ip: device.ipAddress,
+                port: appState.adbPort,
+                deviceName: device.name,
+                package: pinnedApp.packageName
+            )
+        }
     }
-}
-
-#Preview {
-    DockTabBar()
-        .background(Color(.controlBackgroundColor))
 }

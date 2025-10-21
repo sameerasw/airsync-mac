@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct AndroidApp: Hashable, Identifiable, Codable{
+struct AndroidApp: Hashable, Identifiable, Codable {
     let id = UUID()
 
     let packageName: String
