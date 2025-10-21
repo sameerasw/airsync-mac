@@ -52,6 +52,7 @@ struct NotificationView: View {
                         )
                     }
                 }
+            Spacer(minLength: 100)
         }
         .scrollContentBackground(.hidden)
         .background(.clear)
@@ -114,6 +115,7 @@ struct NotificationView: View {
                     Text(appState.androidApps[package]?.name ?? "AirSync")
                 }
             }
+            Spacer(minLength: 100)
         }
         .scrollContentBackground(.hidden)
         .background(.clear)

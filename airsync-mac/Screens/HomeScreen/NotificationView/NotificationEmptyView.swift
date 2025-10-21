@@ -14,6 +14,7 @@ struct NotificationEmptyView: View {
 
     var body: some View {
         VStack {
+            Spacer()
 //            LottieView("empty-notification-v1-clear")
 //                .loopMode(.loop)
 //                .frame(width: 100, height: 100)
@@ -26,6 +27,8 @@ struct NotificationEmptyView: View {
 
             Text(L("notifications.empty.title"))
                 .padding()
+            
+            Spacer()
         }
     }
 }

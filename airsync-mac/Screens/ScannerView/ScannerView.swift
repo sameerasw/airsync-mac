@@ -182,7 +182,7 @@ struct ScannerView: View {
                 .padding(.top, 12)
             }
 
-            Spacer()
+            Spacer(minLength: 100)
         }
         .onAppear {
             generateQRAsync()

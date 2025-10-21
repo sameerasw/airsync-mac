@@ -15,7 +15,7 @@ struct AppContentView: View {
     @State private var showDisconnectAlert = false
 
     var body: some View {
-        VStack(spacing: 0) {
+        ZStack(alignment: .bottom) {
             ZStack {
                 switch AppState.shared.selectedTab {
                 case .notifications:
@@ -125,6 +125,9 @@ struct AppContentView: View {
             }
             .animation(.easeInOut(duration: 0.35), value: AppState.shared.selectedTab)
             .frame(minWidth: 550)
+
+            DockTabBar()
+                .zIndex(1)
         }
         .onAppear {
             // Ensure the correct tab is selected when the view appears
@@ -134,25 +137,6 @@ struct AppContentView: View {
             } else {
                 AppState.shared.selectedTab = .notifications
             }
-        }
-        .toolbar {
-            ToolbarItem(placement: .secondaryAction) {
-                Picker("Tab", selection: $appState.selectedTab) {
-                    ForEach(TabIdentifier.availableTabs) { tab in
-                        Button(L(tab.rawValue), systemImage: tab.icon) {}
-                                .labelStyle(.iconOnly)
-                                .tag(tab)
-                            .help(L(tab.rawValue))
-                                .keyboardShortcut(
-                                    tab.shortcut,
-                                    modifiers: .command
-                                )
-                    }
-                }
-                .pickerStyle(.palette)
-            }
-
-
         }
         .sheet(isPresented: $showAboutSheet) {
             AboutView(

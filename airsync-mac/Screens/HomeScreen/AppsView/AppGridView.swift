@@ -94,6 +94,7 @@ struct AppGridView: View {
                     }
                 }
                 .padding(12)
+                Spacer(minLength: 100)
             }
         }
         .searchable(text: $searchText)

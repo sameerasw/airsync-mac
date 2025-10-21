@@ -10,7 +10,6 @@ struct SettingsView: View {
 
 
     var body: some View {
-        NavigationStack {
             ScrollView {
                 VStack {
                     // Device Name Field
@@ -189,8 +188,9 @@ struct SettingsView: View {
                         .cornerRadius(12.0)
                 }
                 .padding()
+
+                Spacer(minLength: 100)
             }
-        }
         .frame(minWidth: 300)
         .onAppear {
             if let device = appState.myDevice {
