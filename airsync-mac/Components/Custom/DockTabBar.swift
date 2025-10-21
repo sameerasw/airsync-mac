@@ -16,8 +16,6 @@ struct DockTabBar: View {
     private let dockSpacing: CGFloat = 8
     private let bottomMargin: CGFloat = 8
 
-    @State private var isDraggingOverDock = false
-
     var showPinnedSection: Bool {
         appState.adbConnected && appState.isPlus && appState.device != nil
     }
@@ -26,7 +24,7 @@ struct DockTabBar: View {
         HStack(spacing: dockSpacing) {
             DockTabsSection()
             DockSeparatorSection(showPinnedSection: showPinnedSection)
-            DockPinnedAppsSection(showPinnedSection: showPinnedSection, isDraggingOverDock: $isDraggingOverDock)
+            DockPinnedAppsSection(showPinnedSection: showPinnedSection)
         }
         .padding(.horizontal, dockPadding)
         .padding(.vertical, dockPadding)
@@ -35,99 +33,6 @@ struct DockTabBar: View {
         .padding(.horizontal, 20)
         .padding(.bottom, bottomMargin)
         .animation(.easeInOut(duration: 0.3), value: appState.pinnedApps.count)
-    }
-}
-
-/// Drop zone to add new pinned apps
-private struct DropZoneItem: View {
-    @ObservedObject var appState = AppState.shared
-    @Binding var isDraggingOverDock: Bool
-
-    private let dockItemSize: CGFloat = 48
-
-    @State private var isDropTarget = false
-
-    var body: some View {
-        ZStack {
-            // Base icon
-            Image(systemName: "plus")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(.secondary)
-                .frame(width: dockItemSize, height: dockItemSize)
-                .background(
-                    RoundedRectangle(cornerRadius: 15)
-                        .stroke(style: StrokeStyle(lineWidth: 2, dash: [4]))
-                        .foregroundColor(isDropTarget ? .accentColor : .secondary.opacity(0.3))
-                )
-                .contentShape(Rectangle())
-
-            // Dragging indicator - only show when actively dragging over dock
-            if isDraggingOverDock {
-                Image(systemName: "arrow.down")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.accentColor)
-                    .offset(y: 16)
-                    .transition(.scale.combined(with: .opacity))
-            }
-        }
-        .help("Drag apps here to pin them (max 3)")
-        .onDrop(of: ["com.sameerasw.airsync.app", "public.json"], isTargeted: $isDropTarget) { providers in
-            handleDrop(providers: providers)
-            return true
-        }
-        .onChange(of: isDropTarget) { oldValue, newValue in
-            if newValue {
-                isDraggingOverDock = true
-            } else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    isDraggingOverDock = false
-                }
-            }
-        }
-    }
-
-    private func handleDrop(providers: [NSItemProvider]) {
-        for provider in providers {
-            let types = provider.registeredTypeIdentifiers
-            print("[dock] Received drop with types: \(types)")
-
-            if types.contains("com.sameerasw.airsync.app") {
-                provider.loadDataRepresentation(forTypeIdentifier: "com.sameerasw.airsync.app") { data, _ in
-                    print("[dock] Loaded custom type data")
-                    processDropData(data)
-                }
-            } else if types.contains("public.json") {
-                // Fallback to JSON type
-                provider.loadDataRepresentation(forTypeIdentifier: "public.json") { data, _ in
-                    print("[dock] Loaded JSON type data")
-                    processDropData(data)
-                }
-            }
-        }
-    }
-
-    private func processDropData(_ data: Data?) {
-        guard let data = data else {
-            print("[dock] No data received in drop")
-            return
-        }
-
-        print("[dock] Processing drop data, size: \(data.count) bytes")
-
-        DispatchQueue.main.async {
-            do {
-                let app = try JSONDecoder().decode(AndroidApp.self, from: data)
-                print("[dock] Successfully decoded app: \(app.name)")
-                let success = appState.addPinnedApp(app)
-                if success {
-                    print("[dock] Successfully pinned app: \(app.name)")
-                } else {
-                    print("[dock] Failed to pin app - either already pinned or max limit reached")
-                }
-            } catch {
-                print("[dock] Error decoding app: \(error)")
-            }
-        }
     }
 }
 
@@ -213,23 +118,6 @@ private struct DockPinnedAppItem: View {
                     Label("Unpin", systemImage: "pin.slash")
                 }
             }
-
-            // Remove button overlay
-            if isHovering {
-                Button(action: {
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        appState.removePinnedApp(pinnedApp.packageName)
-                    }
-                }, label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))
-                        .foregroundColor(.gray)
-                        .background(Color.white.clipShape(Circle()))
-                })
-                .buttonStyle(.plain)
-                .offset(x: 6, y: -6)
-                .transition(.scale.combined(with: .opacity))
-            }
         }
         .transition(.asymmetric(
             insertion: .scale(scale: 0.5).combined(with: .opacity),
@@ -309,20 +197,11 @@ private struct DockSeparatorSection: View {
 private struct DockPinnedAppsSection: View {
     @ObservedObject var appState = AppState.shared
     let showPinnedSection: Bool
-    @Binding var isDraggingOverDock: Bool
 
     var body: some View {
         if showPinnedSection {
             ForEach(appState.pinnedApps) { pinnedApp in
                 DockPinnedAppItem(pinnedApp: pinnedApp)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.5).combined(with: .opacity),
-                        removal: .scale(scale: 0.5).combined(with: .opacity)
-                    ))
-            }
-
-            if appState.pinnedApps.count < 3 {
-                DropZoneItem(isDraggingOverDock: $isDraggingOverDock)
                     .transition(.asymmetric(
                         insertion: .scale(scale: 0.5).combined(with: .opacity),
                         removal: .scale(scale: 0.5).combined(with: .opacity)
