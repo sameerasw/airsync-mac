@@ -43,3 +43,4 @@
 - [httpswift/swifter](https://github.com/httpswift/swifter)
 - [sparkle-project/Sparkle](https://github.com/sparkle-project/Sparkle)
 - [ungive/media-control](https://github.com/ungive/media-control)
+- [tfmart/LottieUI](https://github.com/tfmart/LottieUI)
