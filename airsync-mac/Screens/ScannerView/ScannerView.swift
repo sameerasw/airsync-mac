@@ -182,7 +182,7 @@ struct ScannerView: View {
                 .padding(.top, 12)
             }
 
-            Spacer()
+            Spacer(minLength: 100)
         }
         .onAppear {
             generateQRAsync()
@@ -236,7 +236,7 @@ struct ScannerView: View {
 
         let text = generateQRText(
             ip: validIP,
-            port: UInt32(appState.myDevice?.port ?? Int(Defaults.serverPort)),
+            port: UInt16(appState.myDevice?.port ?? Int(Defaults.serverPort)),
             name: appState.myDevice?.name,
             key: WebSocketServer.shared.getSymmetricKeyBase64() ?? ""
         ) ?? "That doesn't look right, QR Generation failed"
@@ -267,7 +267,7 @@ struct ScannerView: View {
     }
 }
 
-func generateQRText(ip: String?, port: UInt32?, name: String?, key: String) -> String? {
+func generateQRText(ip: String?, port: UInt16?, name: String?, key: String) -> String? {
     guard let ip = ip, let port = port else {
         return nil
     }

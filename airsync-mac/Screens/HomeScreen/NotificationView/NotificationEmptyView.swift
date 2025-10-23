@@ -6,18 +6,33 @@
 //
 
 import SwiftUI
+import LottieUI
+internal import Lottie
 
 struct NotificationEmptyView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         VStack {
-            Text(loc: "notifications.empty.emoji")
+            Spacer()
+//            LottieView("empty-notification-v1-clear")
+//                .loopMode(.loop)
+//                .frame(width: 100, height: 100)
+//                .modifier(InvertIfLightMode(colorScheme: colorScheme))
+
+            Text(L("notifications.empty.emoji"))
                 .font(.title)
                 .padding()
-            Label(L("notifications.empty.title"), systemImage: "tray")
-            .padding()
+
+
+            Text(L("notifications.empty.title"))
+                .padding()
+            
+            Spacer()
         }
     }
 }
+
 
 #Preview {
     NotificationEmptyView()

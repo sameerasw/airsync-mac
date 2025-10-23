@@ -10,7 +10,6 @@ struct SettingsView: View {
 
 
     var body: some View {
-        NavigationStack {
             ScrollView {
                 VStack {
                     // Device Name Field
@@ -44,7 +43,7 @@ struct SettingsView: View {
                             currentIPAddress = WebSocketServer.shared.getLocalIPAddress(adapterName: appState.selectedNetworkAdapterName) ?? "N/A"
                             
                             WebSocketServer.shared.stop()
-                            if let port = UInt32(port) {
+                            if let port = UInt16(port) {
                                 WebSocketServer.shared.start(port: port)
                             } else {
                                 WebSocketServer.shared.start()
@@ -129,6 +128,21 @@ struct SettingsView: View {
                         }
 
                         HStack{
+                            Label("Dock Size", systemImage: "rectangle.dock")
+                            Spacer()
+                            Slider(
+                                value: $appState.dockSize,
+                                in: 32...64,
+                                step: 4
+                            )
+                            .frame(width: 200)
+                            
+                            Text("\(Int(appState.dockSize))px")
+                                .font(.caption)
+                                .frame(width: 40, alignment: .trailing)
+                        }
+
+                        HStack{
                             Label("Always Open Window", systemImage: "macwindow")
                             Spacer()
                             Toggle("", isOn: $appState.alwaysOpenWindow)
@@ -189,8 +203,9 @@ struct SettingsView: View {
                         .cornerRadius(12.0)
                 }
                 .padding()
+
+                Spacer(minLength: 100 + (appState.dockSize - 48))
             }
-        }
         .frame(minWidth: 300)
         .onAppear {
             if let device = appState.myDevice {

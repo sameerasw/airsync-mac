@@ -30,11 +30,13 @@ class AppState: ObservableObject {
         let adbPortValue = UserDefaults.standard.integer(forKey: "adbPort")
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
 
-        self.adbPort = adbPortValue == 0 ? 5555 : UInt32(adbPortValue)
+        self.adbPort = adbPortValue == 0 ? 5555 : UInt16(adbPortValue)
         self.mirroringPlus = UserDefaults.standard.bool(forKey: "mirroringPlus")
         self.adbEnabled = UserDefaults.standard.bool(forKey: "adbEnabled")
         self.showMenubarText = UserDefaults.standard.bool(forKey: "showMenubarText")
 
+        let savedDockSize = UserDefaults.standard.double(forKey: "dockSize")
+        self.dockSize = savedDockSize > 0 ? savedDockSize : 48.0
         // Default to true if not previously set
         let showNameObj = UserDefaults.standard.object(forKey: "showMenubarDeviceName")
         self.showMenubarDeviceName = showNameObj == nil
@@ -79,6 +81,7 @@ class AppState: ObservableObject {
     // Initialize persisted UI toggles
     self.isMusicCardHidden = UserDefaults.standard.bool(forKey: "isMusicCardHidden")
 
+
         // Load and validate saved network adapter
         let savedAdapterName = UserDefaults.standard.string(forKey: "selectedNetworkAdapterName")
         self.selectedNetworkAdapterName = validateAndGetNetworkAdapter(savedName: savedAdapterName)
@@ -95,6 +98,7 @@ class AppState: ObservableObject {
         self.licenseDetails = loadLicenseDetailsFromUserDefaults()
 
         loadAppsFromDisk()
+        loadPinnedApps()
         // QuickConnectManager handles its own initialization
 
 //        postNativeNotification(id: "test_notification", appName: "AirSync Beta", title: "Hi there! (っ◕‿◕)っ", body: "Welcome to and thanks for testing out the app. Please don't forget to report issues to sameerasw.com@gmail.com or any other community you prefer. <3", appIcon: nil)
@@ -107,6 +111,8 @@ class AppState: ObservableObject {
             // Store the last connected device when a new device connects
             if let newDevice = device {
                 QuickConnectManager.shared.saveLastConnectedDevice(newDevice)
+                // Validate pinned apps when connecting to a device
+                validatePinnedApps()
             }
             
             // Automatically switch to the appropriate tab when device connection state changes
@@ -120,8 +126,14 @@ class AppState: ObservableObject {
     @Published var notifications: [Notification] = []
     @Published var status: DeviceStatus? = nil
     @Published var myDevice: Device? = nil
-    @Published var port: UInt32 = Defaults.serverPort
+    @Published var port: UInt16 = Defaults.serverPort
     @Published var androidApps: [String: AndroidApp] = [:]
+    
+    @Published var pinnedApps: [PinnedApp] = [] {
+        didSet {
+            savePinnedApps()
+        }
+    }
 
     @Published var deviceWallpapers: [String: String] = [:] // key = deviceName-ip, value = file path
     @Published var isClipboardSyncEnabled: Bool {
@@ -182,7 +194,7 @@ class AppState: ObservableObject {
         }
     }
 
-    @Published var adbPort: UInt32 {
+    @Published var adbPort: UInt16 {
         didSet {
             UserDefaults.standard.set(adbPort, forKey: "adbPort")
         }
@@ -248,6 +260,12 @@ class AppState: ObservableObject {
     @Published var isMusicCardHidden: Bool = false {
         didSet {
             UserDefaults.standard.set(isMusicCardHidden, forKey: "isMusicCardHidden")
+        }
+    }
+
+    @Published var dockSize: CGFloat {
+        didSet {
+            UserDefaults.standard.set(dockSize, forKey: "dockSize")
         }
     }
 
@@ -631,6 +649,56 @@ class AppState: ObservableObject {
             }
         } catch {
             print("[state] (apps) Error loading apps: \(error)")
+        }
+    }
+
+    // MARK: - Pinned Apps Management
+    
+    func loadPinnedApps() {
+        guard let data = UserDefaults.standard.data(forKey: "pinnedApps") else {
+            return
+        }
+        
+        do {
+            pinnedApps = try JSONDecoder().decode([PinnedApp].self, from: data)
+        } catch {
+            print("[state] (pinned) Error loading pinned apps: \(error)")
+        }
+    }
+    
+    func savePinnedApps() {
+        do {
+            let data = try JSONEncoder().encode(pinnedApps)
+            UserDefaults.standard.set(data, forKey: "pinnedApps")
+        } catch {
+            print("[state] (pinned) Error saving pinned apps: \(error)")
+        }
+    }
+    
+    func addPinnedApp(_ app: AndroidApp) -> Bool {
+        // Check if already pinned
+        guard !pinnedApps.contains(where: { $0.packageName == app.packageName }) else {
+            return false
+        }
+        
+        // Check if under the limit of 3 apps
+        guard pinnedApps.count < 3 else {
+            return false
+        }
+        
+        let pinnedApp = PinnedApp(packageName: app.packageName, appName: app.name, iconUrl: app.iconUrl)
+        pinnedApps.append(pinnedApp)
+        return true
+    }
+    
+    func removePinnedApp(_ packageName: String) {
+        pinnedApps.removeAll { $0.packageName == packageName }
+    }
+    
+    func validatePinnedApps() {
+        // Remove pinned apps that are no longer available
+        pinnedApps.removeAll { pinnedApp in
+            androidApps[pinnedApp.packageName] == nil
         }
     }
 

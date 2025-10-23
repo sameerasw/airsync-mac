@@ -88,7 +88,7 @@ class QuickConnectManager: ObservableObject {
         )
     }
     
-    private func getCurrentMacPort() -> UInt32? {
+    private func getCurrentMacPort() -> UInt16? {
         return WebSocketServer.shared.localPort
     }
     
@@ -188,7 +188,7 @@ class QuickConnectManager: ObservableObject {
             
             var addr = sockaddr_in()
             addr.sin_family = sa_family_t(AF_INET)
-            addr.sin_port = in_port_t(UInt32(Self.ANDROID_UDP_WAKEUP_PORT).bigEndian)
+            addr.sin_port = in_port_t(UInt16(Self.ANDROID_UDP_WAKEUP_PORT).bigEndian)
             inet_aton(device.ipAddress, &addr.sin_addr)
             
             let messageData = udpMessage.data(using: .utf8) ?? Data()
