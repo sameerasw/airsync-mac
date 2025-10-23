@@ -152,24 +152,20 @@ struct ADBConnector {
         proceedWithConnection(adbPath: adbPath, ip: ip, portsToTry: portsToTry)
     }
 
-    private static func discoverADBPorts(adbPath: String, ip: String, completion: @escaping ([UInt16]) -> Void) {
-        runADBCommand(adbPath: adbPath, arguments: ["mdns", "services"]) { output in
-            let lines = output.components(separatedBy: .newlines)
-            var ports: [UInt16] = []
-            
+            let lines = trimmedMDNSOutput.components(separatedBy: .newlines)
+            var tlsPort: UInt16?
+            var normalPort: UInt16?
+
             for line in lines {
-                // Typical line: _adb-tls-connect._tcp.   192.168.1.100:34567
-                if line.contains(ip) {
-                    let parts = line.split(separator: ":")
-                    if parts.count >= 2 {
-                        let portPart = parts.last?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                        // Extract only the numeric part if there's trailing junk
-                        let numericPort = portPart.filter { "0123456789".contains($0) }
-                        if let port = UInt16(numericPort) {
-                            if !ports.contains(port) {
-                                ports.append(port)
-                            }
-                        }
+                guard let range = line.range(of: "\(ip):") else { continue }
+
+                let remaining = line[range.upperBound...]
+                if let portStr = remaining.split(separator: " ").first,
+                   let port = UInt16(portStr) {
+                    if line.contains("_adb-tls-connect._tcp"), tlsPort == nil {
+                        tlsPort = port
+                    } else if line.contains("_adb._tcp"), normalPort == nil {
+                        normalPort = port
                     }
                 }
             }

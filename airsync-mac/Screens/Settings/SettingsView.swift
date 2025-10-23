@@ -130,6 +130,21 @@ struct SettingsView: View {
                         }
 
                         HStack{
+                            Label("Dock Size", systemImage: "rectangle.dock")
+                            Spacer()
+                            Slider(
+                                value: $appState.dockSize,
+                                in: 32...64,
+                                step: 4
+                            )
+                            .frame(width: 200)
+                            
+                            Text("\(Int(appState.dockSize))px")
+                                .font(.caption)
+                                .frame(width: 40, alignment: .trailing)
+                        }
+
+                        HStack{
                             Label("Always Open Window", systemImage: "macwindow")
                             Spacer()
                             Toggle("", isOn: $appState.alwaysOpenWindow)
@@ -205,6 +220,7 @@ struct SettingsView: View {
                 }
                 .padding()
 
+                Spacer(minLength: 100 + (appState.dockSize - 48))
             }
         .frame(minWidth: 300)
         .onAppear {

@@ -33,7 +33,6 @@ class AppState: ObservableObject {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
 
         self.adbPort = adbPortValue == 0 ? 5555 : UInt16(adbPortValue)
-        self.adbConnectedIP = UserDefaults.standard.string(forKey: "adbConnectedIP") ?? ""
         self.mirroringPlus = UserDefaults.standard.bool(forKey: "mirroringPlus")
         self.adbEnabled = UserDefaults.standard.bool(forKey: "adbEnabled")
         self.suppressAdbFailureAlerts = UserDefaults.standard.bool(forKey: "suppressAdbFailureAlerts")
@@ -43,6 +42,8 @@ class AppState: ObservableObject {
 
         self.showMenubarText = UserDefaults.standard.bool(forKey: "showMenubarText")
 
+        let savedDockSize = UserDefaults.standard.double(forKey: "dockSize")
+        self.dockSize = savedDockSize > 0 ? savedDockSize : 48.0
         // Default to true if not previously set
         let showNameObj = UserDefaults.standard.object(forKey: "showMenubarDeviceName")
         self.showMenubarDeviceName = showNameObj == nil
@@ -164,6 +165,12 @@ class AppState: ObservableObject {
     @Published var myDevice: Device? = nil
     @Published var port: UInt16 = Defaults.serverPort
     @Published var androidApps: [String: AndroidApp] = [:]
+    
+    @Published var pinnedApps: [PinnedApp] = [] {
+        didSet {
+            savePinnedApps()
+        }
+    }
 
     @Published var pinnedApps: [PinnedApp] = [] {
         didSet {
@@ -337,6 +344,12 @@ class AppState: ObservableObject {
     // MARK: - ADB-less Mirroring State
     @Published var isMirrorActive: Bool = false
     @Published var latestMirrorFrame: NSImage? = nil
+
+    @Published var dockSize: CGFloat {
+        didSet {
+            UserDefaults.standard.set(dockSize, forKey: "dockSize")
+        }
+    }
 
     @Published var isOnboardingActive: Bool = false {
         didSet {
@@ -975,6 +988,56 @@ class AppState: ObservableObject {
         }
     }
 
+    // MARK: - Pinned Apps Management
+    
+    func loadPinnedApps() {
+        guard let data = UserDefaults.standard.data(forKey: "pinnedApps") else {
+            return
+        }
+        
+        do {
+            pinnedApps = try JSONDecoder().decode([PinnedApp].self, from: data)
+        } catch {
+            print("[state] (pinned) Error loading pinned apps: \(error)")
+        }
+    }
+    
+    func savePinnedApps() {
+        do {
+            let data = try JSONEncoder().encode(pinnedApps)
+            UserDefaults.standard.set(data, forKey: "pinnedApps")
+        } catch {
+            print("[state] (pinned) Error saving pinned apps: \(error)")
+        }
+    }
+    
+    func addPinnedApp(_ app: AndroidApp) -> Bool {
+        // Check if already pinned
+        guard !pinnedApps.contains(where: { $0.packageName == app.packageName }) else {
+            return false
+        }
+        
+        // Check if under the limit of 3 apps
+        guard pinnedApps.count < 3 else {
+            return false
+        }
+        
+        let pinnedApp = PinnedApp(packageName: app.packageName, appName: app.name, iconUrl: app.iconUrl)
+        pinnedApps.append(pinnedApp)
+        return true
+    }
+    
+    func removePinnedApp(_ packageName: String) {
+        pinnedApps.removeAll { $0.packageName == packageName }
+    }
+    
+    func validatePinnedApps() {
+        // Remove pinned apps that are no longer available
+        pinnedApps.removeAll { pinnedApp in
+            androidApps[pinnedApp.packageName] == nil
+        }
+    }
+
     func updateDockIconVisibility() {
         DispatchQueue.main.async {
             if self.hideDockIcon {
@@ -1025,4 +1088,3 @@ class AppState: ObservableObject {
         return savedName
     }
 }
-

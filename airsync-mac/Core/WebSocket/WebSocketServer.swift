@@ -71,7 +71,7 @@ class WebSocketServer: ObservableObject {
         }
     }
 
-    func start(port: UInt32 = Defaults.serverPort) {
+    func start(port: UInt16 = Defaults.serverPort) {
         // Prevent concurrent starts
         if case .starting = AppState.shared.webSocketStatus {
             print("[websocket] start() called while status is starting; ignoring")
