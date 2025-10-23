@@ -68,9 +68,15 @@ class AppState: ObservableObject {
             startClipboardMonitoring()
         }
 
+        #if SELF_COMPILED
+        self.isPlus = true
+        UserDefaults.standard.set(true, forKey: "isPlus")
+        UserDefaults.standard.lastLicenseSuccessfulCheckDate = Date().addingTimeInterval(-(24 * 60 * 60))
+        #else
         Task {
             await Gumroad().checkLicenseIfNeeded()
         }
+        #endif
 
         self.scrcpyBitrate = UserDefaults.standard.integer(forKey: "scrcpyBitrate")
         if self.scrcpyBitrate == 0 { self.scrcpyBitrate = 4 }

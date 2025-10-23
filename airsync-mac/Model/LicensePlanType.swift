@@ -13,6 +13,9 @@ import Foundation
 enum LicensePlanType: String, CaseIterable, Codable, Identifiable {
     case membership
     case oneTime
+    #if SELF_COMPILED
+    case selfCompiled
+    #endif
 
     var id: String { rawValue }
 
@@ -20,6 +23,9 @@ enum LicensePlanType: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .membership: return "Membership"
         case .oneTime: return "One-Time"
+        #if SELF_COMPILED
+        case .selfCompiled: return "Self-Compiled"
+        #endif
         }
     }
 }
