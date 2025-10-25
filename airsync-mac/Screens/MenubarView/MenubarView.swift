@@ -63,6 +63,16 @@ struct MenubarView: View {
                     ) {
                         openAndFocusMainWindow()
                     }
+                    GlassButtonView(
+                        label: "Quick Connect",
+                        systemImage: "bolt.horizontal.circle",
+                        iconOnly: true,
+                        circleSize: toolButtonSize,
+                        action: {
+                            QuickConnectManager.shared.wakeUpLastConnectedDevice()
+                        }
+                    )
+                    .help("Reconnect to last device")
 
                     if (appState.device != nil){
                         GlassButtonView(

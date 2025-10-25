@@ -13,8 +13,10 @@ struct NotificationCardView: View {
     let deleteNotification: () -> Void
     let hideNotification: () -> Void
 
+    var closeButtonPadding: CGFloat = 6
+
     var body: some View {
-        ZStack {
+        ZStack(alignment: .topTrailing) {
             HStack(alignment: .top) {
                 appIconView()
                     .aspectRatio(contentMode: .fit)
@@ -49,9 +51,19 @@ struct NotificationCardView: View {
 
                 Spacer()
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+
+            // Top-right dismiss (cross) button
+            Button(action: { deleteNotification() }) {
+                Image(systemName: "xmark.circle.fill")
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.secondary, .quaternary)
+                    .imageScale(.medium)
+                    .padding(.top, closeButtonPadding)
+                    .padding(.trailing, closeButtonPadding)
+            }
+            .buttonStyle(.borderless)
+            .help("Dismiss this notification")
         }
         .swipeActions(edge: .leading) {
             Button(role: .cancel) {

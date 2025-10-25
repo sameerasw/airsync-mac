@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<dictionary title="AirSync Terminology">
+    <suite name="AirSync Suite" code="AirS" description="Commands for controlling AirSync">
+        <class name="application" code="capp" description="The AirSync application">
+            <cocoa class="NSApplication"/>
+        </class>
+
+                <command name="disconnect" code="AirSdisc" description="Disconnect the currently connected device">
+            <cocoa class="AirSyncDisconnectCommand"/>
+            <result type="text" description="Returns disconnection status message"/>
+        </command>
+        
+        <command name="get status" code="AirSstat" description="Get the status of the connected device">
+            <cocoa class="AirSyncStatusCommand"/>
+            <result type="text" description="Returns device status information"/>
+        </command>
+        
+        <command name="reconnect" code="AirSrcon" description="Reconnect to the last connected device">
+            <cocoa class="AirSyncReconnectCommand"/>
+            <result type="text" description="Returns reconnection attempt status"/>
+        </command>
+        
+        <command name="get notifications" code="AirSntfs" description="Get the last 20 notifications from connected device">
+            <cocoa class="AirSyncGetNotificationsCommand"/>
+            <result type="text" description="Returns notifications as JSON or status message"/>
+        </command>
+        
+        <command name="get media" code="AirSmdia" description="Get current media playback status and volume">
+            <cocoa class="AirSyncGetMediaCommand"/>
+            <result type="text" description="Returns media information as JSON or status message"/>
+        </command>
+        
+        <command name="launch mirroring" code="AirSlaun" description="Launch full device mirroring via scrcpy">
+            <cocoa class="AirSyncLaunchMirroringCommand"/>
+            <result type="text" description="Returns launch status or error information as JSON"/>
+        </command>
+        
+        <command name="get apps" code="AirSapps" description="Get list of installed Android apps with icons">
+            <cocoa class="AirSyncGetAppsCommand"/>
+            <result type="text" description="Returns apps list as JSON with base64 icons"/>
+        </command>
+        
+        <command name="mirror app" code="AirSmapp" description="Launch mirroring for a specific app by package name">
+            <cocoa class="AirSyncMirrorAppCommand"/>
+            <direct-parameter type="text" description="Package name of the app to mirror"/>
+            <result type="text" description="Returns launch status or error information as JSON"/>
+        </command>
+        
+        <command name="desktop mode" code="AirSdesk" description="Launch desktop mode mirroring">
+            <cocoa class="AirSyncDesktopModeCommand"/>
+            <result type="text" description="Returns launch status or error information as JSON"/>
+        </command>
+        
+        <command name="connect adb" code="AirSconn" description="Connect to ADB for wireless debugging">
+            <cocoa class="AirSyncConnectADBCommand"/>
+            <result type="text" description="Returns connection status or error message"/>
+        </command>
+        
+        <command name="media control" code="AirSmctl" description="Control media playback (play, pause, next, previous, like, unlike). Requires AirSync Plus.">
+            <cocoa class="AirSyncMediaControlCommand"/>
+            <direct-parameter type="text" description="Media control action: play, pause, toggle, next, previous, like, unlike, toggle_like"/>
+            <result type="text" description="Returns action status and current media information as JSON"/>
+        </command>
+        
+        <command name="notification action" code="AirSnact" description="Take action on a specific notification (reply, button press)">
+            <cocoa class="AirSyncNotificationActionCommand"/>
+            <direct-parameter type="text" description="Format: 'notification_id|action_name' or 'notification_id|action_name|reply_text'"/>
+            <result type="text" description="Returns action status as JSON"/>
+        </command>
+        
+        <command name="dismiss notification" code="AirSdiss" description="Dismiss a specific notification by ID">
+            <cocoa class="AirSyncDismissNotificationCommand"/>
+            <direct-parameter type="text" description="Notification ID to dismiss"/>
+            <result type="text" description="Returns dismissal status as JSON"/>
+        </command>
+    </suite>
+</dictionary>

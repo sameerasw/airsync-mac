@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Darwin
 internal import Combine
 
 /// Manages quick reconnection functionality for previously connected devices
@@ -21,9 +22,11 @@ class QuickConnectManager: ObservableObject {
     
     // Store last connected devices per network (key: Mac IP, value: Device)
     @Published var lastConnectedDevices: [String: Device] = [:]
+    private var autoReconnectTimer: Timer?
     
     private init() {
         loadDeviceHistoryFromDisk()
+        startAutoReconnect()
     }
     
     // MARK: - Public Interface
@@ -76,8 +79,10 @@ class QuickConnectManager: ObservableObject {
     
     /// Refreshes device info for current network (triggers UI updates)
     func refreshDeviceForCurrentNetwork() {
-        objectWillChange.send()
-        print("[quick-connect] Refreshed device info for current network")
+        DispatchQueue.main.async {
+            self.objectWillChange.send()
+            print("[quick-connect] Refreshed device info for current network")
+        }
     }
     
     // MARK: - Private Implementation
@@ -187,18 +192,47 @@ class QuickConnectManager: ObservableObject {
             }
             
             var addr = sockaddr_in()
+            addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
             addr.sin_family = sa_family_t(AF_INET)
             addr.sin_port = in_port_t(UInt16(Self.ANDROID_UDP_WAKEUP_PORT).bigEndian)
-            inet_aton(device.ipAddress, &addr.sin_addr)
-            
+
+            // Convert IP string to network address; bail out if invalid
+            let ipConversionOK: Bool = device.ipAddress.withCString { cStr in
+                inet_pton(AF_INET, cStr, &addr.sin_addr) == 1
+            }
+            guard ipConversionOK else {
+                print("[quick-connect] Invalid IPv4 address for UDP wake-up: \(device.ipAddress)")
+                return
+            }
+
             let messageData = udpMessage.data(using: .utf8) ?? Data()
             _ = messageData.withUnsafeBytes { bytes in
                 withUnsafePointer(to: addr) { addrPtr in
                     addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
-                        return sendto(socket, bytes.bindMemory(to: Int8.self).baseAddress, messageData.count, 0, sockaddrPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
+                        return sendto(socket, bytes.bindMemory(to: UInt8.self).baseAddress, messageData.count, 0, sockaddrPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
                     }
                 }
             }
         }
     }
+    
+    // MARK: - Auto Reconnect
+    private func startAutoReconnect() {
+        autoReconnectTimer?.invalidate()
+        autoReconnectTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                // Only attempt when no device is connected
+                if AppState.shared.device == nil {
+                    self.wakeUpLastConnectedDevice()
+                }
+            }
+        }
+        autoReconnectTimer?.tolerance = 5.0
+    }
+
+    deinit {
+        autoReconnectTimer?.invalidate()
+    }
 }
+

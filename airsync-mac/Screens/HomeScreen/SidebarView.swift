@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Cocoa
 
 
 struct SidebarView: View {
@@ -47,6 +48,35 @@ struct SidebarView: View {
             .safeAreaInset(edge: .bottom) {
                 HStack{
                     if appState.device != nil {
+                        // Start Mirroring button next to Disconnect
+                        GlassButtonView(
+                            label: "Start Mirroring",
+                            systemImage: "rectangle.on.rectangle",
+                            primary: true,
+                            action: {
+                                guard let device = appState.device else { return }
+
+                                // If ADB is enabled AND connected AND tools are present -> use scrcpy
+                                let adbEnabled = appState.adbEnabled && appState.adbConnected
+                                let hasADB = ADBConnector.findExecutable(named: "adb", fallbackPaths: ADBConnector.possibleADBPaths) != nil
+                                let hasScrcpy = ADBConnector.findExecutable(named: "scrcpy", fallbackPaths: ADBConnector.possibleScrcpyPaths) != nil
+
+                                if adbEnabled && hasADB && hasScrcpy {
+                                    ADBConnector.startScrcpy(
+                                        ip: device.ipAddress,
+                                        port: appState.adbPort,
+                                        deviceName: device.name
+                                    )
+                                } else {
+                                    // Default: open built-in TCP Remote Viewer (no ADB dependency)
+                                    let viewer = RemoteViewerWindowController(host: device.ipAddress, port: UInt16(device.port))
+                                    viewer.showWindow(nil)
+                                    viewer.window?.makeKeyAndOrderFront(nil)
+                                }
+                            }
+                        )
+                        .transition(.identity)
+
                         GlassButtonView(
                             label: "Disconnect",
                             systemImage: "xmark",
@@ -80,3 +110,4 @@ struct SidebarView: View {
 #Preview {
     SidebarView()
 }
+

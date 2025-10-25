@@ -134,7 +134,8 @@ struct NotificationView: View {
         NotificationCardView(
             notification: notif,
             deleteNotification: { appState.removeNotification(notif) },
-            hideNotification: { appState.hideNotification(notif) }
+            hideNotification: { appState.hideNotification(notif) },
+            closeButtonPadding: 12
         )
         .applyGlassViewIfAvailable()
     }
@@ -143,3 +144,4 @@ struct NotificationView: View {
 #Preview {
     NotificationView()
 }
+

@@ -14,6 +14,7 @@ import UserNotifications
 import Swifter
 internal import Combine
 import CryptoKit
+import AppKit
 
 enum WebSocketStatus {
     case stopped
@@ -70,7 +71,17 @@ class WebSocketServer: ObservableObject {
         }
     }
 
-    func start(port: UInt16 = Defaults.serverPort) {
+    func start(port: UInt32 = Defaults.serverPort) {
+        // Prevent concurrent starts
+        if case .starting = AppState.shared.webSocketStatus {
+            print("[websocket] start() called while status is starting; ignoring")
+            return
+        }
+        if case .started = AppState.shared.webSocketStatus {
+            print("[websocket] start() called while status is started; ignoring")
+            return
+        }
+
         DispatchQueue.main.async {
             AppState.shared.webSocketStatus = .starting
         }
@@ -115,6 +126,11 @@ class WebSocketServer: ObservableObject {
     func stop() {
         server.stop()
         activeSessions.removeAll()
+        // Clear any active mirror state when server stops
+        DispatchQueue.main.async {
+            AppState.shared.isMirrorActive = false
+            AppState.shared.latestMirrorFrame = nil
+        }
         DispatchQueue.main.async {
             AppState.shared.webSocketStatus = .stopped
         }
@@ -139,6 +155,7 @@ class WebSocketServer: ObservableObject {
             text: { [weak self] session, text in
                 guard let self = self else { return }
 
+                print("[websocket] [raw] incoming text length=\(text.count)")
                 // Step 1: Decrypt the message
                 let decryptedText: String
                 if let key = self.symmetricKey {
@@ -146,6 +163,8 @@ class WebSocketServer: ObservableObject {
                 } else {
                     decryptedText = text
                 }
+                let usedEncryption = (self.symmetricKey != nil)
+                print("[websocket] [decrypt] used=\(usedEncryption) decryptedLen=\(decryptedText.count)")
 
                 let truncated = decryptedText.count > 300
                 ? decryptedText.prefix(300) + "..."
@@ -161,7 +180,8 @@ class WebSocketServer: ObservableObject {
                             self.handleMessage(message)
                         }
                     } catch {
-                        print("[websocket] WebSocket JSON decode failed: \(error)")
+                        let snippet = String(decryptedText.prefix(200))
+                        print("[websocket] WebSocket JSON decode failed: \(error) | snippet=\(snippet)")
                     }
                 }
             },
@@ -169,6 +189,7 @@ class WebSocketServer: ObservableObject {
             connected: { [weak self] session in
                 print("[websocket] Device connected")
                 self?.activeSessions.append(session)
+                print("[websocket] Active sessions: \(self?.activeSessions.count ?? 0)")
             },
             disconnected: { [weak self] session in
                 guard let self = self else { return }
@@ -182,6 +203,14 @@ class WebSocketServer: ObservableObject {
                         AppState.shared.disconnectDevice()
                     }
                 }
+                // Also clear mirror state when the last session disconnects
+                if self.activeSessions.isEmpty {
+                    DispatchQueue.main.async {
+                        AppState.shared.isMirrorActive = false
+                        AppState.shared.latestMirrorFrame = nil
+                    }
+                }
+                print("[websocket] Active sessions: \(self.activeSessions.count)")
             }
         )
     }
@@ -321,6 +350,8 @@ class WebSocketServer: ObservableObject {
                 
                 // Send Mac info response to Android
                 sendMacInfoResponse()
+                
+                // Mirroring is user-initiated from the UI; do not auto-start here.
                }
 
 
@@ -341,6 +372,7 @@ class WebSocketServer: ObservableObject {
                     }
                 }
                 let notif = Notification(title: title, body: body, app: app, nid: nid, package: package, actions: actions)
+                print("[websocket] notification: id=\(nid) title=\(title) app=\(app)")
                 DispatchQueue.main.async {
                     AppState.shared.addNotification(notif)
                 }
@@ -454,6 +486,7 @@ class WebSocketServer: ObservableObject {
                         likeStatus: likeStatus
                     )
                 )
+                print("[websocket] status: battery=\(level)% charging=\(isCharging) music=\(title) playing=\(playing)")
             }
 
 
@@ -473,6 +506,7 @@ class WebSocketServer: ObservableObject {
 
         case .appIcons:
             if let dict = message.data.value as? [String: [String: Any]] {
+                print("[websocket] appIcons: incoming=\(dict.count)")
                 DispatchQueue.global(qos: .background).async {
                     let incomingPackages = Set(dict.keys)
                     let existingPackages = Set(AppState.shared.androidApps.keys)
@@ -536,6 +570,7 @@ class WebSocketServer: ObservableObject {
         case .clipboardUpdate:
             if let dict = message.data.value as? [String: Any],
                let text = dict["text"] as? String {
+                print("[websocket] clipboardUpdate len=\(text.count)")
                 AppState.shared.updateClipboardFromAndroid(text)
             }
 
@@ -547,6 +582,7 @@ class WebSocketServer: ObservableObject {
                let size = dict["size"] as? Int,
                let mime = dict["mime"] as? String {
                 let checksum = dict["checksum"] as? String
+                print("[websocket] (file-transfer) init id=\(id) name=\(name) size=\(size) mime=\(mime) checksum=\(checksum ?? "nil")")
 
                 let tempDir = FileManager.default.temporaryDirectory
                 let safeName = name.replacingOccurrences(of: "/", with: "_")
@@ -569,13 +605,13 @@ class WebSocketServer: ObservableObject {
                let chunkBase64 = dict["chunk"] as? String,
                let io = incomingFiles[id],
                let data = Data(base64Encoded: chunkBase64) {
-
                 io.fileHandle?.seekToEndOfFile()
                 io.fileHandle?.write(data)
                 // Update incoming progress in AppState (increment)
                 let prev = AppState.shared.transfers[id]?.bytesTransferred ?? 0
                 let newBytes = prev + data.count
                 AppState.shared.updateIncomingProgress(id: id, receivedBytes: newBytes)
+                print("[websocket] (file-transfer) chunk id=\(id) size=\(data.count) receivedBytes=\(newBytes)")
             }
 
         case .fileChunkAck:
@@ -593,6 +629,7 @@ class WebSocketServer: ObservableObject {
                     let id = dict["id"] as? String,
                     let state = incomingFiles[id] {
                     state.fileHandle?.closeFile()
+                    print("[websocket] (file-transfer) complete id=\(id) temp=\(state.tempUrl.path)")
 
                     // Resolve a name for notifications and final filename. Prefer AppState metadata; fall back to temp filename.
                     let resolvedName = AppState.shared.transfers[id]?.name ?? state.tempUrl.lastPathComponent
@@ -694,6 +731,191 @@ class WebSocketServer: ObservableObject {
             // This case handles wake-up requests from Android to Mac
             // Currently not expected as Mac sends wake-up requests to Android, not vice versa
             print("[websocket] Received wakeUpRequest from Android (not typically expected)")
+            
+        case .wallpaperResponse:
+            if let dict = message.data.value as? [String: Any] {
+                let success = dict["success"] as? Bool ?? false
+                let msg = dict["message"] as? String
+                let wallpaperB64 = dict["wallpaper"] as? String
+                print("[websocket] wallpaperResponse success=\(success) message=\(msg ?? "") wallpaperLen=\(wallpaperB64?.count ?? 0)")
+                // Optionally store wallpaper
+                if let wallpaperB64 = wallpaperB64, !wallpaperB64.isEmpty {
+                    AppState.shared.currentDeviceWallpaperBase64 = wallpaperB64
+                }
+            }
+            
+        case .mirrorRequest:
+            if let dict = message.data.value as? [String: Any],
+               let action = dict["action"] as? String {
+                let mode = dict["mode"] as? String
+                let package = dict["package"] as? String
+                let options = dict["options"] as? [String: Any] ?? [:]
+
+                if action == "start" {
+                    guard AppState.shared.isPlus else {
+                        sendMirrorResponse(["status": "error", "message": "Mirror feature requires Plus subscription"])
+                        return
+                    }
+                    guard let device = AppState.shared.device else {
+                        sendMirrorResponse(["status": "error", "message": "No connected device"])
+                        return
+                    }
+                    guard AppState.shared.adbConnected else {
+                        sendMirrorResponse(["status": "error", "message": "ADB not connected"])
+                        return
+                    }
+                    // Save current scrcpy settings to restore after start
+                    let originalBitrate = AppState.shared.scrcpyBitrate
+                    let originalResolution = AppState.shared.scrcpyResolution
+
+                    // Override bitrate/resolution if options provided (expecting Int)
+                    if let bitrateOpt = options["bitrate"] as? Int {
+                        AppState.shared.scrcpyBitrate = bitrateOpt
+                    }
+                    if let resolutionOpt = options["resolution"] as? Int {
+                        AppState.shared.scrcpyResolution = resolutionOpt
+                    }
+
+                    if mode == "app", let pkg = package, !pkg.isEmpty {
+                        ADBConnector.startScrcpy(ip: device.ipAddress, port: AppState.shared.adbPort, deviceName: device.name, package: pkg)
+                        sendMirrorResponse([
+                            "status": "started",
+                            "mode": "app",
+                            "package": pkg,
+                            "transport": "websocket",
+                            "wsUrl": "ws://\(self.localIPAddress ?? "127.0.0.1"):\(self.localPort ?? Defaults.serverPort)/socket"
+                        ])
+                    } else if mode == "desktop" {
+                        ADBConnector.startScrcpy(ip: device.ipAddress, port: AppState.shared.adbPort, deviceName: device.name, desktop: true)
+                        sendMirrorResponse([
+                            "status": "started",
+                            "mode": "desktop",
+                            "package": "",
+                            "transport": "websocket",
+                            "wsUrl": "ws://\(self.localIPAddress ?? "127.0.0.1"):\(self.localPort ?? Defaults.serverPort)/socket"
+                        ])
+                    } else {
+                        ADBConnector.startScrcpy(ip: device.ipAddress, port: AppState.shared.adbPort, deviceName: device.name)
+                        sendMirrorResponse([
+                            "status": "started",
+                            "mode": "device",
+                            "package": "",
+                            "transport": "websocket",
+                            "wsUrl": "ws://\(self.localIPAddress ?? "127.0.0.1"):\(self.localPort ?? Defaults.serverPort)/socket"
+                        ])
+                    }
+
+                    // Restore original scrcpy settings to avoid side effects
+                    AppState.shared.scrcpyBitrate = originalBitrate
+                    AppState.shared.scrcpyResolution = originalResolution
+
+                } else if action == "stop" {
+                    // No direct stop API here; placeholder
+                    // Could implement sending AppleScript or other means to kill scrcpy process or signal to stop
+                    sendMirrorResponse(["status": "not_implemented"])
+                } else {
+                    sendMirrorResponse(["status": "error", "message": "Unknown mirrorRequest action"])
+                }
+            }
+            
+        case .mirrorResponse:
+            if let dict = message.data.value as? [String: Any] {
+                let status = dict["status"] as? String ?? "unknown"
+                let message = dict["message"] as? String ?? ""
+                let mode = dict["mode"] as? String ?? ""
+                let package = dict["package"] as? String ?? ""
+                print("[websocket] mirrorResponse status=\(status) message=\(message) mode=\(mode) package=\(package)")
+            }
+            
+        case .mirrorStart:
+            if let dict = message.data.value as? [String: Any] {
+                DispatchQueue.main.async {
+                    AppState.shared.isMirrorActive = true
+                }
+                // Optionally parse parameters for debugging
+                print("[websocket] mirrorStart received with fps=\(dict["fps"] ?? "nil") quality=\(dict["quality"] ?? "nil") width=\(dict["width"] ?? "nil") height=\(dict["height"] ?? "nil")")
+                sendMirrorAck(action: "start", ok: true)
+            } else {
+                sendMirrorAck(action: "start", ok: false, message: "Missing data for mirrorStart")
+            }
+
+        case .mirrorStop:
+            DispatchQueue.main.async {
+                AppState.shared.isMirrorActive = false
+                AppState.shared.latestMirrorFrame = nil
+            }
+            sendMirrorAck(action: "stop", ok: true)
+
+        case .mirrorFrame:
+            if let dict = message.data.value as? [String: Any],
+               let base64Image = dict["image"] as? String {
+                // Optional metadata
+                _ = dict["format"] as? String // removed unused bindings
+                _ = dict["ts"]
+                _ = dict["seq"]
+
+                if let imageData = Data(base64Encoded: base64Image) {
+                    if let nsImage = NSImage(data: imageData) {
+                        DispatchQueue.main.async {
+                            if AppState.shared.isMirrorActive {
+                                AppState.shared.latestMirrorFrame = nsImage
+                            }
+                        }
+                    } else {
+                        print("[websocket] mirrorFrame failed to create NSImage from data")
+                    }
+                } else {
+                    print("[websocket] mirrorFrame failed to decode base64 image data")
+                }
+            }
+            
+        case .remoteConnectResponse:
+            if let dict = message.data.value as? [String: Any],
+               let features = dict["features"] as? [String] {
+                print("[websocket] remoteConnectResponse features: \(features)")
+                // Optionally: set a flag in AppState if needed
+                // e.g. AppState.shared.remoteConnectFeatures = features
+            }
+            
+        case .screenshotResponse:
+            if let dict = message.data.value as? [String: Any],
+               let base64Image = dict["image"] as? String {
+                if let imageData = Data(base64Encoded: base64Image) {
+                    if let nsImage = NSImage(data: imageData) {
+                        DispatchQueue.main.async {
+                            AppState.shared.latestMirrorFrame = nsImage // Reuse latestMirrorFrame for screenshot
+                            AppState.shared.isMirrorActive = false      // On-demand screenshot, not active mirror stream
+                        }
+                    } else {
+                        print("[websocket] screenshotResponse failed to create NSImage from data")
+                    }
+                } else {
+                    print("[websocket] screenshotResponse failed to decode base64 image data")
+                }
+            }
+
+        case .remoteConnectRequest:
+            if let dict = message.data.value as? [String: Any], let features = dict["features"] as? [String] {
+                print("[websocket] Received remoteConnectRequest (unexpected on Mac) features=\(features)")
+            } else {
+                print("[websocket] Received remoteConnectRequest (unexpected on Mac)")
+            }
+            
+        case .inputEvent:
+            print("[websocket] Received inputEvent from Android (ignored on Mac)")
+            
+        case .navAction:
+            print("[websocket] Received navAction from Android (ignored on Mac)")
+            
+        case .launchApp:
+            print("[websocket] Received launchApp from Android (ignored on Mac)")
+            
+        case .screenshotRequest:
+            print("[websocket] Received screenshotRequest from Android (ignored on Mac)")
+            
+        @unknown default:
+            print("[websocket] Warning: unhandled message type: \(message.type)")
+            return
         }
 
 
@@ -794,17 +1016,226 @@ class WebSocketServer: ObservableObject {
     // MARK: - Sending Helpers
 
     private func broadcast(message: String) {
+        print("[websocket] [broadcast] sessions=\(activeSessions.count) msgLen=\(message.count)")
         activeSessions.forEach { $0.writeText(message) }
     }
 
     private func sendToFirstAvailable(message: String) {
+        guard let first = activeSessions.first else {
+            let preview = message.prefix(60)
+            print("[websocket] [send] No active sessions; dropping message preview=\(preview)")
+            return
+        }
         if let key = symmetricKey, let encrypted = encryptMessage(message, using: key) {
-            activeSessions.first?.writeText(encrypted)
+            print("[websocket] [send] encrypted len=\(encrypted.count)")
+            first.writeText(encrypted)
         } else {
-            activeSessions.first?.writeText(message)
+            let encryptionState = (symmetricKey != nil) ? "enabled-but-failed" : "disabled"
+            print("[websocket] [send] plain len=\(message.count) (encryption=\(encryptionState))")
+            first.writeText(message)
+        }
+    }
+    
+    // New Sending Helpers per instructions
+    
+    func sendRemoteConnectRequest(features: [String]) {
+        let dataDict: [String: Any] = [
+            "features": features
+        ]
+        let messageDict: [String: Any] = [
+            "type": "remoteConnectRequest",
+            "data": dataDict
+        ]
+        
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                sendToFirstAvailable(message: jsonString)
+            }
+        } catch {
+            print("[websocket] Error creating remoteConnectRequest message: \(error)")
+        }
+    }
+    
+    func sendInputTap(x: Int, y: Int) {
+        let dataDict: [String: Any] = [
+            "type": "tap",
+            "x": x,
+            "y": y
+        ]
+        sendInputEvent(dataDict)
+    }
+    
+    func sendInputSwipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Int) {
+        let dataDict: [String: Any] = [
+            "type": "swipe",
+            "x1": x1,
+            "y1": y1,
+            "x2": x2,
+            "y2": y2,
+            "durationMs": durationMs
+        ]
+        sendInputEvent(dataDict)
+    }
+    
+    func sendInputKey(keyCode: Int) {
+        let dataDict: [String: Any] = [
+            "type": "key",
+            "keyCode": keyCode
+        ]
+        sendInputEvent(dataDict)
+    }
+    
+    func sendInputText(_ text: String) {
+        let dataDict: [String: Any] = [
+            "type": "text",
+            "text": text
+        ]
+        sendInputEvent(dataDict)
+    }
+    
+    private func sendInputEvent(_ data: [String: Any]) {
+        let messageDict: [String: Any] = [
+            "type": "inputEvent",
+            "data": data
+        ]
+        
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                sendToFirstAvailable(message: jsonString)
+            }
+        } catch {
+            print("[websocket] Error creating inputEvent message: \(error)")
+        }
+    }
+    
+    func sendNavAction(_ action: String) {
+        let messageDict: [String: Any] = [
+            "type": "navAction",
+            "data": [
+                "action": action
+            ]
+        ]
+        
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                sendToFirstAvailable(message: jsonString)
+            }
+        } catch {
+            print("[websocket] Error creating navAction message: \(error)")
+        }
+    }
+    
+    func sendLaunchApp(package: String) {
+        let messageDict: [String: Any] = [
+            "type": "launchApp",
+            "data": [
+                "package": package
+            ]
+        ]
+        
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                sendToFirstAvailable(message: jsonString)
+            }
+        } catch {
+            print("[websocket] Error creating launchApp message: \(error)")
+        }
+    }
+    
+    func requestScreenshot(format: String = "jpeg", quality: Double = 0.6, maxWidth: Int? = nil) {
+        var dataDict: [String: Any] = [
+            "format": format,
+            "quality": quality
+        ]
+        if let maxWidth = maxWidth {
+            dataDict["maxWidth"] = maxWidth
+        }
+        
+        let messageDict: [String: Any] = [
+            "type": "screenshotRequest",
+            "data": dataDict
+        ]
+        
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                sendToFirstAvailable(message: jsonString)
+            }
+        } catch {
+            print("[websocket] Error creating screenshotRequest message: \(error)")
         }
     }
 
+    // MARK: - Mirror Request/Response Helpers
+
+    func sendMirrorRequest(action: String, mode: String? = nil, package: String? = nil, options: [String: Any] = [:]) {
+        var dataDict: [String: Any] = ["action": action]
+        // Prefer WebSocket as the mirror transport by default so Android doesn't spin up a TCP server
+        var mergedOptions = options
+        if mergedOptions["transport"] == nil {
+            mergedOptions["transport"] = "websocket"
+        }
+        if !mergedOptions.isEmpty {
+            dataDict["options"] = mergedOptions
+        }
+
+        if let mode = mode, !mode.isEmpty {
+            dataDict["mode"] = mode
+        }
+        if let package = package, !package.isEmpty {
+            dataDict["package"] = package
+        }
+
+        let messageDict: [String: Any] = [
+            "type": "mirrorRequest",
+            "data": dataDict
+        ]
+
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                sendToFirstAvailable(message: jsonString)
+            }
+        } catch {
+            print("[websocket] Error creating mirrorRequest message: \(error)")
+        }
+    }
+
+    func sendMirrorResponse(_ payload: [String: Any]) {
+        let messageDict: [String: Any] = [
+            "type": "mirrorResponse",
+            "data": payload
+        ]
+
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                sendToFirstAvailable(message: jsonString)
+            }
+        } catch {
+            print("[websocket] Error creating mirrorResponse message: \(error)")
+        }
+    }
+    
+    func sendMirrorAck(action: String, ok: Bool, message: String? = nil) {
+        var data: [String: Any] = [
+            "action": action,
+            "ok": ok
+        ]
+        if let message { data["message"] = message }
+        let dict: [String: Any] = [
+            "type": "mirrorResponse",
+            "data": data
+        ]
+        if let json = try? JSONSerialization.data(withJSONObject: dict),
+           let str = String(data: json, encoding: .utf8) {
+            sendToFirstAvailable(message: str)
+        }
+    }
 
     // MARK: - Notification Control
 
@@ -1005,23 +1436,25 @@ class WebSocketServer: ObservableObject {
         guard let data = try? Data(contentsOf: url) else { return }
         // compute checksum
         let checksum = FileTransferProtocol.sha256Hex(data)
+        print("[websocket] (file-transfer) sendFile path=\(url.path) size=\(data.count) chunkSize=\(chunkSize)")
 
-    let transferId = UUID().uuidString
+        let transferId = UUID().uuidString
         let fileName = url.lastPathComponent
         let totalSize = data.count
         let mime = mimeType(for: url) ?? "application/octet-stream"
 
-    // Track in AppState
-    AppState.shared.startOutgoingTransfer(id: transferId, name: fileName, size: totalSize, mime: mime, chunkSize: chunkSize)
+        // Track in AppState
+        AppState.shared.startOutgoingTransfer(id: transferId, name: fileName, size: totalSize, mime: mime, chunkSize: chunkSize)
 
-    // Send init message
-    let initMessage = FileTransferProtocol.buildInit(id: transferId, name: fileName, size: totalSize, mime: mime, checksum: checksum)
-    sendToFirstAvailable(message: initMessage)
+        // Send init message
+        let initMessage = FileTransferProtocol.buildInit(id: transferId, name: fileName, size: totalSize, mime: mime, checksum: checksum)
+        sendToFirstAvailable(message: initMessage)
 
         // Send chunks using a simple sliding window to allow multiple in-flight chunks
         let windowSize = 8
         let totalChunks = (totalSize + chunkSize - 1) / chunkSize
         outgoingAcks[transferId] = []
+        print("[websocket] (file-transfer) id=\(transferId) name=\(fileName) totalChunks=\(totalChunks) checksumPrefix=\(checksum.prefix(8))")
 
         // Keep a buffer of sent chunks for potential retransmit: index -> (payloadBase64, attempts, lastSent)
         var sentBuffer: [Int: (payload: String, attempts: Int, lastSent: Date)] = [:]
@@ -1037,6 +1470,7 @@ class WebSocketServer: ObservableObject {
             let chunkMessage = FileTransferProtocol.buildChunk(id: transferId, index: idx, base64Chunk: base64)
             sendToFirstAvailable(message: chunkMessage)
             sentBuffer[idx] = (payload: base64, attempts: 1, lastSent: Date())
+            print("[websocket] (file-transfer) -> send chunk id=\(transferId) index=\(idx) size=\(chunk.count)")
         }
 
         // Prime the window
@@ -1089,6 +1523,7 @@ class WebSocketServer: ObservableObject {
                     let chunk = data.subdata(in: start..<end)
                     let base64 = chunk.base64EncodedString()
                     let chunkMessage = FileTransferProtocol.buildChunk(id: transferId, index: idx, base64Chunk: base64)
+                    print("[websocket] (file-transfer) retransmit id=\(transferId) index=\(idx) attempt=\(entry.attempts + 1)")
                     sendToFirstAvailable(message: chunkMessage)
                     sentBuffer[idx] = (payload: base64, attempts: entry.attempts + 1, lastSent: Date())
                 }
@@ -1251,3 +1686,4 @@ class WebSocketServer: ObservableObject {
 
 
 }
+

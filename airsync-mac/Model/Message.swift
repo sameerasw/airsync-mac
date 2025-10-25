@@ -18,6 +18,8 @@ enum MessageType: String, Codable {
     case mediaControlResponse
     case macMediaControl
     case macMediaControlResponse
+    case mirrorRequest
+    case mirrorResponse
     case appIcons
     case clipboardUpdate
     case callEvent = "call_event"
@@ -31,6 +33,19 @@ enum MessageType: String, Codable {
     case transferVerified
     // wake up / quick connect
     case wakeUpRequest
+    case wallpaperResponse
+    // ADB-less mirroring
+    case mirrorStart
+    case mirrorStop
+    case mirrorFrame
+    // remote connect event exchange
+    case remoteConnectRequest
+    case remoteConnectResponse
+    case inputEvent
+    case navAction
+    case launchApp
+    case screenshotRequest
+    case screenshotResponse
 }
 
 struct Message: Codable {

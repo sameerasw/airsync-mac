@@ -16,6 +16,11 @@ struct GlassButtonView: View {
             .controlSize(size)
             .modifier(LabelStyleModifier(iconOnly: iconOnly && useSystemLabelStyle))
             .applyGlassButtonStyle(primary: primary)
+            .if(isCloseIcon && iconOnly) { view in
+                view
+                    .padding(.top, 8)
+                    .padding(.trailing, 8)
+            }
             .contentTransition(.symbolEffect)
             .ifLet(circleSize) { view, dim in
                 view.frame(width: dim, height: dim)
@@ -36,6 +41,13 @@ struct GlassButtonView: View {
     }
     // Use native system Label sizing when custom sizing is not active
     private var useSystemLabelStyle: Bool { !customIconSizingActive }
+
+    private var isCloseIcon: Bool {
+        if let name = systemImage {
+            return name == "xmark" || name == "xmark.circle" || name == "xmark.circle.fill"
+        }
+        return false
+    }
 
     // Activate custom icon sizing only if explicit circle or fixed icon size provided
     private var customIconSizingActive: Bool { circleSize != nil || fixedIconSize != nil }
@@ -74,6 +86,17 @@ private extension View {
     func ifLet<T, Content: View>(_ value: T?, transform: (Self, T) -> Content) -> some View {
         if let value = value {
             transform(self, value)
+        } else {
+            self
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+        if condition {
+            transform(self)
         } else {
             self
         }
@@ -138,3 +161,4 @@ extension View {
     }
     .padding()
 }
+

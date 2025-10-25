@@ -23,6 +23,7 @@ class AppState: ObservableObject {
 
     init() {
         self.isPlus = UserDefaults.standard.bool(forKey: "isPlus")
+        self.licenseCheck = UserDefaults.standard.object(forKey: "licenseCheck") as? Bool ?? true
 
         // Load from UserDefaults
         let name = UserDefaults.standard.string(forKey: "deviceName") ?? (Host.current().localizedName ?? "My Mac")
@@ -87,8 +88,13 @@ class AppState: ObservableObject {
         UserDefaults.standard.set(true, forKey: "isPlus")
         UserDefaults.standard.lastLicenseSuccessfulCheckDate = Date().addingTimeInterval(-(24 * 60 * 60))
         #else
-        Task {
-            await Gumroad().checkLicenseIfNeeded()
+        if licenseCheck {
+            Task {
+                await Gumroad().checkLicenseIfNeeded()
+            }
+        } else {
+            // When licenseCheck is disabled, grant Plus temporarily (without persisting)
+            setPlusTemporarily(true)
         }
         #endif
 
@@ -142,11 +148,18 @@ class AppState: ObservableObject {
             } else {
                 selectedTab = .notifications
             }
+            
+            // When a device reconnects, restore last saved notifications if none in memory
+            if device != nil && self.notifications.isEmpty {
+                self.loadNotificationsFromDisk()
+            }
         }
     }
-    @Published var notifications: [Notification] = []
-    @Published var callEvents: [CallEvent] = []
-    @Published var activeCall: CallEvent? = nil
+    @Published var notifications: [Notification] = [] {
+        didSet {
+            saveNotificationsToDisk()
+        }
+    }
     @Published var status: DeviceStatus? = nil
     @Published var myDevice: Device? = nil
     @Published var port: UInt16 = Defaults.serverPort
@@ -321,6 +334,10 @@ class AppState: ObservableObject {
         }
     }
 
+    // MARK: - ADB-less Mirroring State
+    @Published var isMirrorActive: Bool = false
+    @Published var latestMirrorFrame: NSImage? = nil
+
     @Published var isOnboardingActive: Bool = false {
         didSet {
             NotificationCenter.default.post(
@@ -335,7 +352,24 @@ class AppState: ObservableObject {
     @Published var transfers: [String: FileTransferSession] = [:]
 
     // Toggle licensing
-    let licenseCheck: Bool = true
+    @Published var licenseCheck: Bool {
+        didSet {
+            UserDefaults.standard.set(licenseCheck, forKey: "licenseCheck")
+            if !licenseCheck {
+                // When verification is disabled, treat user as Plus immediately (non-persistent)
+                setPlusTemporarily(true)
+            } else {
+                // When re-enabling verification, re-check license to restore correct state
+                #if !SELF_COMPILED
+                Task {
+                    await Gumroad().checkLicenseIfNeeded()
+                }
+                #else
+                setPlusTemporarily(true)
+                #endif
+            }
+        }
+    }
 
     @Published var isPlus: Bool {
         didSet {
@@ -912,53 +946,32 @@ class AppState: ObservableObject {
         }
     }
 
-    // MARK: - Pinned Apps Management
+    // MARK: - Notifications Persistence
+    private func notificationsFileURL() -> URL {
+        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        return dir.appendingPathComponent("notifications.json")
+    }
 
-    func loadPinnedApps() {
-        guard let data = UserDefaults.standard.data(forKey: "pinnedApps") else {
-            return
-        }
-
+    private func saveNotificationsToDisk() {
         do {
-            pinnedApps = try JSONDecoder().decode([PinnedApp].self, from: data)
+            let data = try JSONEncoder().encode(notifications)
+            try data.write(to: notificationsFileURL(), options: .atomic)
         } catch {
-            print("[state] (pinned) Error loading pinned apps: \(error)")
+            print("[state] (notifications) Error saving notifications: \(error)")
         }
     }
 
-    func savePinnedApps() {
+    func loadNotificationsFromDisk() {
+        let url = notificationsFileURL()
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
         do {
-            let data = try JSONEncoder().encode(pinnedApps)
-            UserDefaults.standard.set(data, forKey: "pinnedApps")
+            let data = try Data(contentsOf: url)
+            let saved = try JSONDecoder().decode([Notification].self, from: data)
+            DispatchQueue.main.async {
+                self.notifications = saved
+            }
         } catch {
-            print("[state] (pinned) Error saving pinned apps: \(error)")
-        }
-    }
-
-    func addPinnedApp(_ app: AndroidApp) -> Bool {
-        // Check if already pinned
-        guard !pinnedApps.contains(where: { $0.packageName == app.packageName }) else {
-            return false
-        }
-
-        // Check if under the limit of 3 apps
-        guard pinnedApps.count < 3 else {
-            return false
-        }
-
-        let pinnedApp = PinnedApp(packageName: app.packageName, appName: app.name, iconUrl: app.iconUrl)
-        pinnedApps.append(pinnedApp)
-        return true
-    }
-
-    func removePinnedApp(_ packageName: String) {
-        pinnedApps.removeAll { $0.packageName == packageName }
-    }
-
-    func validatePinnedApps() {
-        // Remove pinned apps that are no longer available
-        pinnedApps.removeAll { pinnedApp in
-            androidApps[pinnedApp.packageName] == nil
+            print("[state] (notifications) Error loading notifications: \(error)")
         }
     }
 
@@ -1012,3 +1025,4 @@ class AppState: ObservableObject {
         return savedName
     }
 }
+

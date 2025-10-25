@@ -119,6 +119,43 @@ struct SettingsFeaturesView: View {
             // Show port field if ADB toggle is on
             if appState.isPlus, (appState.adbEnabled || appState.adbConnected){
 
+                // Quick actions: Start mirroring from Settings
+                HStack(spacing: 12) {
+                    GlassButtonView(
+                        label: "Start Mirroring",
+                        systemImage: "rectangle.on.rectangle",
+                        primary: true,
+                        action: {
+                            guard let device = appState.device else { return }
+                            ADBConnector.startScrcpy(
+                                ip: device.ipAddress,
+                                port: appState.adbPort,
+                                deviceName: device.name
+                            )
+                        }
+                    )
+                    .disabled(!(appState.isPlus && appState.adbConnected && appState.device != nil))
+                    .help(appState.adbConnected ? "Launch scrcpy mirroring" : "Requires ADB connection")
+
+                    GlassButtonView(
+                        label: "Desktop Mode",
+                        systemImage: "display",
+                        action: {
+                            guard let device = appState.device else { return }
+                            ADBConnector.startScrcpy(
+                                ip: device.ipAddress,
+                                port: appState.adbPort,
+                                deviceName: device.name,
+                                desktop: true
+                            )
+                        }
+                    )
+                    .disabled(!(appState.isPlus && appState.adbConnected && appState.device != nil))
+                    .help("Mirror in desktop mode (Android 15+)")
+
+                    Spacer()
+                }
+
                 Spacer()
 
                 HStack{
@@ -273,6 +310,17 @@ struct SettingsFeaturesView: View {
 
         VStack{
 
+            HStack {
+                Label("Disable verification check", systemImage: "checkmark.shield")
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { !appState.licenseCheck },
+                    set: { appState.licenseCheck = !$0 }
+                ))
+                .toggleStyle(.switch)
+                .help("Turn off license verification checks. This will treat the app as Plus without verifying.")
+            }
+
             SettingsToggleView(name: "Sync clipboard", icon: "clipboard", isOn: $appState.isClipboardSyncEnabled)
 
             HStack {
@@ -374,3 +422,4 @@ struct SettingsFeaturesView: View {
         }
     }
 }
+
