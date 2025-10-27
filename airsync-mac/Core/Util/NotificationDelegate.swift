@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Cocoa
 import UserNotifications
 
 class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
@@ -28,6 +29,20 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
+        // If the user clicked the notification body (default action) for a call notification,
+        // we don't want the app to open/activate. Intercept the default action and hide the app.
+        if response.actionIdentifier == UNNotificationDefaultActionIdentifier {
+            let userInfo = response.notification.request.content.userInfo
+            let isCallNotif = (userInfo["callId"] as? String) != nil || response.notification.request.identifier.hasPrefix("call_")
+            if isCallNotif {
+                DispatchQueue.main.async {
+                    // Hide the app immediately to prevent activation from lingering.
+                    NSApp.hide(nil)
+                }
+                completionHandler()
+                return
+            }
+        }
         if response.actionIdentifier == "OPEN_LINK" {
             let userInfo = response.notification.request.content.userInfo
             if let urlString = userInfo["url"] as? String, let url = URL(string: urlString) {
