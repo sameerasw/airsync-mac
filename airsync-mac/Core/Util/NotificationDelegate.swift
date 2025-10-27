@@ -58,6 +58,19 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                 replyText = textResp.userText
             }
             WebSocketServer.shared.sendNotificationAction(id: nid, name: actionName, text: replyText)
+        } else if response.actionIdentifier == "CALL_ACCEPT" {
+            // User accepted the incoming call from the system notification
+            DispatchQueue.main.async {
+                AppState.shared.acceptCall()
+            }
+        } else if response.actionIdentifier == "CALL_DECLINE" {
+            DispatchQueue.main.async {
+                AppState.shared.declineCall()
+            }
+        } else if response.actionIdentifier == "CALL_END" {
+            DispatchQueue.main.async {
+                AppState.shared.endCall()
+            }
         }
 
         completionHandler()

@@ -26,6 +26,9 @@ enum MessageType: String, Codable {
     case fileTransferComplete
     case fileChunkAck
     case transferVerified
+    // call state / control
+    case callState
+    case callControlResponse
     // wake up / quick connect
     case wakeUpRequest
 }
