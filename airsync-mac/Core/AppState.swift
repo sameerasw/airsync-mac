@@ -700,6 +700,13 @@ class AppState: ObservableObject {
             self.status = nil
             self.currentDeviceWallpaperBase64 = nil
             self.transfers = [:]
+            
+            // Reset mirror state
+            self.isMirrorActive = false
+            self.latestMirrorFrame = nil
+            self.isMirroring = false
+            self.isMirrorRequestPending = false
+            self.mirrorError = nil
 
             if self.adbConnected {
                 ADBConnector.disconnectADB()
