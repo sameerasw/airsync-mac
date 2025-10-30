@@ -16,16 +16,6 @@ struct AppContentView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            // Live Activities Overlay
-            VStack {
-                Spacer()
-                if #available(macOS 13.0, *) {
-                    LiveActivitiesView()
-                        .padding()
-                }
-            }
-            .zIndex(100)
-            
             ZStack {
                 switch AppState.shared.selectedTab {
                 case .notifications:
