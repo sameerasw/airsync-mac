@@ -48,43 +48,49 @@ struct SidebarView: View {
             .safeAreaInset(edge: .bottom) {
                 HStack{
                     if appState.device != nil {
-                        // Start Mirroring button next to Disconnect
+                        // Mirror button with dynamic state
                         GlassButtonView(
-                            label: "Start Mirroring",
-                            systemImage: "rectangle.on.rectangle",
-                            primary: true,
+                            label: appState.isMirroring ? "Stop Mirroring" : (appState.isMirrorRequestPending ? "Starting..." : "Start Mirroring"),
+                            systemImage: appState.isMirroring ? "stop.circle" : "rectangle.on.rectangle",
+                            primary: !appState.isMirroring,
                             action: {
-                                guard let device = appState.device else { return }
+                                if appState.isMirroring {
+                                    // Stop mirroring
+                                    WebSocketServer.shared.stopMirroring()
+                                    print("[ui] Requested stop mirroring")
+                                } else if !appState.isMirrorRequestPending {
+                                    guard let device = appState.device else { return }
 
-                                // If ADB is enabled AND connected AND tools are present -> use scrcpy
-                                let adbEnabled = appState.adbEnabled && appState.adbConnected
-                                let hasADB = ADBConnector.findExecutable(named: "adb", fallbackPaths: ADBConnector.possibleADBPaths) != nil
-                                let hasScrcpy = ADBConnector.findExecutable(named: "scrcpy", fallbackPaths: ADBConnector.possibleScrcpyPaths) != nil
+                                    // If ADB is enabled AND connected AND tools are present -> use scrcpy
+                                    let adbEnabled = appState.adbEnabled && appState.adbConnected
+                                    let hasADB = ADBConnector.findExecutable(named: "adb", fallbackPaths: ADBConnector.possibleADBPaths) != nil
+                                    let hasScrcpy = ADBConnector.findExecutable(named: "scrcpy", fallbackPaths: ADBConnector.possibleScrcpyPaths) != nil
 
-                                if adbEnabled && hasADB && hasScrcpy {
-                                    ADBConnector.startScrcpy(
-                                        ip: device.ipAddress,
-                                        port: appState.adbPort,
-                                        deviceName: device.name
-                                    )
-                                } else {
-                                    // WebSocket transport: ask Android to connect back to the Mac's WS server
-                                    // Avoid TCP remote viewer to device:6996 (not a WS endpoint)
-                                    WebSocketServer.shared.sendMirrorRequest(
-                                        action: "start",
-                                        mode: "device",
-                                        package: nil,
-                                        options: [
-                                            "transport": "websocket",
-                                            "fps": 30,
-                                            "quality": 0.6,
-                                            "maxWidth": 1280
-                                        ]
-                                    )
-                                    print("[ui] Requested WebSocket mirroring (device mode)")
+                                    if adbEnabled && hasADB && hasScrcpy {
+                                        ADBConnector.startScrcpy(
+                                            ip: device.ipAddress,
+                                            port: appState.adbPort,
+                                            deviceName: device.name
+                                        )
+                                    } else {
+                                        // WebSocket transport: ask Android to connect back to the Mac's WS server
+                                        WebSocketServer.shared.sendMirrorRequest(
+                                            action: "start",
+                                            mode: "device",
+                                            package: nil,
+                                            options: [
+                                                "transport": "websocket",
+                                                "fps": 30,
+                                                "quality": 0.6,
+                                                "maxWidth": 1280
+                                            ]
+                                        )
+                                        print("[ui] Requested WebSocket mirroring (device mode)")
+                                    }
                                 }
                             }
                         )
+                        .disabled(appState.isMirrorRequestPending)
                         .transition(.identity)
 
                         GlassButtonView(

@@ -246,7 +246,7 @@ class WebSocketServer: ObservableObject {
                         // Create message with raw dictionary data
                         let message = FlexibleMessage(type: messageType, data: messageData)
                         DispatchQueue.main.async {
-                            self.handleFlexibleMessage(message)
+                                self.handleFlexibleMessage(message)
                         }
                     } catch {
                         let snippet = String(decryptedText.prefix(200))
@@ -402,16 +402,22 @@ class WebSocketServer: ObservableObject {
                 let version = dict["version"] as? String ?? "2.0.0"
                 let adbPorts = dict["adbPorts"] as? [String] ?? []
 
-                AppState.shared.device = Device(
-                    name: name,
-                    ipAddress: ip,
-                    port: port,
-                    version: version,
-                    adbPorts: adbPorts
-                )
+                DispatchQueue.main.async {
+                    AppState.shared.device = Device(
+                        name: name,
+                        ipAddress: ip,
+                        port: port,
+                        version: version
+                    )
+                }
 
-                if let base64 = dict["wallpaper"] as? String {
-                    AppState.shared.currentDeviceWallpaperBase64 = base64
+                if let base64 = dict["wallpaper"] as? String, !base64.isEmpty {
+                    print("[websocket] 📱 Received wallpaper in device info (\(base64.count) chars)")
+                    DispatchQueue.global(qos: .utility).async {
+                        DispatchQueue.main.async {
+                            AppState.shared.currentDeviceWallpaperBase64 = base64
+                        }
+                    }
                 }
 
                 if (!AppState.shared.adbConnected && AppState.shared.adbEnabled && AppState.shared.isPlus) {
@@ -426,12 +432,23 @@ class WebSocketServer: ObservableObject {
                 // Send Mac info response to Android
                 sendMacInfoResponse()
                 
-                // Auto-request all data on connection for better UX
-                print("[websocket] 📊 Auto-requesting call logs, SMS threads, and health data...")
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    self.requestCallLogs()
-                    self.requestSmsThreads()
-                    self.requestHealthSummary()
+                // Android now proactively syncs data on connection
+                // Only request data if not received within 3 seconds (fallback)
+                print("[websocket] 📊 Waiting for Android to proactively sync data...")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                    // Only request if we haven't received data yet
+                    if LiveNotificationManager.shared.callLogs.isEmpty {
+                        print("[websocket] 📊 Requesting call logs (fallback)")
+                        self.requestCallLogs()
+                    }
+                    if LiveNotificationManager.shared.smsThreads.isEmpty {
+                        print("[websocket] 📊 Requesting SMS threads (fallback)")
+                        self.requestSmsThreads()
+                    }
+                    if LiveNotificationManager.shared.healthSummary == nil {
+                        print("[websocket] 📊 Requesting health summary (fallback)")
+                        self.requestHealthSummary()
+                    }
                 }
                 
                 // Mirroring is user-initiated from the UI; do not auto-start here.
@@ -556,19 +573,21 @@ class WebSocketServer: ObservableObject {
                 let albumArt = (music["albumArt"] as? String) ?? ""
                 let likeStatus = (music["likeStatus"] as? String) ?? "none"
 
-                AppState.shared.status = DeviceStatus(
-                    battery: .init(level: level, isCharging: isCharging),
-                    isPaired: paired,
-                    music: .init(
-                        isPlaying: playing,
-                        title: title,
-                        artist: artist,
-                        volume: volume,
-                        isMuted: isMuted,
-                        albumArt: albumArt,
-                        likeStatus: likeStatus
+                DispatchQueue.main.async {
+                    AppState.shared.status = DeviceStatus(
+                        battery: .init(level: level, isCharging: isCharging),
+                        isPaired: paired,
+                        music: .init(
+                            isPlaying: playing,
+                            title: title,
+                            artist: artist,
+                            volume: volume,
+                            isMuted: isMuted,
+                            albumArt: albumArt,
+                            likeStatus: likeStatus
+                        )
                     )
-                )
+                }
                 print("[websocket] status: battery=\(level)% charging=\(isCharging) music=\(title) playing=\(playing)")
             }
 
@@ -587,6 +606,10 @@ class WebSocketServer: ObservableObject {
         case .macMediaControl:
             // Mac sends this to Android, shouldn't receive it
             print("[websocket] Warning: received 'macMediaControl' from remote (ignored).")
+            
+        case .macInfo:
+            // Mac sends this to Android, shouldn't receive it
+            print("[websocket] Warning: received 'macInfo' from remote (ignored).")
             
         case .macMediaControlResponse:
             if let dict = message.data.value as? [String: Any],
@@ -666,7 +689,9 @@ class WebSocketServer: ObservableObject {
             if let dict = message.data.value as? [String: Any],
                let text = dict["text"] as? String {
                 print("[websocket] clipboardUpdate len=\(text.count)")
-                AppState.shared.updateClipboardFromAndroid(text)
+                DispatchQueue.main.async {
+                    AppState.shared.updateClipboardFromAndroid(text)
+                }
             }
 
         // File transfer messages (Android -> Mac)
@@ -698,7 +723,9 @@ class WebSocketServer: ObservableObject {
                     incomingFilesChecksum[transferId] = checksum
                 }
                 // Start tracking incoming transfer in AppState
-                AppState.shared.startIncomingTransfer(id: transferId, name: fileName, size: fileSize, mime: mime)
+                DispatchQueue.main.async {
+                    AppState.shared.startIncomingTransfer(id: transferId, name: fileName, size: fileSize, mime: mime)
+                }
             }
 
         case .fileChunk:
@@ -716,10 +743,12 @@ class WebSocketServer: ObservableObject {
                 io.fileHandle?.seekToEndOfFile()
                 io.fileHandle?.write(data)
                 // Update incoming progress in AppState (increment)
-                let prev = AppState.shared.transfers[transferId]?.bytesTransferred ?? 0
-                let newBytes = prev + data.count
-                AppState.shared.updateIncomingProgress(id: transferId, receivedBytes: newBytes)
-                print("[websocket] (file-transfer) chunk id=\(transferId) size=\(data.count) receivedBytes=\(newBytes)")
+                DispatchQueue.main.async {
+                    let prev = AppState.shared.transfers[transferId]?.bytesTransferred ?? 0
+                    let newBytes = prev + data.count
+                    AppState.shared.updateIncomingProgress(id: transferId, receivedBytes: newBytes)
+                    print("[websocket] (file-transfer) chunk id=\(transferId) size=\(data.count) receivedBytes=\(newBytes)")
+                }
             }
 
         case .fileChunkAck:
@@ -760,20 +789,24 @@ class WebSocketServer: ObservableObject {
                             if expected.count == 32 && computed.count == 64 {
                                 print("[websocket] (file-transfer) ⚠️ MISMATCH: Android sent MD5 (32 chars) but Mac computed SHA256 (64 chars)")
                                 print("[websocket] (file-transfer) 💡 Android needs to use SHA256 instead of MD5 for checksums")
-                                AppState.shared.postNativeNotification(
-                                    id: "incoming_file_\(transferId)_mismatch",
-                                    appName: "AirSync",
-                                    title: "Received: \(resolvedName)",
-                                    body: "Saved to Downloads (checksum algorithm mismatch: MD5 vs SHA256)"
-                                )
+                                DispatchQueue.main.async {
+                                    AppState.shared.postNativeNotification(
+                                        id: "incoming_file_\(transferId)_mismatch",
+                                        appName: "AirSync",
+                                        title: "Received: \(resolvedName)",
+                                        body: "Saved to Downloads (checksum algorithm mismatch: MD5 vs SHA256)"
+                                    )
+                                }
                             } else if computed != expected {
                                 print("[websocket] (file-transfer) ❌ Checksum mismatch for incoming file id=\(transferId)")
-                                AppState.shared.postNativeNotification(
-                                    id: "incoming_file_\(transferId)_mismatch",
-                                    appName: "AirSync",
-                                    title: "Received: \(resolvedName)",
-                                    body: "Saved to Downloads (checksum mismatch)"
-                                )
+                                DispatchQueue.main.async {
+                                    AppState.shared.postNativeNotification(
+                                        id: "incoming_file_\(transferId)_mismatch",
+                                        appName: "AirSync",
+                                        title: "Received: \(resolvedName)",
+                                        body: "Saved to Downloads (checksum mismatch)"
+                                    )
+                                }
                             } else {
                                 print("[websocket] (file-transfer) ✅ Checksum verified successfully")
                             }
@@ -794,13 +827,15 @@ class WebSocketServer: ObservableObject {
                             print("[websocket] (file-transfer) ✅ Saved incoming file to \(finalDest.path)")
 
                             // Mark as completed in AppState and post notification via AppState util
-                            AppState.shared.completeIncoming(id: transferId, verified: nil)
-                            AppState.shared.postNativeNotification(
-                                id: "incoming_file_\(transferId)",
-                                appName: "AirSync",
-                                title: "Received: \(resolvedName)",
-                                body: "Saved to Downloads"
-                            )
+                            DispatchQueue.main.async {
+                                AppState.shared.completeIncoming(id: transferId, verified: nil)
+                                AppState.shared.postNativeNotification(
+                                    id: "incoming_file_\(transferId)",
+                                    appName: "AirSync",
+                                    title: "Received: \(resolvedName)",
+                                    body: "Saved to Downloads"
+                                )
+                            }
                             
                             // Send verification back to Android
                             let verifyMessage = """
@@ -826,47 +861,16 @@ class WebSocketServer: ObservableObject {
                let verified = dict["verified"] as? Bool {
                 print("[websocket] (file-transfer) Received transferVerified for id=\(id) verified=\(verified)")
                 // Update AppState and show a confirmation notification via AppState util
-                AppState.shared.completeOutgoingVerified(id: id, verified: verified)
-                AppState.shared.postNativeNotification(
-                    id: "transfer_verified_\(id)",
-                    appName: "AirSync",
-                    title: "Transfer verified",
-                    body: verified ? "Receiver verified the file checksum" : "Receiver reported checksum mismatch"
-                )
-            }
-
-        case .macMediaControl:
-            if let dict = message.data.value as? [String: Any],
-               let action = dict["action"] as? String {
-                print("[websocket] Received Mac media control: \(action)")
-                handleMacMediaControl(action: action)
-            }
-
-        case .callControl:
-            // This case handles call control messages from Android to Mac
-            // Currently not expected as Mac sends call control to Android, not vice versa
-            print("[websocket] Received callControl from Android (not typically expected)")
-
-        case .callControlResponse:
-            if let dict = message.data.value as? [String: Any],
-               let action = dict["action"] as? String,
-               let success = dict["success"] as? Bool {
-                let message = dict["message"] as? String ?? ""
-                print("[websocket] Call control \(action) \(success ? "succeeded" : "failed"): \(message)")
-                if !message.isEmpty {
-                    print("[websocket] Call control warning/info: \(message)")
+                DispatchQueue.main.async {
+                    AppState.shared.completeOutgoingVerified(id: id, verified: verified)
+                    AppState.shared.postNativeNotification(
+                        id: "transfer_verified_\(id)",
+                        appName: "AirSync",
+                        title: "Transfer verified",
+                        body: verified ? "Receiver verified the file checksum" : "Receiver reported checksum mismatch"
+                    )
                 }
             }
-
-        case .macMediaControlResponse:
-            // This case handles responses from Android to Mac media control responses
-            // Currently not needed as Mac sends responses to Android, not vice versa
-            print("[websocket] Received macMediaControlResponse (not typically expected)")
-
-        case .macInfo:
-            // This case handles macInfo messages from Android to Mac
-            // Currently not expected as Mac sends macInfo to Android, not vice versa
-            print("[websocket] Received macInfo message from Android (not typically expected)")
             
         case .wakeUpRequest:
             // This case handles wake-up requests from Android to Mac
@@ -919,15 +923,23 @@ class WebSocketServer: ObservableObject {
                         return
                     }
                     // Save current scrcpy settings to restore after start
-                    let originalBitrate = AppState.shared.scrcpyBitrate
-                    let originalResolution = AppState.shared.scrcpyResolution
+                    var originalBitrate = 0
+                    var originalResolution = 0
+                    DispatchQueue.main.sync {
+                        originalBitrate = AppState.shared.scrcpyBitrate
+                        originalResolution = AppState.shared.scrcpyResolution
+                    }
 
                     // Override bitrate/resolution if options provided (expecting Int)
                     if let bitrateOpt = options["bitrate"] as? Int {
-                        AppState.shared.scrcpyBitrate = bitrateOpt
+                        DispatchQueue.main.async {
+                            AppState.shared.scrcpyBitrate = bitrateOpt
+                        }
                     }
                     if let resolutionOpt = options["resolution"] as? Int {
-                        AppState.shared.scrcpyResolution = resolutionOpt
+                        DispatchQueue.main.async {
+                            AppState.shared.scrcpyResolution = resolutionOpt
+                        }
                     }
 
                     if mode == "app", let pkg = package, !pkg.isEmpty {
@@ -960,8 +972,10 @@ class WebSocketServer: ObservableObject {
                     }
 
                     // Restore original scrcpy settings to avoid side effects
-                    AppState.shared.scrcpyBitrate = originalBitrate
-                    AppState.shared.scrcpyResolution = originalResolution
+                    DispatchQueue.main.async {
+                        AppState.shared.scrcpyBitrate = originalBitrate
+                        AppState.shared.scrcpyResolution = originalResolution
+                    }
 
                 } else if action == "stop" {
                     // No direct stop API here; placeholder
@@ -1418,15 +1432,17 @@ class WebSocketServer: ObservableObject {
 
                 let version = message.data["version"] as? String ?? "2.0.0"
 
-                AppState.shared.device = Device(
-                    name: name,
-                    ipAddress: ip,
-                    port: port,
-                    version: version
-                )
+                DispatchQueue.main.async {
+                    AppState.shared.device = Device(
+                        name: name,
+                        ipAddress: ip,
+                        port: port,
+                        version: version
+                    )
 
-                if let base64 = message.data["wallpaper"] as? String {
-                    AppState.shared.currentDeviceWallpaperBase64 = base64
+                    if let base64 = message.data["wallpaper"] as? String {
+                        AppState.shared.currentDeviceWallpaperBase64 = base64
+                    }
                 }
 
                 if (!AppState.shared.adbConnected && AppState.shared.adbEnabled && AppState.shared.isPlus) {
@@ -1481,19 +1497,21 @@ class WebSocketServer: ObservableObject {
                 let albumArt = (music["albumArt"] as? String) ?? ""
                 let likeStatus = (music["likeStatus"] as? String) ?? "none"
 
-                AppState.shared.status = DeviceStatus(
-                    battery: .init(level: level, isCharging: isCharging),
-                    isPaired: paired,
-                    music: .init(
-                        isPlaying: playing,
-                        title: title,
-                        artist: artist,
-                        volume: volume,
-                        isMuted: isMuted,
-                        albumArt: albumArt,
-                        likeStatus: likeStatus
+                DispatchQueue.main.async {
+                    AppState.shared.status = DeviceStatus(
+                        battery: .init(level: level, isCharging: isCharging),
+                        isPaired: paired,
+                        music: .init(
+                            isPlaying: playing,
+                            title: title,
+                            artist: artist,
+                            volume: volume,
+                            isMuted: isMuted,
+                            albumArt: albumArt,
+                            likeStatus: likeStatus
+                        )
                     )
-                )
+                }
                 print("[websocket] status: battery=\(level)% charging=\(isCharging) music=\(title) playing=\(playing)")
             }
 
@@ -2035,6 +2053,7 @@ class WebSocketServer: ObservableObject {
         #if os(macOS)
         // If a window already exists and is visible, bring it to front
         if let win = mirrorWindow, win.isVisible {
+            win.level = .floating
             win.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
@@ -2056,6 +2075,10 @@ class WebSocketServer: ObservableObject {
         window.aspectRatio = NSSize(width: 9, height: 19.5)
         window.minSize = NSSize(width: 300, height: 300 * aspectRatio)
         window.maxSize = NSSize(width: 600, height: 600 * aspectRatio)
+        
+        // Set window level to float above other windows (like CSS z-index)
+        window.level = .floating
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         #if canImport(SwiftUI)
         // Use interactive mirror view with remote control capabilities
@@ -2697,6 +2720,14 @@ class WebSocketServer: ObservableObject {
         DispatchQueue.main.async {
             AppState.shared.isMirrorRequestPending = true
         }
+        
+        // Reset pending state after timeout in case Android doesn't respond
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            if AppState.shared.isMirrorRequestPending && !AppState.shared.isMirroring {
+                print("[mirror] ⏱️ Stop request timed out - resetting pending state")
+                AppState.shared.isMirrorRequestPending = false
+            }
+        }
     }
 
 }
@@ -2718,3 +2749,4 @@ private class MirrorWindowDelegate: NSObject, NSWindowDelegate {
     }
 }
 #endif
+

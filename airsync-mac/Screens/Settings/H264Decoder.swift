@@ -256,6 +256,12 @@ final class H264Decoder: NSObject {
             kCVPixelBufferMetalCompatibilityKey: true
         ] as CFDictionary
         
+        // Force hardware acceleration
+        let decoderSpecification = [
+            kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder: true,
+            kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder: true
+        ] as CFDictionary
+        
         let decompressionProperties = [
             kVTDecompressionPropertyKey_RealTime: true,
             kVTDecompressionPropertyKey_ThreadCount: 2
@@ -265,7 +271,7 @@ final class H264Decoder: NSObject {
         let status = VTDecompressionSessionCreate(
             allocator: kCFAllocatorDefault,
             formatDescription: formatDescription,
-            decoderSpecification: nil,
+            decoderSpecification: decoderSpecification,
             imageBufferAttributes: decoderParameters,
             outputCallback: nil,
             decompressionSessionOut: &session
