@@ -942,7 +942,7 @@ class WebSocketServer: ObservableObject {
                     var isPlus = false
                     var device: Device? = nil
                     var adbConnected = false
-                    var adbPort = 0
+                    var adbPort: UInt16 = 0
                     
                     DispatchQueue.main.sync {
                         isMirrorActive = AppState.shared.isMirrorActive
