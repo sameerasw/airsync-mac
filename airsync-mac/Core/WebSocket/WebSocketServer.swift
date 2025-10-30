@@ -15,6 +15,7 @@ import Swifter
 internal import Combine
 import CryptoKit
 import AppKit
+import IOKit.hidsystem.ev_keymap
 #if canImport(SwiftUI)
 import SwiftUI
 #endif
@@ -2781,41 +2782,33 @@ class WebSocketServer: ObservableObject {
     
     private func executeMacMediaControl(action: String) {
         #if os(macOS)
-        let script: String
+        // Use CGEventPost to simulate media key presses - doesn't require accessibility permissions
+        let keyCode: CGKeyCode
         
         switch action {
         case "play", "pause", "playPause":
-            script = """
-            tell application "System Events"
-                key code 16 using {command down}
-            end tell
-            """
+            keyCode = CGKeyCode(NX_KEYTYPE_PLAY)
         case "next":
-            script = """
-            tell application "System Events"
-                key code 17 using {command down}
-            end tell
-            """
+            keyCode = CGKeyCode(NX_KEYTYPE_NEXT)
         case "previous":
-            script = """
-            tell application "System Events"
-                key code 18 using {command down}
-            end tell
-            """
+            keyCode = CGKeyCode(NX_KEYTYPE_PREVIOUS)
         default:
             print("[websocket] Unknown Mac media control action: \(action)")
             return
         }
         
-        var error: NSDictionary?
-        if let scriptObject = NSAppleScript(source: script) {
-            scriptObject.executeAndReturnError(&error)
-            if let error = error {
-                print("[websocket] ❌ Mac media control error: \(error)")
-            } else {
-                print("[websocket] ✅ Mac media control '\(action)' executed")
-            }
-        }
+        // Create and post media key event
+        let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: true)
+        let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: false)
+        
+        keyDown?.flags = CGEventFlags(rawValue: 0xa00)
+        keyUp?.flags = CGEventFlags(rawValue: 0xa00)
+        
+        let loc = CGEventTapLocation.cghidEventTap
+        keyDown?.post(tap: loc)
+        keyUp?.post(tap: loc)
+        
+        print("[websocket] ✅ Mac media control '\(action)' executed")
         #endif
     }
 
