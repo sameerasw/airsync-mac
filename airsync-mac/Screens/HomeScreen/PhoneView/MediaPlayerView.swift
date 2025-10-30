@@ -31,86 +31,94 @@ struct MediaPlayerView: View {
 
 
 
-                Group {
-                    if AppState.shared.isPlus && AppState.shared.licenseCheck {
-                        HStack{
-                            if (AppState.shared.status?.music.likeStatus == "liked" || AppState.shared.status?.music.likeStatus == "not_liked") {
-                                GlassButtonView(
-                                    label: "",
-                                    systemImage: {
-                                        if let like = AppState.shared.status?.music.likeStatus {
-                                            switch like {
-                                            case "liked": return "heart.fill"
-                                            case "not_liked": return "heart"
-                                            default: return "heart.slash"
-                                            }
-                                        }
-                                        return "heart.slash"
-                                    }(),
-                                    iconOnly: true,
-                                    action: {
-                                        guard let like = AppState.shared.status?.music.likeStatus else { return }
-                                        if like == "liked" {
-                                            WebSocketServer.shared.unlike()
-                                        } else if like == "not_liked" {
-                                            WebSocketServer.shared.like()
-                                        } else {
-                                            WebSocketServer.shared.toggleLike()
-                                        }
+                HStack{
+                    if (AppState.shared.status?.music.likeStatus == "liked" || AppState.shared.status?.music.likeStatus == "not_liked") {
+                        GlassButtonView(
+                            label: "",
+                            systemImage: {
+                                if let like = AppState.shared.status?.music.likeStatus {
+                                    switch like {
+                                    case "liked": return "heart.fill"
+                                    case "not_liked": return "heart"
+                                    default: return "heart.slash"
                                     }
-                                )
-                                .help("Like / Unlike")
-                            } else {
-
-                                GlassButtonView(
-                                    label: "",
-                                    systemImage: "backward.end",
-                                    iconOnly: true,
-                                    action: {
-                                        WebSocketServer.shared.skipPrevious()
+                                }
+                                return "heart.slash"
+                            }(),
+                            iconOnly: true,
+                            action: {
+                                if AppState.shared.isPlus || !AppState.shared.licenseCheck {
+                                    guard let like = AppState.shared.status?.music.likeStatus else { return }
+                                    if like == "liked" {
+                                        WebSocketServer.shared.unlike()
+                                    } else if like == "not_liked" {
+                                        WebSocketServer.shared.like()
+                                    } else {
+                                        WebSocketServer.shared.toggleLike()
                                     }
-                                )
-                                .keyboardShortcut(
-                                    .leftArrow,
-                                    modifiers: .control
-                                )
+                                } else {
+                                    showingPlusPopover = true
+                                }
                             }
-                            
-                                GlassButtonView(
-                                    label: "",
-                                    systemImage: music.isPlaying ? "pause.fill" : "play.fill",
-                                    iconOnly: true,
-                                    primary: true,
-                                    action: {
-                                        WebSocketServer.shared.togglePlayPause()
-                                    }
-                                )
-                                .keyboardShortcut(
-                                    .space,
-                                    modifiers: .control
-                                )
-
-                                GlassButtonView(
-                                    label: "",
-                                    systemImage: "forward.end",
-                                    iconOnly: true,
-                                    action: {
-                                        WebSocketServer.shared.skipNext()
-                                    }
-                                )
-                                .keyboardShortcut(
-                                    .rightArrow,
-                                    modifiers: .control
-                                )
-                        }
+                        )
+                        .help("Like / Unlike")
+                    } else {
+                        GlassButtonView(
+                            label: "",
+                            systemImage: "backward.end",
+                            iconOnly: true,
+                            action: {
+                                if AppState.shared.isPlus || !AppState.shared.licenseCheck {
+                                    WebSocketServer.shared.skipPrevious()
+                                } else {
+                                    showingPlusPopover = true
+                                }
+                            }
+                        )
+                        .keyboardShortcut(
+                            .leftArrow,
+                            modifiers: .control
+                        )
                     }
+                    
+                    GlassButtonView(
+                        label: "",
+                        systemImage: music.isPlaying ? "pause.fill" : "play.fill",
+                        iconOnly: true,
+                        primary: true,
+                        action: {
+                            if AppState.shared.isPlus || !AppState.shared.licenseCheck {
+                                WebSocketServer.shared.togglePlayPause()
+                            } else {
+                                showingPlusPopover = true
+                            }
+                        }
+                    )
+                    .keyboardShortcut(
+                        .space,
+                        modifiers: .control
+                    )
+
+                    GlassButtonView(
+                        label: "",
+                        systemImage: "forward.end",
+                        iconOnly: true,
+                        action: {
+                            if AppState.shared.isPlus || !AppState.shared.licenseCheck {
+                                WebSocketServer.shared.skipNext()
+                            } else {
+                                showingPlusPopover = true
+                            }
+                        }
+                    )
+                    .keyboardShortcut(
+                        .rightArrow,
+                        modifiers: .control
+                    )
                 }
             }
         }
         .padding(10)
-        .onTapGesture {
-            showingPlusPopover = !AppState.shared.isPlus && AppState.shared.licenseCheck
-        }
         .popover(isPresented: $showingPlusPopover, arrowEdge: .bottom) {
             PlusFeaturePopover(message: "Control media with AirSync+")
         }
