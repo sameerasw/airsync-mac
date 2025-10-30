@@ -15,10 +15,17 @@ import Swifter
 internal import Combine
 import CryptoKit
 import AppKit
-import IOKit.hidsystem.ev_keymap
+import CoreGraphics
 #if canImport(SwiftUI)
 import SwiftUI
 #endif
+
+// Media key constants
+private let NX_KEYTYPE_PLAY: Int32 = 16
+private let NX_KEYTYPE_NEXT: Int32 = 17
+private let NX_KEYTYPE_PREVIOUS: Int32 = 18
+private let NX_KEYTYPE_FAST: Int32 = 19
+private let NX_KEYTYPE_REWIND: Int32 = 20
 
 #if canImport(SwiftUI)
 struct MirrorFallbackView: View {
