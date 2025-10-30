@@ -671,42 +671,55 @@ class WebSocketServer: ObservableObject {
 
         // File transfer messages (Android -> Mac)
         case .fileTransferInit:
-            if let dict = message.data.value as? [String: Any],
-               let id = dict["id"] as? String,
-               let name = dict["name"] as? String,
-               let size = dict["size"] as? Int,
-               let mime = dict["mime"] as? String {
+            if let dict = message.data.value as? [String: Any] {
+                // Support both old and new format
+                let id = (dict["transferId"] as? String) ?? (dict["id"] as? String)
+                let name = (dict["fileName"] as? String) ?? (dict["name"] as? String)
+                let size = (dict["fileSize"] as? Int) ?? (dict["size"] as? Int)
+                let mime = dict["mime"] as? String ?? "application/octet-stream"
                 let checksum = dict["checksum"] as? String
-                print("[websocket] (file-transfer) init id=\(id) name=\(name) size=\(size) mime=\(mime) checksum=\(checksum ?? "nil")")
+                
+                guard let transferId = id, let fileName = name, let fileSize = size else {
+                    print("[websocket] (file-transfer) init: missing required fields")
+                    return
+                }
+                
+                print("[websocket] (file-transfer) init id=\(transferId) name=\(fileName) size=\(fileSize) mime=\(mime) checksum=\(checksum ?? "nil")")
 
                 let tempDir = FileManager.default.temporaryDirectory
-                let safeName = name.replacingOccurrences(of: "/", with: "_")
-                let tempFile = tempDir.appendingPathComponent("incoming_\(id)_\(safeName)")
+                let safeName = fileName.replacingOccurrences(of: "/", with: "_")
+                let tempFile = tempDir.appendingPathComponent("incoming_\(transferId)_\(safeName)")
                 FileManager.default.createFile(atPath: tempFile.path, contents: nil, attributes: nil)
                 let handle = try? FileHandle(forWritingTo: tempFile)
 
                 let io = IncomingFileIO(tempUrl: tempFile, fileHandle: handle)
-                incomingFiles[id] = io
+                incomingFiles[transferId] = io
                 if let checksum = checksum {
-                    incomingFilesChecksum[id] = checksum
+                    incomingFilesChecksum[transferId] = checksum
                 }
                 // Start tracking incoming transfer in AppState
-                AppState.shared.startIncomingTransfer(id: id, name: name, size: size, mime: mime)
+                AppState.shared.startIncomingTransfer(id: transferId, name: fileName, size: fileSize, mime: mime)
             }
 
         case .fileChunk:
-            if let dict = message.data.value as? [String: Any],
-               let id = dict["id"] as? String,
-               let chunkBase64 = dict["chunk"] as? String,
-               let io = incomingFiles[id],
-               let data = Data(base64Encoded: chunkBase64) {
+            if let dict = message.data.value as? [String: Any] {
+                // Support both old and new format
+                let id = (dict["transferId"] as? String) ?? (dict["id"] as? String)
+                let chunkBase64 = (dict["data"] as? String) ?? (dict["chunk"] as? String)
+                
+                guard let transferId = id, let chunkData = chunkBase64,
+                      let io = incomingFiles[transferId],
+                      let data = Data(base64Encoded: chunkData) else {
+                    return
+                }
+                
                 io.fileHandle?.seekToEndOfFile()
                 io.fileHandle?.write(data)
                 // Update incoming progress in AppState (increment)
-                let prev = AppState.shared.transfers[id]?.bytesTransferred ?? 0
+                let prev = AppState.shared.transfers[transferId]?.bytesTransferred ?? 0
                 let newBytes = prev + data.count
-                AppState.shared.updateIncomingProgress(id: id, receivedBytes: newBytes)
-                print("[websocket] (file-transfer) chunk id=\(id) size=\(data.count) receivedBytes=\(newBytes)")
+                AppState.shared.updateIncomingProgress(id: transferId, receivedBytes: newBytes)
+                print("[websocket] (file-transfer) chunk id=\(transferId) size=\(data.count) receivedBytes=\(newBytes)")
             }
 
         case .fileChunkAck:
@@ -720,17 +733,23 @@ class WebSocketServer: ObservableObject {
             }
 
         case .fileTransferComplete:
-                if let dict = message.data.value as? [String: Any],
-                    let id = dict["id"] as? String,
-                    let state = incomingFiles[id] {
+                if let dict = message.data.value as? [String: Any] {
+                    // Support both old and new format
+                    let id = (dict["transferId"] as? String) ?? (dict["id"] as? String)
+                    
+                    guard let transferId = id, let state = incomingFiles[transferId] else {
+                        print("[websocket] (file-transfer) complete: transfer not found")
+                        return
+                    }
+                    
                     state.fileHandle?.closeFile()
-                    print("[websocket] (file-transfer) complete id=\(id) temp=\(state.tempUrl.path)")
+                    print("[websocket] (file-transfer) complete id=\(transferId) temp=\(state.tempUrl.path)")
 
                     // Resolve a name for notifications and final filename. Prefer AppState metadata; fall back to temp filename.
-                    let resolvedName = AppState.shared.transfers[id]?.name ?? state.tempUrl.lastPathComponent
+                    let resolvedName = AppState.shared.transfers[transferId]?.name ?? state.tempUrl.lastPathComponent
 
                     // Verify checksum if present
-                    if let expected = incomingFilesChecksum[id] {
+                    if let expected = incomingFilesChecksum[transferId] {
                         if let fileData = try? Data(contentsOf: state.tempUrl) {
                             // Compute SHA256 checksum
                             let computed = SHA256.hash(data: fileData).compactMap { String(format: "%02x", $0) }.joined()
@@ -742,15 +761,15 @@ class WebSocketServer: ObservableObject {
                                 print("[websocket] (file-transfer) ⚠️ MISMATCH: Android sent MD5 (32 chars) but Mac computed SHA256 (64 chars)")
                                 print("[websocket] (file-transfer) 💡 Android needs to use SHA256 instead of MD5 for checksums")
                                 AppState.shared.postNativeNotification(
-                                    id: "incoming_file_\(id)_mismatch",
+                                    id: "incoming_file_\(transferId)_mismatch",
                                     appName: "AirSync",
                                     title: "Received: \(resolvedName)",
                                     body: "Saved to Downloads (checksum algorithm mismatch: MD5 vs SHA256)"
                                 )
                             } else if computed != expected {
-                                print("[websocket] (file-transfer) ❌ Checksum mismatch for incoming file id=\(id)")
+                                print("[websocket] (file-transfer) ❌ Checksum mismatch for incoming file id=\(transferId)")
                                 AppState.shared.postNativeNotification(
-                                    id: "incoming_file_\(id)_mismatch",
+                                    id: "incoming_file_\(transferId)_mismatch",
                                     appName: "AirSync",
                                     title: "Received: \(resolvedName)",
                                     body: "Saved to Downloads (checksum mismatch)"
@@ -759,7 +778,7 @@ class WebSocketServer: ObservableObject {
                                 print("[websocket] (file-transfer) ✅ Checksum verified successfully")
                             }
                         }
-                        incomingFilesChecksum.removeValue(forKey: id)
+                        incomingFilesChecksum.removeValue(forKey: transferId)
                     }
 
                     // Move to Downloads
@@ -772,22 +791,34 @@ class WebSocketServer: ObservableObject {
                             try FileManager.default.moveItem(at: state.tempUrl, to: finalDest)
 
                             // Optionally: show a user notification (simple print for now)
-                            print("[websocket] (file-transfer) Saved incoming file to \(finalDest.path)")
+                            print("[websocket] (file-transfer) ✅ Saved incoming file to \(finalDest.path)")
 
                             // Mark as completed in AppState and post notification via AppState util
-                            AppState.shared.completeIncoming(id: id, verified: nil)
+                            AppState.shared.completeIncoming(id: transferId, verified: nil)
                             AppState.shared.postNativeNotification(
-                                id: "incoming_file_\(id)",
+                                id: "incoming_file_\(transferId)",
                                 appName: "AirSync",
                                 title: "Received: \(resolvedName)",
                                 body: "Saved to Downloads"
                             )
+                            
+                            // Send verification back to Android
+                            let verifyMessage = """
+                            {
+                                "type": "transferVerified",
+                                "data": {
+                                    "id": "\(transferId)",
+                                    "verified": true
+                                }
+                            }
+                            """
+                            sendToFirstAvailable(message: verifyMessage)
                         } catch {
-                            print("[websocket] (file-transfer) Failed to move incoming file: \(error)")
+                            print("[websocket] (file-transfer) ❌ Failed to move incoming file: \(error)")
                         }
                     }
 
-                    incomingFiles.removeValue(forKey: id)
+                    incomingFiles.removeValue(forKey: transferId)
             }
         case .transferVerified:
             if let dict = message.data.value as? [String: Any],
