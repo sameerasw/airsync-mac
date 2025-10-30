@@ -105,6 +105,19 @@ class AppState: ObservableObject {
         self.scrcpyResolution = UserDefaults.standard.integer(forKey: "scrcpyResolution")
         if self.scrcpyResolution == 0 { self.scrcpyResolution = 1200 }
 
+        // Load mirror quality settings
+        self.mirrorFPS = UserDefaults.standard.integer(forKey: "mirrorFPS")
+        if self.mirrorFPS == 0 { self.mirrorFPS = 60 }
+        
+        self.mirrorMaxWidth = UserDefaults.standard.integer(forKey: "mirrorMaxWidth")
+        if self.mirrorMaxWidth == 0 { self.mirrorMaxWidth = 1920 }
+        
+        self.mirrorQuality = UserDefaults.standard.integer(forKey: "mirrorQuality")
+        if self.mirrorQuality == 0 { self.mirrorQuality = 85 }
+        
+        self.mirrorBitrate = UserDefaults.standard.integer(forKey: "mirrorBitrate")
+        if self.mirrorBitrate == 0 { self.mirrorBitrate = 8000000 }
+
     // Initialize persisted UI toggles
     self.isMusicCardHidden = UserDefaults.standard.bool(forKey: "isMusicCardHidden")
 
@@ -235,6 +248,31 @@ class AppState: ObservableObject {
         }
     }
 
+    // Mirror quality settings
+    @Published var mirrorFPS: Int = 60 {
+        didSet {
+            UserDefaults.standard.set(mirrorFPS, forKey: "mirrorFPS")
+        }
+    }
+    
+    @Published var mirrorMaxWidth: Int = 1920 {
+        didSet {
+            UserDefaults.standard.set(mirrorMaxWidth, forKey: "mirrorMaxWidth")
+        }
+    }
+    
+    @Published var mirrorQuality: Int = 85 {
+        didSet {
+            UserDefaults.standard.set(mirrorQuality, forKey: "mirrorQuality")
+        }
+    }
+    
+    @Published var mirrorBitrate: Int = 8000000 {
+        didSet {
+            UserDefaults.standard.set(mirrorBitrate, forKey: "mirrorBitrate")
+        }
+    }
+
     @Published var licenseDetails: LicenseDetails? {
         didSet {
             saveLicenseDetailsToUserDefaults()
@@ -344,6 +382,9 @@ class AppState: ObservableObject {
     // MARK: - ADB-less Mirroring State
     @Published var isMirrorActive: Bool = false
     @Published var latestMirrorFrame: NSImage? = nil
+    @Published var isMirroring: Bool = false
+    @Published var isMirrorRequestPending: Bool = false
+    @Published var mirrorError: String? = nil
 
     @Published var dockSize: CGFloat {
         didSet {

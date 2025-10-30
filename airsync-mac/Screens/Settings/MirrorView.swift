@@ -4,10 +4,10 @@ struct MirrorView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 8) {
             HStack {
                 Text("Mirror Preview")
-                    .font(.title2).bold()
+                    .font(.title3).bold()
                 Spacer()
                 Button {
                     dismiss()
@@ -19,29 +19,13 @@ struct MirrorView: View {
                 .help("Close")
             }
 
-            ZStack {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(.quaternary)
-                    .frame(minWidth: 400, minHeight: 300)
-
-                VStack(spacing: 8) {
-                    Image(systemName: "display")
-                        .font(.system(size: 44))
-                        .foregroundStyle(.secondary)
-                    Text("Waiting for mirror frames…")
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                }
-            }
-
-            Text("This is a placeholder view. When frames arrive via WebSocketServer.handleMirrorFrame, wire decoding and rendering here.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            H264DisplayView()
+                .background(Color.black.opacity(0.9))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .frame(minWidth: 480, minHeight: 320)
         }
         .padding()
-        .frame(minWidth: 480, minHeight: 380)
+        .frame(minWidth: 520, minHeight: 380)
     }
 }
 

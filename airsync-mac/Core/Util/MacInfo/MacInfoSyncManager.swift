@@ -281,3 +281,4 @@ class MacInfoSyncManager: ObservableObject {
         NowPlayingCLI.shared.stop()
     }
 }
+

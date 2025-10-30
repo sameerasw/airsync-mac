@@ -2,6 +2,8 @@ import Foundation
 import AppKit
 import CoreMedia
 
+private let AVERROR_EOF = Int32(bitPattern: 0x20464f45) * -1
+
 /**
  A software H.264 decoder using FFmpeg (libavcodec).
  
@@ -53,7 +55,7 @@ final class FFmpegDecoder {
         self.codec = codec
 
         // 2. Create a parser context to handle NAL units from the Annex B stream
-        guard let parser = av_parser_init(codec.pointee.id.rawValue) else {
+        guard let parser = av_parser_init(Int32(codec.pointee.id.rawValue)) else {
             print("[FFmpegDecoder] ❌ Could not create parser context.")
             fatalError("FFmpeg parser context could not be created.")
         }
@@ -96,14 +98,15 @@ final class FFmpegDecoder {
     /// This is the main entry point for data from the WebSocket.
     func decode(frameData: Data) {
         decodeQueue.async { [weak self] in
+            print("[FFmpegDecoder] Received frameData: \(frameData.count) bytes")
             guard let self = self,
                   let context = self.codecContext,
                   let parser = self.parserContext,
                   let pkt = self.packet else { return }
 
             // We must make a mutable copy of the data to feed to the parser's C API
-            var frameData = frameData
-            frameData.withUnsafeMutableBytes { (rawBufferPointer) in
+            var frameDataCopy = frameData
+            frameDataCopy.withUnsafeMutableBytes { (rawBufferPointer) in
                 guard var inData = rawBufferPointer.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
                 var inDataSize = frameData.count
                 
@@ -117,7 +120,7 @@ final class FFmpegDecoder {
                         parser, context,
                         &outData, &outDataSize,
                         inData, Int32(inDataSize),
-                        AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0
+                        Int64.min, Int64.min, 0
                     )
 
                     if bytesParsed < 0 {
@@ -132,7 +135,8 @@ final class FFmpegDecoder {
 
                     // If the parser output a complete packet (outDataSize > 0), decode it
                     if outDataSize > 0 {
-                        av_init_packet(pkt)
+                        print("[FFmpegDecoder] Parser emitted packet size: \(outDataSize)")
+                        av_packet_unref(pkt)
                         pkt.pointee.data = outData
                         pkt.pointee.size = outDataSize
                         self.sendPacketForDecoding(pkt)
@@ -152,10 +156,15 @@ final class FFmpegDecoder {
             logFfmpegError(ret, message: "Error sending packet to decoder")
             return
         }
+        print("[FFmpegDecoder] Packet sent to decoder")
 
         // Receive all available frames
         while ret >= 0 {
             ret = avcodec_receive_frame(context, frame)
+            
+            if ret >= 0 {
+                print("[FFmpegDecoder] Frame received: \(frame.pointee.width)x\(frame.pointee.height)")
+            }
             
             if ret == -EAGAIN || ret == AVERROR_EOF {
                 return // Need more data or end of stream
@@ -172,22 +181,26 @@ final class FFmpegDecoder {
 
     /// Converts a decoded YUV frame to an RGBA NSImage and fires the callback.
     private func processDecodedFrame(_ frame: AVFrame) {
-        guard let context = self.codecContext else { return }
-        
-        let width = Int(context.pointee.width)
-        let height = Int(context.pointee.height)
+        let width = Int(frame.width)
+        let height = Int(frame.height)
         let pixelFormat = AV_PIX_FMT_RGBA // Target format for NSImage
+
+        // Ensure we have valid dimensions
+        guard width > 0, height > 0 else {
+            print("[FFmpegDecoder] ⚠️ Received frame with invalid dimensions: \(width)x\(height)")
+            return
+        }
 
         // 1. Setup SwsContext (color space converter) if not already setup
         //    or if the resolution has changed.
-        if self.swsContext == nil || self.rgbFrame?.pointee.width != width || self.rgbFrame?.pointee.height != height {
+        if self.swsContext == nil || self.rgbFrame?.pointee.width != Int32(width) || self.rgbFrame?.pointee.height != Int32(height) {
             print("[FFmpegDecoder] 🔧 Initializing SWS color converter for \(width)x\(height)")
             sws_freeContext(self.swsContext) // Free old one if it exists
             
             self.swsContext = sws_getContext(
-                width, height, context.pointee.pix_fmt, // Input
-                width, height, pixelFormat,             // Output
-                SWS_BILINEAR, nil, nil, nil // Use fast bilinear scaling
+                Int32(width), Int32(height), AVPixelFormat(frame.format),
+                Int32(width), Int32(height), pixelFormat,
+                Int32(SWS_BILINEAR.rawValue), nil, nil, nil
             )
             
             guard self.swsContext != nil else {
@@ -198,13 +211,17 @@ final class FFmpegDecoder {
             // Allocate buffer for the RGB frame
             av_free(self.rgbFrameBuffer) // Free old buffer
             let bufferSize = av_image_get_buffer_size(pixelFormat, Int32(width), Int32(height), 1)
-            self.rgbFrameBuffer = unsafeBitCast(av_malloc(bufferSize), to: UnsafeMutablePointer<UInt8>.self)
+            self.rgbFrameBuffer = unsafeBitCast(av_malloc(Int(bufferSize)), to: UnsafeMutablePointer<UInt8>.self)
             av_image_fill_arrays(
                 &self.rgbFrame!.pointee.data.0,
                 &self.rgbFrame!.pointee.linesize.0,
                 self.rgbFrameBuffer,
                 pixelFormat, Int32(width), Int32(height), 1
             )
+            
+            self.rgbFrame?.pointee.width = Int32(width)
+            self.rgbFrame?.pointee.height = Int32(height)
+            self.rgbFrame?.pointee.format = pixelFormat.rawValue
         }
 
         guard let swsCtx = self.swsContext, let rgbFrame = self.rgbFrame, let rgbBuffer = self.rgbFrameBuffer else {
@@ -213,33 +230,55 @@ final class FFmpegDecoder {
         }
 
         // 2. Perform the color conversion
+        let data: [UnsafePointer<UInt8>?] = [
+            UnsafePointer(frame.data.0), UnsafePointer(frame.data.1), UnsafePointer(frame.data.2), UnsafePointer(frame.data.3),
+            UnsafePointer(frame.data.4), UnsafePointer(frame.data.5), UnsafePointer(frame.data.6), UnsafePointer(frame.data.7)
+        ]
+        let linesize = [
+            frame.linesize.0, frame.linesize.1, frame.linesize.2, frame.linesize.3,
+            frame.linesize.4, frame.linesize.5, frame.linesize.6, frame.linesize.7
+        ]
+
+        let dataPointer = UnsafeMutablePointer<UnsafePointer<UInt8>?>.allocate(capacity: 8)
+        let linesizePointer = UnsafeMutablePointer<Int32>.allocate(capacity: 8)
+        for i in 0..<8 {
+            dataPointer[i] = data[i]
+            linesizePointer[i] = linesize[i]
+        }
+
         sws_scale(
             swsCtx,
-            frame.data, frame.linesize, // Input YUV frame data
+            dataPointer,
+            linesizePointer,
             0, Int32(height),
-            &rgbFrame.pointee.data.0,   // Output RGB frame data
+            &rgbFrame.pointee.data.0,
             &rgbFrame.pointee.linesize.0
         )
+
+        dataPointer.deallocate()
+        linesizePointer.deallocate()
 
         // 3. Create NSImage from the RGB data
         let bytesPerRow = Int(rgbFrame.pointee.linesize.0)
         let dataLength = bytesPerRow * height
         
-        // Create a Data buffer *without* copying the bytes
+        // Create a Data buffer *without* copying the bytes.
+        // The buffer is owned by self.rgbFrameBuffer, which is freed in deinit
+        // or when the resolution changes.
         let rgbData = Data(bytesNoCopy: rgbBuffer, count: dataLength, deallocator: .none)
 
         // Create the CGImage
         guard let provider = CGDataProvider(data: rgbData as CFData),
               let cgImage = CGImage(
-                  width: width, height: height,
-                  bitsPerComponent: 8,       // 8 bits per R, G, B, A channel
-                  bitsPerPixel: 32,      // 8 * 4 = 32
-                  bytesPerRow: bytesPerRow,  // From the rgbFrame linesize
-                  space: CGColorSpaceCreateDeviceRGB(),
-                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
-                  provider: provider,
-                  decode: nil, shouldInterpolate: false,
-                  intent: .defaultIntent
+                    width: width, height: height,
+                    bitsPerComponent: 8,       // 8 bits per R, G, B, A channel
+                    bitsPerPixel: 32,          // 8 * 4 = 32
+                    bytesPerRow: bytesPerRow,  // From the rgbFrame linesize
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                    provider: provider,
+                    decode: nil, shouldInterpolate: false,
+                    intent: .defaultIntent
               )
         else {
             print("[FFmpegDecoder] ❌ Failed to create CGImage from buffer")
@@ -248,6 +287,7 @@ final class FFmpegDecoder {
 
         // 4. Send the NSImage to the callback on the main thread
         let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: width, height: height))
+        print("[FFmpegDecoder] ✅ Dispatching decoded frame to UI")
         DispatchQueue.main.async {
             self.onDecodedFrame?(nsImage)
         }
@@ -256,12 +296,12 @@ final class FFmpegDecoder {
     /// Flushes the decoder buffers. Call when the stream is interrupted or stopped.
     func reset() {
         decodeQueue.async { [weak self] in
-             guard let self = self,
-                   let context = self.codecContext,
-                   let parser = self.parserContext else { return }
+            guard let self = self,
+                  let context = self.codecContext,
+                  let parser = self.parserContext else { return }
             print("[FFmpegDecoder] Resetting decoder state (flushing buffers).")
             avcodec_flush_buffers(context)
-            av_parser_parse2(parser, context, nil, nil, nil, 0, AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0) // Reset parser
+            av_parser_parse2(parser, context, nil, nil, nil, 0, Int64.min, Int64.min, 0) // Reset parser
         }
     }
     
@@ -274,3 +314,4 @@ final class FFmpegDecoder {
         print("[FFmpegDecoder] \(message) (Code \(errorCode)): \(errorString)")
     }
 }
+

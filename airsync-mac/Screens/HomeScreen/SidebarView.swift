@@ -68,10 +68,20 @@ struct SidebarView: View {
                                         deviceName: device.name
                                     )
                                 } else {
-                                    // Default: open built-in TCP Remote Viewer (no ADB dependency)
-                                    let viewer = RemoteViewerWindowController(host: device.ipAddress, port: UInt16(device.port))
-                                    viewer.showWindow(nil)
-                                    viewer.window?.makeKeyAndOrderFront(nil)
+                                    // WebSocket transport: ask Android to connect back to the Mac's WS server
+                                    // Avoid TCP remote viewer to device:6996 (not a WS endpoint)
+                                    WebSocketServer.shared.sendMirrorRequest(
+                                        action: "start",
+                                        mode: "device",
+                                        package: nil,
+                                        options: [
+                                            "transport": "websocket",
+                                            "fps": 30,
+                                            "quality": 0.6,
+                                            "maxWidth": 1280
+                                        ]
+                                    )
+                                    print("[ui] Requested WebSocket mirroring (device mode)")
                                 }
                             }
                         )

@@ -580,6 +580,10 @@ class WebSocketServer: ObservableObject {
                 print("[websocket] Dismissal \(success ? "succeeded" : "failed") for notification id: \(id)")
             }
 
+        case .mediaControlRequest:
+            // Mac sends this to Android, shouldn't receive it
+            print("[websocket] Warning: received 'mediaControlRequest' from remote (ignored).")
+            
         case .mediaControlResponse:
             if let dict = message.data.value as? [String: Any],
                let action = dict["action"] as? String,
@@ -2130,7 +2134,7 @@ class WebSocketServer: ObservableObject {
     private func sendMediaAction(_ action: String) {
         let message = """
         {
-            "type": "mediaControl",
+            "type": "mediaControlRequest",
             "data": {
                 "action": "\(action)"
             }

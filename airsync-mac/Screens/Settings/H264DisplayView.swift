@@ -3,16 +3,18 @@ import AVFoundation
 
 #if os(macOS)
 import AppKit
+import QuartzCore
 
 struct H264DisplayView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
-        let layer = H264Decoder.shared.displayLayer
+        let layer = AVSampleBufferDisplayLayer()
         view.wantsLayer = true
         view.layer = CALayer()
         view.layer?.addSublayer(layer)
         layer.frame = view.bounds
-        layer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+        let mask: CAAutoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+        layer.autoresizingMask = mask
         return view
     }
 
@@ -23,3 +25,4 @@ struct H264DisplayView: NSViewRepresentable {
     }
 }
 #endif
+

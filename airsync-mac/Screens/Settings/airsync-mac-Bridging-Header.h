@@ -10,6 +10,9 @@
 #define airsync_mac_Bridging_Header_h
 
 // Import the required FFmpeg libraries
+#include <libavutil/avutil.h>
+#include <libavutil/error.h>
+#include <libavutil/channel_layout.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/frame.h>
 #include <libavutil/imgutils.h>
