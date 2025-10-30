@@ -584,6 +584,17 @@ class WebSocketServer: ObservableObject {
             // Mac sends this to Android, shouldn't receive it
             print("[websocket] Warning: received 'mediaControlRequest' from remote (ignored).")
             
+        case .macMediaControl:
+            // Mac sends this to Android, shouldn't receive it
+            print("[websocket] Warning: received 'macMediaControl' from remote (ignored).")
+            
+        case .macMediaControlResponse:
+            if let dict = message.data.value as? [String: Any],
+               let action = dict["action"] as? String,
+               let success = dict["success"] as? Bool {
+                print("[websocket] 🎵 Mac media control \(action) \(success ? "succeeded" : "failed")")
+            }
+            
         case .mediaControlResponse:
             if let dict = message.data.value as? [String: Any],
                let action = dict["action"] as? String,
@@ -2134,13 +2145,14 @@ class WebSocketServer: ObservableObject {
     private func sendMediaAction(_ action: String) {
         let message = """
         {
-            "type": "mediaControlRequest",
+            "type": "macMediaControl",
             "data": {
                 "action": "\(action)"
             }
         }
         """
         sendToFirstAvailable(message: message)
+        print("[websocket] 🎵 Sent macMediaControl action: \(action)")
     }
 
     // MARK: - Volume Controls
