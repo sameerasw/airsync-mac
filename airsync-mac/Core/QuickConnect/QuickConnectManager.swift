@@ -20,7 +20,8 @@ class QuickConnectManager: ObservableObject {
     // Storage key for device history
     private static let DEVICE_HISTORY_KEY = "deviceHistory"
     
-    // Store last connected devices per network (key: Mac IP, value: Device)
+    // Store last connected devices per network (key: network prefix like "192.168.1", value: Device)
+    // Using network prefix instead of exact Mac IP to handle DHCP IP changes
     @Published var lastConnectedDevices: [String: Device] = [:]
     private var autoReconnectTimer: Timer?
     
@@ -34,7 +35,8 @@ class QuickConnectManager: ObservableObject {
     /// Gets the last connected device for the current network
     func getLastConnectedDevice() -> Device? {
         guard let currentIP = getCurrentMacIP() else { return nil }
-        return lastConnectedDevices[currentIP]
+        let networkKey = getNetworkKey(from: currentIP)
+        return lastConnectedDevices[networkKey]
     }
     
     /// Saves a device as the last connected for the current network
@@ -44,28 +46,46 @@ class QuickConnectManager: ObservableObject {
             return
         }
         
+        let networkKey = getNetworkKey(from: currentMacIP)
+        
         DispatchQueue.main.async {
-            self.lastConnectedDevices[currentMacIP] = device
+            self.lastConnectedDevices[networkKey] = device
             self.saveDeviceHistoryToDisk()
         }
-        print("[quick-connect] Saved last connected device for network \(currentMacIP): \(device.name) (\(device.ipAddress))")
+        print("[quick-connect] Saved last connected device for network \(networkKey): \(device.name) (\(device.ipAddress))")
     }
     
     /// Clears the last connected device for the current network
     func clearLastConnectedDevice() {
         guard let currentMacIP = getCurrentMacIP() else { return }
+        let networkKey = getNetworkKey(from: currentMacIP)
         
         DispatchQueue.main.async {
-            self.lastConnectedDevices.removeValue(forKey: currentMacIP)
+            self.lastConnectedDevices.removeValue(forKey: networkKey)
             self.saveDeviceHistoryToDisk()
         }
-        print("[quick-connect] Cleared last connected device for network \(currentMacIP)")
+        print("[quick-connect] Cleared last connected device for network \(networkKey)")
     }
     
     /// Attempts to wake up and reconnect to the last connected device
     func wakeUpLastConnectedDevice() {
         guard let lastDevice = getLastConnectedDevice() else {
-            print("[quick-connect] No last connected device to wake up")
+            print("[quick-connect] No last connected device to wake up for current network")
+            return
+        }
+        
+        // Check if device IP is on the same network as Mac
+        guard let currentMacIP = getCurrentMacIP() else {
+            print("[quick-connect] Cannot determine current Mac IP")
+            return
+        }
+        
+        let macNetwork = getNetworkKey(from: currentMacIP)
+        let deviceNetwork = getNetworkKey(from: lastDevice.ipAddress)
+        
+        if macNetwork != deviceNetwork {
+            print("[quick-connect] ⚠️ Device IP \(lastDevice.ipAddress) is on different network than Mac \(currentMacIP)")
+            print("[quick-connect] Skipping wake-up - device may have changed networks or IP")
             return
         }
         
@@ -95,6 +115,18 @@ class QuickConnectManager: ObservableObject {
     
     private func getCurrentMacPort() -> UInt16? {
         return WebSocketServer.shared.localPort
+    }
+    
+    /// Extracts network prefix from IP address (e.g., "192.168.1.34" -> "192.168.1")
+    /// This allows matching devices on the same subnet even if exact IPs change due to DHCP
+    private func getNetworkKey(from ipAddress: String) -> String {
+        let components = ipAddress.split(separator: ".")
+        if components.count >= 3 {
+            // Use first 3 octets as network identifier (Class C subnet)
+            return "\(components[0]).\(components[1]).\(components[2])"
+        }
+        // Fallback to full IP if parsing fails
+        return ipAddress
     }
     
     private func saveDeviceHistoryToDisk() {
@@ -155,23 +187,29 @@ class QuickConnectManager: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = message.data(using: .utf8)
-        request.timeoutInterval = 5.0
+        request.timeoutInterval = 3.0 // Reduced timeout
         
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
             
             if let httpResponse = response as? HTTPURLResponse {
                 if httpResponse.statusCode == 200 {
-                    print("[quick-connect] Wake-up request successful - device should reconnect soon")
+                    print("[quick-connect] ✅ Wake-up request successful - device should reconnect soon")
                 } else {
-                    print("[quick-connect] Wake-up request failed with status: \(httpResponse.statusCode)")
+                    print("[quick-connect] ⚠️ Wake-up request failed with status: \(httpResponse.statusCode)")
                 }
             }
         } catch {
-            print("[quick-connect] Failed to send wake-up request: \(error)")
+            // Only log if it's not a connection refused error (which is expected if service isn't running)
+            let nsError = error as NSError
+            if nsError.code != -1004 { // -1004 is "Could not connect to server"
+                print("[quick-connect] ⚠️ Wake-up error: \(error.localizedDescription)")
+            } else {
+                print("[quick-connect] ℹ️ Android wake-up service not available (this is normal if not implemented)")
+            }
             
-            // Fallback: Try UDP broadcast
-            await sendUDPWakeUpRequest(to: device, message: message)
+            // Don't fallback to UDP if HTTP fails - it's likely the service isn't running
+            // await sendUDPWakeUpRequest(to: device, message: message)
         }
     }
     
@@ -218,6 +256,9 @@ class QuickConnectManager: ObservableObject {
     
     // MARK: - Auto Reconnect
     private func startAutoReconnect() {
+        // Disabled: Android app needs to implement wake-up service on ports 8888/8889
+        // TODO: Re-enable once Android background service is implemented
+        /*
         autoReconnectTimer?.invalidate()
         autoReconnectTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
@@ -229,6 +270,7 @@ class QuickConnectManager: ObservableObject {
             }
         }
         autoReconnectTimer?.tolerance = 5.0
+        */
     }
 
     deinit {

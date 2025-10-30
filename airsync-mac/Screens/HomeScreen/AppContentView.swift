@@ -16,6 +16,16 @@ struct AppContentView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
+            // Live Activities Overlay
+            VStack {
+                Spacer()
+                if #available(macOS 13.0, *) {
+                    LiveActivitiesView()
+                        .padding()
+                }
+            }
+            .zIndex(100)
+            
             ZStack {
                 switch AppState.shared.selectedTab {
                 case .notifications:
@@ -68,7 +78,54 @@ struct AppContentView: View {
                                 }
                                 .help(notificationStacks ? "Switch to stacked view" : "Switch to expanded view")
                             }
+                        }
+
+                case .calls:
+                    CallsView()
+                        .transition(.blurReplace)
+                        .toolbar {
                             ToolbarItem(placement: .primaryAction) {
+                                Button("Refresh", systemImage: "arrow.clockwise") {
+                                    WebSocketServer.shared.requestCallLogs()
+                                }
+                                .help("Refresh call logs")
+                            }
+                        }
+
+                case .messages:
+                    MessagesView()
+                        .transition(.blurReplace)
+                        .toolbar {
+                            ToolbarItem(placement: .primaryAction) {
+                                Button("Refresh", systemImage: "arrow.clockwise") {
+                                    WebSocketServer.shared.requestSmsThreads()
+                                }
+                                .help("Refresh messages")
+                            }
+                        }
+
+                case .health:
+                    HealthView()
+                        .transition(.blurReplace)
+                        .toolbar {
+                            ToolbarItem(placement: .primaryAction) {
+                                Button("Refresh", systemImage: "arrow.clockwise") {
+                                    WebSocketServer.shared.requestHealthSummary()
+                                }
+                                .help("Refresh health data")
+                            }
+                        }
+
+                case .settings:
+                    SettingsView()
+                        .transition(.blurReplace)
+                        .toolbar {
+                            ToolbarItemGroup{
+                                Button("Help", systemImage: "questionmark.circle"){
+                                    showHelpSheet = true
+                                }
+                                .help("Feedback and How to?")
+
                                 Button {
                                     appState.clearNotifications()
                                 } label: {

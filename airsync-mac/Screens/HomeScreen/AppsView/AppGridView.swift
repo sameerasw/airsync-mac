@@ -60,25 +60,33 @@ private struct AppGridItemView: View {
                     AppContextMenuContent(app: app)
                 }
                 .onDrag(createDragProvider)
+                .help(appState.device != nil ? "Tap to mirror \(app.name)" : app.name)
 
-            // Notification mute indicator
-            if !app.listening {
-                Image(systemName: "bell.slash")
-                    .resizable()
-                    .frame(width: 10, height: 10)
-                    .offset(x: -8, y: 8)
+            VStack(spacing: 4) {
+                // Notification mute indicator
+                if !app.listening {
+                    Image(systemName: "bell.slash")
+                        .resizable()
+                        .frame(width: 10, height: 10)
+                        .foregroundColor(.secondary)
+                }
+                
+                // Mirror available indicator (WebSocket mirroring)
+                if appState.device != nil {
+                    Image(systemName: "rectangle.on.rectangle")
+                        .resizable()
+                        .frame(width: 10, height: 10)
+                        .foregroundColor(.blue)
+                }
             }
+            .offset(x: -8, y: 8)
         }
     }
 
     private func handleTap() {
-        if let device = appState.device, appState.adbConnected {
-            ADBConnector.startScrcpy(
-                ip: device.ipAddress,
-                port: appState.adbPort,
-                deviceName: device.name,
-                package: app.packageName
-            )
+        // Use WebSocket mirroring instead of scrcpy
+        if appState.device != nil {
+            WebSocketServer.shared.requestAppMirror(packageName: app.packageName)
         }
     }
 
@@ -152,6 +160,17 @@ private struct AppContextMenuContent: View {
     }
     
     var body: some View {
+        // Mirror App (WebSocket mirroring)
+        if appState.device != nil {
+            Button {
+                WebSocketServer.shared.requestAppMirror(packageName: app.packageName)
+            } label: {
+                Label("Mirror App", systemImage: "rectangle.on.rectangle")
+            }
+            
+            Divider()
+        }
+        
         // Pin/Unpin option (only for Plus members)
         if appState.isPlus {
             if !isPinned {
