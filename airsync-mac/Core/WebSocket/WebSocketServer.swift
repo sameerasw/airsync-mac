@@ -75,6 +75,8 @@ class WebSocketServer: ObservableObject {
     }
     private var incomingFiles: [String: IncomingFileIO] = [:]
     private var incomingFilesChecksum: [String: String] = [:]
+    // Serial queue for file operations to prevent race conditions
+    private let fileOperationQueue = DispatchQueue(label: "com.airsync.fileoperations", qos: .userInitiated)
     // Outgoing transfer ack tracking
     private var outgoingAcks: [String: Set<Int>] = [:]
 
@@ -604,8 +606,16 @@ class WebSocketServer: ObservableObject {
             print("[websocket] Warning: received 'mediaControlRequest' from remote (ignored).")
             
         case .macMediaControl:
-            // Mac sends this to Android, shouldn't receive it
-            print("[websocket] Warning: received 'macMediaControl' from remote (ignored).")
+            // Android sends this to control Mac music playback
+            if let dict = message.data.value as? [String: Any],
+               let action = dict["action"] as? String {
+                print("[websocket] 🎵 Received Mac media control: \(action)")
+                
+                // Execute media control on Mac using system media keys
+                DispatchQueue.main.async {
+                    self.executeMacMediaControl(action: action)
+                }
+            }
             
         case .macInfo:
             // Mac sends this to Android, shouldn't receive it
@@ -734,20 +744,37 @@ class WebSocketServer: ObservableObject {
                 let id = (dict["transferId"] as? String) ?? (dict["id"] as? String)
                 let chunkBase64 = (dict["data"] as? String) ?? (dict["chunk"] as? String)
                 
-                guard let transferId = id, let chunkData = chunkBase64,
-                      let io = incomingFiles[transferId],
-                      let data = Data(base64Encoded: chunkData) else {
+                guard let transferId = id, let chunkData = chunkBase64 else {
                     return
                 }
                 
-                io.fileHandle?.seekToEndOfFile()
-                io.fileHandle?.write(data)
-                // Update incoming progress in AppState (increment)
-                DispatchQueue.main.async {
-                    let prev = AppState.shared.transfers[transferId]?.bytesTransferred ?? 0
-                    let newBytes = prev + data.count
-                    AppState.shared.updateIncomingProgress(id: transferId, receivedBytes: newBytes)
-                    print("[websocket] (file-transfer) chunk id=\(transferId) size=\(data.count) receivedBytes=\(newBytes)")
+                // Decode base64 on background thread
+                guard let data = Data(base64Encoded: chunkData, options: .ignoreUnknownCharacters) else {
+                    print("[websocket] (file-transfer) ❌ Failed to decode base64 chunk for id=\(transferId)")
+                    return
+                }
+                
+                // Write to file on serial queue to prevent race conditions
+                fileOperationQueue.async { [weak self] in
+                    guard let self = self,
+                          let io = self.incomingFiles[transferId],
+                          let fileHandle = io.fileHandle else {
+                        return
+                    }
+                    
+                    do {
+                        try fileHandle.seekToEnd()
+                        try fileHandle.write(contentsOf: data)
+                        
+                        // Update incoming progress in AppState (increment)
+                        DispatchQueue.main.async {
+                            let prev = AppState.shared.transfers[transferId]?.bytesTransferred ?? 0
+                            let newBytes = prev + data.count
+                            AppState.shared.updateIncomingProgress(id: transferId, receivedBytes: newBytes)
+                        }
+                    } catch {
+                        print("[websocket] (file-transfer) ❌ Error writing chunk: \(error)")
+                    }
                 }
             }
 
@@ -771,14 +798,18 @@ class WebSocketServer: ObservableObject {
                         return
                     }
                     
-                    state.fileHandle?.closeFile()
-                    print("[websocket] (file-transfer) complete id=\(transferId) temp=\(state.tempUrl.path)")
+                    // Wait for all pending file operations to complete before closing and verifying
+                    fileOperationQueue.async { [weak self] in
+                        guard let self = self else { return }
+                        
+                        state.fileHandle?.closeFile()
+                        print("[websocket] (file-transfer) complete id=\(transferId) temp=\(state.tempUrl.path)")
 
-                    // Resolve a name for notifications and final filename. Prefer AppState metadata; fall back to temp filename.
-                    let resolvedName = AppState.shared.transfers[transferId]?.name ?? state.tempUrl.lastPathComponent
+                        // Resolve a name for notifications and final filename. Prefer AppState metadata; fall back to temp filename.
+                        let resolvedName = AppState.shared.transfers[transferId]?.name ?? state.tempUrl.lastPathComponent
 
-                    // Verify checksum if present
-                    if let expected = incomingFilesChecksum[transferId] {
+                        // Verify checksum if present
+                        if let expected = self.incomingFilesChecksum[transferId] {
                         if let fileData = try? Data(contentsOf: state.tempUrl) {
                             // Compute SHA256 checksum
                             let computed = SHA256.hash(data: fileData).compactMap { String(format: "%02x", $0) }.joined()
@@ -811,49 +842,50 @@ class WebSocketServer: ObservableObject {
                                 print("[websocket] (file-transfer) ✅ Checksum verified successfully")
                             }
                         }
-                        incomingFilesChecksum.removeValue(forKey: transferId)
+                        self.incomingFilesChecksum.removeValue(forKey: transferId)
                     }
 
-                    // Move to Downloads
-                    if let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
-                        do {
-                            let finalDest = downloads.appendingPathComponent(resolvedName)
-                            if FileManager.default.fileExists(atPath: finalDest.path) {
-                                try FileManager.default.removeItem(at: finalDest)
-                            }
-                            try FileManager.default.moveItem(at: state.tempUrl, to: finalDest)
-
-                            // Optionally: show a user notification (simple print for now)
-                            print("[websocket] (file-transfer) ✅ Saved incoming file to \(finalDest.path)")
-
-                            // Mark as completed in AppState and post notification via AppState util
-                            DispatchQueue.main.async {
-                                AppState.shared.completeIncoming(id: transferId, verified: nil)
-                                AppState.shared.postNativeNotification(
-                                    id: "incoming_file_\(transferId)",
-                                    appName: "AirSync",
-                                    title: "Received: \(resolvedName)",
-                                    body: "Saved to Downloads"
-                                )
-                            }
-                            
-                            // Send verification back to Android
-                            let verifyMessage = """
-                            {
-                                "type": "transferVerified",
-                                "data": {
-                                    "id": "\(transferId)",
-                                    "verified": true
+                        // Move to Downloads
+                        if let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
+                            do {
+                                let finalDest = downloads.appendingPathComponent(resolvedName)
+                                if FileManager.default.fileExists(atPath: finalDest.path) {
+                                    try FileManager.default.removeItem(at: finalDest)
                                 }
-                            }
-                            """
-                            sendToFirstAvailable(message: verifyMessage)
-                        } catch {
-                            print("[websocket] (file-transfer) ❌ Failed to move incoming file: \(error)")
-                        }
-                    }
+                                try FileManager.default.moveItem(at: state.tempUrl, to: finalDest)
 
-                    incomingFiles.removeValue(forKey: transferId)
+                                // Optionally: show a user notification (simple print for now)
+                                print("[websocket] (file-transfer) ✅ Saved incoming file to \(finalDest.path)")
+
+                                // Mark as completed in AppState and post notification via AppState util
+                                DispatchQueue.main.async {
+                                    AppState.shared.completeIncoming(id: transferId, verified: nil)
+                                    AppState.shared.postNativeNotification(
+                                        id: "incoming_file_\(transferId)",
+                                        appName: "AirSync",
+                                        title: "Received: \(resolvedName)",
+                                        body: "Saved to Downloads"
+                                    )
+                                }
+                                
+                                // Send verification back to Android
+                                let verifyMessage = """
+                                {
+                                    "type": "transferVerified",
+                                    "data": {
+                                        "id": "\(transferId)",
+                                        "verified": true
+                                    }
+                                }
+                                """
+                                self.sendToFirstAvailable(message: verifyMessage)
+                            } catch {
+                                print("[websocket] (file-transfer) ❌ Failed to move incoming file: \(error)")
+                            }
+                        }
+
+                        self.incomingFiles.removeValue(forKey: transferId)
+                    } // End of fileOperationQueue.async
             }
         case .transferVerified:
             if let dict = message.data.value as? [String: Any],
@@ -905,20 +937,35 @@ class WebSocketServer: ObservableObject {
                 let options = dict["options"] as? [String: Any] ?? [:]
 
                 if action == "start" {
-                    if AppState.shared.isMirrorActive {
+                    // Check state on main thread
+                    var isMirrorActive = false
+                    var isPlus = false
+                    var device: Device? = nil
+                    var adbConnected = false
+                    var adbPort = 0
+                    
+                    DispatchQueue.main.sync {
+                        isMirrorActive = AppState.shared.isMirrorActive
+                        isPlus = AppState.shared.isPlus
+                        device = AppState.shared.device
+                        adbConnected = AppState.shared.adbConnected
+                        adbPort = AppState.shared.adbPort
+                    }
+                    
+                    if isMirrorActive {
                         print("[websocket] Mirror already active; ignoring duplicate start")
                         sendMirrorResponse(["status": "already_active"]) 
                         return
                     }
-                    guard AppState.shared.isPlus else {
+                    guard isPlus else {
                         sendMirrorResponse(["status": "error", "message": "Mirror feature requires Plus subscription"])
                         return
                     }
-                    guard let device = AppState.shared.device else {
+                    guard let device = device else {
                         sendMirrorResponse(["status": "error", "message": "No connected device"])
                         return
                     }
-                    guard AppState.shared.adbConnected else {
+                    guard adbConnected else {
                         sendMirrorResponse(["status": "error", "message": "ADB not connected"])
                         return
                     }
@@ -943,7 +990,7 @@ class WebSocketServer: ObservableObject {
                     }
 
                     if mode == "app", let pkg = package, !pkg.isEmpty {
-                        ADBConnector.startScrcpy(ip: device.ipAddress, port: AppState.shared.adbPort, deviceName: device.name, package: pkg)
+                        ADBConnector.startScrcpy(ip: device.ipAddress, port: adbPort, deviceName: device.name, package: pkg)
                         sendMirrorResponse([
                             "status": "started",
                             "mode": "app",
@@ -952,7 +999,7 @@ class WebSocketServer: ObservableObject {
                             "wsUrl": "ws://\(self.localIPAddress ?? "127.0.0.1"):\(self.localPort ?? Defaults.serverPort)/socket"
                         ])
                     } else if mode == "desktop" {
-                        ADBConnector.startScrcpy(ip: device.ipAddress, port: AppState.shared.adbPort, deviceName: device.name, desktop: true)
+                        ADBConnector.startScrcpy(ip: device.ipAddress, port: adbPort, deviceName: device.name, desktop: true)
                         sendMirrorResponse([
                             "status": "started",
                             "mode": "desktop",
@@ -961,7 +1008,7 @@ class WebSocketServer: ObservableObject {
                             "wsUrl": "ws://\(self.localIPAddress ?? "127.0.0.1"):\(self.localPort ?? Defaults.serverPort)/socket"
                         ])
                     } else {
-                        ADBConnector.startScrcpy(ip: device.ipAddress, port: AppState.shared.adbPort, deviceName: device.name)
+                        ADBConnector.startScrcpy(ip: device.ipAddress, port: adbPort, deviceName: device.name)
                         sendMirrorResponse([
                             "status": "started",
                             "mode": "device",
@@ -2728,6 +2775,48 @@ class WebSocketServer: ObservableObject {
                 AppState.shared.isMirrorRequestPending = false
             }
         }
+    }
+    
+    // MARK: - Mac Media Control
+    
+    private func executeMacMediaControl(action: String) {
+        #if os(macOS)
+        let script: String
+        
+        switch action {
+        case "play", "pause", "playPause":
+            script = """
+            tell application "System Events"
+                key code 16 using {command down}
+            end tell
+            """
+        case "next":
+            script = """
+            tell application "System Events"
+                key code 17 using {command down}
+            end tell
+            """
+        case "previous":
+            script = """
+            tell application "System Events"
+                key code 18 using {command down}
+            end tell
+            """
+        default:
+            print("[websocket] Unknown Mac media control action: \(action)")
+            return
+        }
+        
+        var error: NSDictionary?
+        if let scriptObject = NSAppleScript(source: script) {
+            scriptObject.executeAndReturnError(&error)
+            if let error = error {
+                print("[websocket] ❌ Mac media control error: \(error)")
+            } else {
+                print("[websocket] ✅ Mac media control '\(action)' executed")
+            }
+        }
+        #endif
     }
 
 }
