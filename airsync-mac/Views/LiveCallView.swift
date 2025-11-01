@@ -40,12 +40,12 @@ struct LiveCallView: View {
             
             // Duration (for active calls)
             if call.state == .active {
-                Text(formatDuration(call.duration))
+                Text(formatDuration(currentTime.timeIntervalSince(call.startTime)))
                     .font(.title2)
                     .monospacedDigit()
                     .foregroundColor(.green)
-                    .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
-                        currentTime = Date()
+                    .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { time in
+                        currentTime = time
                     }
             }
             

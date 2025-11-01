@@ -1,5 +1,1 @@
 SWIFT_ACTIVE_COMPILATION_CONDITIONS=SELF_COMPILED
-HEADER_SEARCH_PATHS = $(inherited) /opt/homebrew/include
-LIBRARY_SEARCH_PATHS = $(inherited) /opt/homebrew/lib
-OTHER_CFLAGS = -I/opt/homebrew/include
-OTHER_LDFLAGS = -lavcodec -lavutil -lswscale

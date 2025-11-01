@@ -17,24 +17,15 @@ final class H264Decoder: NSObject {
     // Performance tracking
     private var frameCount: Int = 0
     private var lastLogTime = Date()
-
-    private var useFFmpegFallback = false
     
     override init() {
         super.init()
-        print("[H264Decoder] ⚡ Attempting native VideoToolbox hardware decoder")
+        print("[H264Decoder] ⚡ Using native VideoToolbox hardware decoder")
     }
 
     // MARK: - Public API
 
     func feedAnnexB(_ data: Data, pts: CMTime? = nil) {
-        if useFFmpegFallback {
-            decodeQueue.async {
-                FFmpegDecoder.shared.decode(frameData: data)
-            }
-            return
-        }
-        
         decodeQueue.async { [weak self] in
             self?.processAnnexBData(data, pts: pts ?? .zero)
         }
@@ -52,12 +43,6 @@ final class H264Decoder: NSObject {
     }
 
     func decode(frameData: Data, isConfig: Bool) {
-        if useFFmpegFallback {
-            decodeQueue.async {
-                FFmpegDecoder.shared.decode(frameData: frameData)
-            }
-            return
-        }
         feedAnnexB(frameData)
     }
 
@@ -235,13 +220,6 @@ final class H264Decoder: NSObject {
             print("[H264Decoder] ❌ Failed to create format description: \(status) (\(errorName))")
             print("[H264Decoder] 📊 SPS first bytes: \(sps.prefix(min(8, sps.count)).map { String(format: "%02X", $0) }.joined(separator: " "))")
             print("[H264Decoder] 📊 PPS first bytes: \(pps.prefix(min(8, pps.count)).map { String(format: "%02X", $0) }.joined(separator: " "))")
-            
-            // Fall back to FFmpeg if VideoToolbox fails
-            if !useFFmpegFallback {
-                print("[H264Decoder] 🔄 Falling back to FFmpeg software decoder")
-                useFFmpegFallback = true
-                FFmpegDecoder.shared.onDecodedFrame = self.onDecodedFrame
-            }
         }
     }
 

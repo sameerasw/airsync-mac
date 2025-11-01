@@ -39,6 +39,7 @@ enum MessageType: String, Codable {
     case mirrorStart
     case mirrorStop
     case mirrorFrame
+    case mirrorStatus
     // remote connect event exchange
     case remoteConnectRequest
     case remoteConnectResponse

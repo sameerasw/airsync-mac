@@ -13,6 +13,7 @@ struct InteractiveMirrorView: View {
     @ObservedObject private var appState = AppState.shared
     @State private var screenSize: CGSize = .zero
     @State private var showControls: Bool = true
+    @State private var dimAndroidScreen: Bool = false
     
     var body: some View {
         GeometryReader { geometry in
@@ -46,24 +47,42 @@ struct InteractiveMirrorView: View {
                 if showControls {
                     VStack {
                         Spacer()
-                        HStack(spacing: 20) {
-                            Button(action: { WebSocketServer.shared.sendNavAction("back") }) {
-                                Image(systemName: "chevron.left")
-                                    .font(.title2)
+                        
+                        VStack(spacing: 12) {
+                            // Screen on/off toggle
+                            Toggle(isOn: $dimAndroidScreen) {
+                                HStack {
+                                    Image(systemName: dimAndroidScreen ? "power" : "power.circle")
+                                    Text(dimAndroidScreen ? "Screen Off" : "Turn Off Screen")
+                                }
+                                .font(.caption)
                             }
-                            .help("Back (Delete)")
+                            .toggleStyle(.button)
+                            .help("Turn off Android display to save battery while mirroring")
+                            .onChange(of: dimAndroidScreen) { _, newValue in
+                                WebSocketServer.shared.setAndroidScreenState(screenOff: newValue)
+                            }
                             
-                            Button(action: { WebSocketServer.shared.sendNavAction("home") }) {
-                                Image(systemName: "house")
-                                    .font(.title2)
+                            // Navigation buttons
+                            HStack(spacing: 20) {
+                                Button(action: { WebSocketServer.shared.sendNavAction("back") }) {
+                                    Image(systemName: "chevron.left")
+                                        .font(.title2)
+                                }
+                                .help("Back (Delete)")
+                                
+                                Button(action: { WebSocketServer.shared.sendNavAction("home") }) {
+                                    Image(systemName: "house")
+                                        .font(.title2)
+                                }
+                                .help("Home (Escape)")
+                                
+                                Button(action: { WebSocketServer.shared.sendNavAction("recents") }) {
+                                    Image(systemName: "square.stack")
+                                        .font(.title2)
+                                }
+                                .help("Recent Apps")
                             }
-                            .help("Home (Escape)")
-                            
-                            Button(action: { WebSocketServer.shared.sendNavAction("recents") }) {
-                                Image(systemName: "square.stack")
-                                    .font(.title2)
-                            }
-                            .help("Recent Apps")
                         }
                         .padding()
                         .background(.ultraThinMaterial)
@@ -84,22 +103,54 @@ struct InteractiveMirrorView: View {
         .onHover { hovering in
             showControls = hovering
         }
-        // Keyboard shortcuts
+        // Keyboard shortcuts and text input
+        .focusable()
         .onAppear {
+            // Make window accept keyboard events
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                NSApp.keyWindow?.makeFirstResponder(NSApp.keyWindow?.contentView)
+                NSApp.keyWindow?.makeKey()
+            }
+            
+            // Add local event monitor for keyboard
             NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                self.handleKeyPress(event)
+                return self.handleKeyPress(event)
             }
         }
     }
     
     private func handleKeyPress(_ event: NSEvent) -> NSEvent? {
+        print("[mirror] 🎹 Key pressed: keyCode=\(event.keyCode), characters=\(event.characters ?? "nil")")
+        
+        // Handle special keys
         switch event.keyCode {
         case 51: // Delete/Backspace
-            WebSocketServer.shared.sendNavAction("back")
+            print("[mirror] 📤 Sending DELETE key")
+            WebSocketServer.shared.sendKeyEvent(keyCode: 67, text: "") // KEYCODE_DEL
+            return nil // Consume event
         case 53: // Escape
+            print("[mirror] 📤 Sending HOME action")
             WebSocketServer.shared.sendNavAction("home")
+            return nil
+        case 36: // Return/Enter
+            print("[mirror] 📤 Sending ENTER key")
+            WebSocketServer.shared.sendKeyEvent(keyCode: 66, text: "\n") // KEYCODE_ENTER
+            return nil
+        case 48: // Tab
+            print("[mirror] 📤 Sending TAB key")
+            WebSocketServer.shared.sendKeyEvent(keyCode: 61, text: "\t") // KEYCODE_TAB
+            return nil
+        case 49: // Space
+            print("[mirror] 📤 Sending SPACE key")
+            WebSocketServer.shared.sendKeyEvent(keyCode: 62, text: " ") // KEYCODE_SPACE
+            return nil
         default:
-            break
+            // Handle regular text input
+            if let characters = event.characters, !characters.isEmpty {
+                print("[mirror] 📤 Sending text: \(characters)")
+                WebSocketServer.shared.sendTextInput(text: characters)
+                return nil // Consume event
+            }
         }
         return event
     }

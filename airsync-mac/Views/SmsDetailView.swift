@@ -13,8 +13,12 @@ struct SmsDetailView: View {
     @State private var messages: [SmsMessage] = []
     @State private var newMessage = ""
     @State private var isLoading = false
-    @State private var canSendMessages = true // Some conversations might be read-only
     @Environment(\.dismiss) private var dismiss
+    
+    // Computed property to determine if messages can be sent
+    private var canSendMessages: Bool {
+        !isReadOnlyConversation
+    }
     
     // Determine if this conversation supports sending messages
     private var isReadOnlyConversation: Bool {
@@ -73,7 +77,6 @@ struct SmsDetailView: View {
         }
         .onAppear {
             loadMessages()
-            canSendMessages = !isReadOnlyConversation
         }
         .navigationTitle("")
     }
