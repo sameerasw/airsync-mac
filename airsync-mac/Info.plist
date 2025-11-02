@@ -26,6 +26,8 @@
 	</dict>
 	<key>ForceUpdateKey</key>
 	<string>002</string>
+	<key>TrialSecret</key>
+	<string>$(TRIAL_SECRET)</string>
 	<key>NSAppleScriptEnabled</key>
 	<true/>
 	<key>OSAScriptingDefinition</key>

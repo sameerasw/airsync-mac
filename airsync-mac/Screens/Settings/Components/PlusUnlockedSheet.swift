@@ -52,6 +52,7 @@ struct PlusUnlockedSheet: View {
                         size: .large,
                         action: {
                             AppState.shared.licenseDetails = nil
+                            TrialManager.shared.clearTrial()
                             AppState.shared.isPlus = false
                         }
                     )

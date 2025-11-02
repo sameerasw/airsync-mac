@@ -30,6 +30,10 @@ extension UserDefaults {
         static let lastOnboarding = "lastOnboarding"
 
         static let notificationStacks = "notificationStacks"
+        static let trialToken = "trialToken"
+        static let trialExpiryDate = "trialExpiryDate"
+        static let trialDeviceIdentifier = "trialDeviceIdentifier"
+        static let trialLastSync = "trialLastSync"
     }
 
     var consecutiveLicenseFailCount: Int {
@@ -129,6 +133,26 @@ extension UserDefaults {
     var isMusicCardHidden: Bool {
         get { bool(forKey: Keys.isMusicCardHidden) }
         set { set(newValue, forKey: Keys.isMusicCardHidden) }
+    }
+
+    var trialToken: String? {
+        get { string(forKey: Keys.trialToken) }
+        set { set(newValue, forKey: Keys.trialToken) }
+    }
+
+    var trialExpiryDate: Date? {
+        get { object(forKey: Keys.trialExpiryDate) as? Date }
+        set { set(newValue, forKey: Keys.trialExpiryDate) }
+    }
+
+    var trialDeviceIdentifier: String? {
+        get { string(forKey: Keys.trialDeviceIdentifier) }
+        set { set(newValue, forKey: Keys.trialDeviceIdentifier) }
+    }
+
+    var trialLastSync: Date? {
+        get { object(forKey: Keys.trialLastSync) as? Date }
+        set { set(newValue, forKey: Keys.trialLastSync) }
     }
     
     // MARK: - String-based Onboarding Tracking

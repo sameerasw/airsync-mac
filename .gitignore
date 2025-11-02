@@ -66,3 +66,5 @@ updates/
 .DS_Store
 *.DS_Store
 
+# Local secrets configuration (never commit)
+airsync-mac/Configs/
