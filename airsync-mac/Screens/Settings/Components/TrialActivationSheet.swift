@@ -13,8 +13,7 @@ struct TrialActivationSheet: View {
                 .font(.headline)
 
             if let error = manager.lastError, !error.isEmpty {
-                Text(error)
-                    .font(.footnote)
+                Text(":( \(error)")
                     .foregroundStyle(.red)
             }
 
@@ -49,7 +48,7 @@ struct TrialActivationSheet: View {
         }
         .padding(24)
         .frame(width: 360)
-        .overlay(alignment: .topTrailing) {
+        .overlay(alignment: .center) {
             if manager.isPerformingRequest {
                 ProgressView()
                     .controlSize(.small)

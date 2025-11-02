@@ -48,7 +48,9 @@ struct SettingsPlusView: View {
 
                 if appState.isPlus {
                     HStack{
-                        Text(trialManager.isTrialActive ? "Trial active" : "Active")
+                        Text(trialManager.isTrialActive ? "Trial" : "Active")
+                            .monospaced()
+
                         GlassButtonView(
                             label: "What’s in Plus",
                             systemImage: "sparkles",
@@ -62,7 +64,7 @@ struct SettingsPlusView: View {
 
 
             // License input + check
-            if appState.licenseDetails == nil {
+            if appState.licenseDetails == nil && !trialManager.isTrialActive {
                 TextField(L("license.enterKey"), text: $licenseKey)
                     .textFieldStyle(.roundedBorder)
                     .disabled(isCheckingLicense)
@@ -71,6 +73,7 @@ struct SettingsPlusView: View {
                     GlassButtonView(
                         label: "Activate",
                         systemImage: "checkmark.seal",
+                        primary: true,
                         action: {
                             #if SELF_COMPILED
                             licenseValid = true
@@ -117,6 +120,16 @@ struct SettingsPlusView: View {
                     )
 
                     Spacer()
+
+                    GlassButtonView(
+                        label: "Start Trial",
+                        systemImage: "play.circle",
+                        action: {
+                            trialManager.clearError()
+                            showTrialSheet = true
+                        }
+                    )
+                    .disabled(trialManager.isPerformingRequest || !trialManager.hasSecretConfigured)
                 }
             }
 
@@ -262,11 +275,10 @@ Enjoy the app!
 
     @ViewBuilder
     private var trialSection: some View {
-        if appState.licenseDetails == nil {
+    if appState.licenseDetails == nil {
             VStack(alignment: .leading, spacing: 8) {
-                Divider()
 
-                if trialManager.isTrialActive {
+        if trialManager.isTrialActive {
                     HStack {
                         Label("Trial active", systemImage: "hourglass")
                             .font(.subheadline)
@@ -281,29 +293,10 @@ Enjoy the app!
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                } else {
-                    Text("Try AirSync+ for a day.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-
-                    HStack(spacing: 12) {
-                        GlassButtonView(
-                            label: "Start Trial",
-                            systemImage: "play.circle",
-                            primary: true,
-                            action: {
-                                trialManager.clearError()
-                                showTrialSheet = true
-                            }
-                        )
-                        .disabled(trialManager.isPerformingRequest || !trialManager.hasSecretConfigured)
-
-                        if trialManager.isPerformingRequest {
-                            ProgressView()
-                                .controlSize(.small)
-                        }
-
-                        Spacer()
+                } else if appState.licenseDetails == nil {
+                    if trialManager.isPerformingRequest {
+                        ProgressView()
+                            .controlSize(.small)
                     }
 
                     if !trialManager.hasSecretConfigured {
