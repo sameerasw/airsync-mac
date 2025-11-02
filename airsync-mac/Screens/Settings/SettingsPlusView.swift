@@ -9,6 +9,7 @@ import SwiftUI
 
 struct SettingsPlusView: View {
     @ObservedObject var appState = AppState.shared
+    @StateObject private var trialManager = TrialManager.shared
 
     @State private var licenseKey: String = ""
     @State private var isCheckingLicense = false
@@ -19,6 +20,7 @@ struct SettingsPlusView: View {
 
     @State private var selectedPlan: LicensePlanType = UserDefaults.standard.licensePlanType
     @State private var showPlusUnlockedSheet = false
+    @State private var showTrialSheet = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -46,7 +48,9 @@ struct SettingsPlusView: View {
 
                 if appState.isPlus {
                     HStack{
-                        Text(appState.isPlus ? "Active" : "Not active")
+                        Text(trialManager.isTrialActive ? "Trial" : "Active")
+                            .monospaced()
+
                         GlassButtonView(
                             label: "What’s in Plus",
                             systemImage: "sparkles",
@@ -60,7 +64,7 @@ struct SettingsPlusView: View {
 
 
             // License input + check
-            if !appState.isPlus {
+            if appState.licenseDetails == nil && !trialManager.isTrialActive {
                 TextField(L("license.enterKey"), text: $licenseKey)
                     .textFieldStyle(.roundedBorder)
                     .disabled(isCheckingLicense)
@@ -69,6 +73,7 @@ struct SettingsPlusView: View {
                     GlassButtonView(
                         label: "Activate",
                         systemImage: "checkmark.seal",
+                        primary: true,
                         action: {
                             #if SELF_COMPILED
                             licenseValid = true
@@ -115,8 +120,22 @@ struct SettingsPlusView: View {
                     )
 
                     Spacer()
+
+                    GlassButtonView(
+                        label: "Start Trial",
+                        systemImage: "play.circle",
+                        action: {
+                            trialManager.clearError()
+                            showTrialSheet = true
+                        }
+                    )
+                    .disabled(trialManager.isPerformingRequest || !trialManager.hasSecretConfigured)
                 }
             }
+
+#if !SELF_COMPILED
+            trialSection
+#endif
 
             // License info display
             #if SELF_COMPILED
@@ -208,6 +227,14 @@ struct SettingsPlusView: View {
         .sheet(isPresented: $showPlusUnlockedSheet) {
             PlusUnlockedSheet()
         }
+        .sheet(isPresented: $showTrialSheet) {
+            TrialActivationSheet(
+                manager: trialManager,
+                onActivated: {
+                    showTrialSheet = false
+                }
+            )
+        }
 
         // Why Plus section
         DisclosureGroup(isExpanded: $isExpanded) {
@@ -243,6 +270,55 @@ Enjoy the app!
             Text(value)
                 .font(.caption)
                 .foregroundColor(color)
+        }
+    }
+
+    @ViewBuilder
+    private var trialSection: some View {
+    if appState.licenseDetails == nil {
+            VStack(alignment: .leading, spacing: 8) {
+
+        if trialManager.isTrialActive {
+                    HStack {
+                        Label("Trial active", systemImage: "hourglass")
+                            .font(.subheadline)
+                        Spacer()
+                        Text(trialManager.countdownText)
+                            .font(.subheadline)
+                            .monospacedDigit()
+                    }
+
+                    if let expiryText = trialManager.expiryDisplayText {
+                        Text("Expires on \(expiryText)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else if appState.licenseDetails == nil {
+                    if trialManager.isPerformingRequest {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+
+                    if !trialManager.hasSecretConfigured {
+                        Text("Set TRIAL_SECRET in Configs/Secrets.xcconfig to enable the trial.")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+
+                    if let error = trialManager.lastError, !error.isEmpty {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+
+                    if trialManager.hasExpired, let expiryText = trialManager.expiryDisplayText {
+                        Text("Trial expired on \(expiryText)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding(.top, 12)
         }
     }
 }

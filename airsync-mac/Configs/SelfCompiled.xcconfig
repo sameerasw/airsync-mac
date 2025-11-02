@@ -1,1 +1,4 @@
-SWIFT_ACTIVE_COMPILATION_CONDITIONS=SELF_COMPILED
+# Include local secrets when available without forcing repo changes
+#include? "Secrets.xcconfig"
+
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = SELF_COMPILED

@@ -74,6 +74,9 @@ struct airsync_macApp: App {
             appIconManager.revertToDefaultIfNeeded()
         }
 
+        // Initialize trial manager early so entitlement state is up-to-date on launch.
+        _ = TrialManager.shared
+
     }
 
     var body: some Scene {

@@ -275,6 +275,8 @@
 		};
 		B9673B602E35A2A3006D284A /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = B9673B592E35A2A1006D284A /* airsync-mac */;
+			baseConfigurationReferenceRelativePath = Configs/Shared.xcconfig;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -341,6 +343,8 @@
 		};
 		B9673B612E35A2A3006D284A /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = B9673B592E35A2A1006D284A /* airsync-mac */;
+			baseConfigurationReferenceRelativePath = Configs/Shared.xcconfig;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -399,6 +403,8 @@
 		};
 		B9673B632E35A2A3006D284A /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = B9673B592E35A2A1006D284A /* airsync-mac */;
+			baseConfigurationReferenceRelativePath = Configs/Shared.xcconfig;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -445,6 +451,8 @@
 		};
 		B9673B642E35A2A3006D284A /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = B9673B592E35A2A1006D284A /* airsync-mac */;
+			baseConfigurationReferenceRelativePath = Configs/Shared.xcconfig;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
