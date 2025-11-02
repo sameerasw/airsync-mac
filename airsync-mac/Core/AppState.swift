@@ -438,8 +438,7 @@ class AppState: ObservableObject {
         extraActions: [UNNotificationAction] = [],
         extraUserInfo: [String: Any] = [:],
         subtitle: String? = nil,
-        prependAppName: Bool = true,
-        themeIcon: Bool = false
+        prependAppName: Bool = true
     ) {
         let center = UNUserNotificationCenter.current()
         let content = UNMutableNotificationContent()
@@ -497,7 +496,7 @@ class AppState: ObservableObject {
         if unActions.isEmpty {
             content.categoryIdentifier = "DEFAULT_CATEGORY"
             content.userInfo["actions"] = []
-            finalizeAndSchedule(center: center, content: content, id: id, appIcon: appIcon, themeIcon: themeIcon)
+            finalizeAndSchedule(center: center, content: content, id: id, appIcon: appIcon)
         } else {
             let actionNamesKey = unActions.map { $0.identifier }.joined(separator: "_")
             let catId = "DYN_\(actionNamesKey)"
@@ -509,13 +508,14 @@ class AppState: ObservableObject {
                     let newCat = UNNotificationCategory(identifier: catId, actions: unActions, intentIdentifiers: [], options: [])
                     center.setNotificationCategories(existing.union([newCat]))
                 }
-                self.finalizeAndSchedule(center: center, content: content, id: id, appIcon: appIcon, themeIcon: themeIcon)
+                self.finalizeAndSchedule(center: center, content: content, id: id, appIcon: appIcon)
             }
         }
     }
-    private func finalizeAndSchedule(center: UNUserNotificationCenter, content: UNMutableNotificationContent, id: String, appIcon: NSImage?, themeIcon: Bool) {
+
+    private func finalizeAndSchedule(center: UNUserNotificationCenter, content: UNMutableNotificationContent, id: String, appIcon: NSImage?) {
         // Attach icon
-        if let icon = appIcon, let iconFileURL = saveIconToTemporaryFile(icon: icon, theme: themeIcon) {
+        if let icon = appIcon, let iconFileURL = saveIconToTemporaryFile(icon: icon) {
             if let attachment = try? UNNotificationAttachment(identifier: "appIcon", url: iconFileURL, options: nil) {
                 content.attachments = [attachment]
             }
@@ -526,33 +526,22 @@ class AppState: ObservableObject {
         }
     }
 
-    private func saveIconToTemporaryFile(icon: NSImage, theme: Bool = false) -> URL? {
+    private func saveIconToTemporaryFile(icon: NSImage) -> URL? {
                 let finalImage: NSImage
                 var size = icon.size
                 if size.width == 0 || size.height == 0 { size = NSSize(width: 64, height: 64) }
 
-                if theme {
-                    // Apply accent color mask (existing behavior)
-                    let colored = NSImage(size: size)
-                    colored.lockFocus()
-                    NSColor.controlAccentColor.setFill()
-                    let rect = NSRect(origin: .zero, size: size)
-                    rect.fill()
-                    let maskImage = icon
-                    maskImage.isTemplate = true
-                    maskImage.draw(in: rect, from: NSZeroRect, operation: .destinationIn, fraction: 1.0)
-                    colored.unlockFocus()
-                    finalImage = colored
-                } else {
-                    // Preserve original icon (draw onto transparent background)
-                    let normal = NSImage(size: size)
-                    normal.lockFocus()
-                    let rect = NSRect(origin: .zero, size: size)
-                    NSGraphicsContext.current?.imageInterpolation = .high
-                    icon.draw(in: rect, from: NSZeroRect, operation: .sourceOver, fraction: 1.0)
-                    normal.unlockFocus()
-                    finalImage = normal
-                }
+                let colored = NSImage(size: size)
+                colored.lockFocus()
+                NSColor.controlAccentColor.setFill()
+                let rect = NSRect(origin: .zero, size: size)
+                rect.fill()
+                let maskImage = icon
+                maskImage.isTemplate = true
+                maskImage.draw(in: rect, from: NSZeroRect, operation: .destinationIn, fraction: 1.0)
+                colored.unlockFocus()
+
+                finalImage = colored
 
                 guard let tiffData = finalImage.tiffRepresentation,
                             let bitmap = NSBitmapImageRep(data: tiffData),

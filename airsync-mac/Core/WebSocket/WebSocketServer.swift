@@ -546,12 +546,12 @@ class WebSocketServer: ObservableObject {
                             extraActions = [accept, decline]
                         }
                         // Post ringing notification using SF Symbol as icon
-                        AppState.shared.postNativeNotification(id: nid, appName: "Phone", title: title, body: "", appIcon: appIcon, package: nil, extraActions: extraActions, extraUserInfo: extraUserInfo, subtitle: subtitle, prependAppName: false, themeIcon: true)
+                        AppState.shared.postNativeNotification(id: nid, appName: "Phone", title: title, body: "", appIcon: appIcon, package: nil, extraActions: extraActions, extraUserInfo: extraUserInfo, subtitle: subtitle, prependAppName: false)
                     } else if state.callStatus == .active || state.callStatus == .held {
                         // Active or held calls: show single End action
                         let end = UNNotificationAction(identifier: "CALL_END", title: "End", options: [])
                         extraActions = [end]
-                        AppState.shared.postNativeNotification(id: nid, appName: "Phone", title: title, body: "", appIcon: appIcon, package: nil, extraActions: extraActions, extraUserInfo: extraUserInfo, subtitle: subtitle, prependAppName: false, themeIcon: true)
+                        AppState.shared.postNativeNotification(id: nid, appName: "Phone", title: title, body: "", appIcon: appIcon, package: nil, extraActions: extraActions, extraUserInfo: extraUserInfo, subtitle: subtitle, prependAppName: false)
                     }
 
                     // Auto-dismiss when disconnected
