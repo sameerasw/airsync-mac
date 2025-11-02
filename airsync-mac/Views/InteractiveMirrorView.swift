@@ -49,20 +49,6 @@ struct InteractiveMirrorView: View {
                         Spacer()
                         
                         VStack(spacing: 12) {
-                            // Screen on/off toggle
-                            Toggle(isOn: $dimAndroidScreen) {
-                                HStack {
-                                    Image(systemName: dimAndroidScreen ? "power" : "power.circle")
-                                    Text(dimAndroidScreen ? "Screen Off" : "Turn Off Screen")
-                                }
-                                .font(.caption)
-                            }
-                            .toggleStyle(.button)
-                            .help("Turn off Android display to save battery while mirroring")
-                            .onChange(of: dimAndroidScreen) { _, newValue in
-                                WebSocketServer.shared.setAndroidScreenState(screenOff: newValue)
-                            }
-                            
                             // Navigation buttons
                             HStack(spacing: 20) {
                                 Button(action: { WebSocketServer.shared.sendNavAction("back") }) {

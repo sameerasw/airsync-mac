@@ -62,7 +62,19 @@ class WebSocketServer: ObservableObject {
     static let shared = WebSocketServer()
 
     private var server = HttpServer()
-    private var activeSessions: [WebSocketSession] = []
+    // Use a wrapper to store weak references to sessions
+    private class WeakSessionBox {
+        weak var session: WebSocketSession?
+        init(_ session: WebSocketSession) {
+            self.session = session
+        }
+    }
+    private var sessionBoxes: [WeakSessionBox] = []
+    private var activeSessions: [WebSocketSession] {
+        // Clean up nil references and return valid sessions
+        sessionBoxes = sessionBoxes.filter { $0.session != nil }
+        return sessionBoxes.compactMap { $0.session }
+    }
     @Published var symmetricKey: SymmetricKey?
 
     @Published var localPort: UInt16?
@@ -99,6 +111,7 @@ class WebSocketServer: ObservableObject {
 
     #if os(macOS)
     fileprivate var mirrorWindow: NSWindow?
+    fileprivate var mirrorWindowDelegate: MirrorWindowDelegate?
     #endif
 
     init() {
@@ -112,9 +125,23 @@ class WebSocketServer: ObservableObject {
                 print("[websocket] Notification permission granted: \(granted)")
             }
         }
+        setupSimpleDecoderCallback()
+    }
+
+    deinit {
+        print("[websocket] WebSocketServer deinit")
+        // Clean up all resources
+        sessionBoxes.removeAll()
+        unifiedDecoder.onDecodedFrame = nil
+        stopNetworkMonitoring()
+    }
+    
+    private func setupSimpleDecoderCallback() {
         unifiedDecoder.onDecodedFrame = { [weak self] image in
             DispatchQueue.main.async {
                 guard let self = self else { return }
+                guard AppState.shared.isMirroring else { return }
+                
                 AppState.shared.latestMirrorFrame = image
                 if !AppState.shared.isMirrorActive {
                     AppState.shared.isMirrorActive = true
@@ -125,10 +152,6 @@ class WebSocketServer: ObservableObject {
                 }
             }
         }
-    }
-
-    deinit {
-        unifiedDecoder.onDecodedFrame = nil
     }
 
     func start(port: UInt16 = Defaults.serverPort) {
@@ -169,6 +192,9 @@ class WebSocketServer: ObservableObject {
                 }
                 print("[websocket] WebSocket server started at ws://\(ip ?? "unknown"):\(port)/socket)")
 
+                // Ensure decoder callback is set up when server starts
+                self.setupSimpleDecoderCallback()
+                
                 self.startNetworkMonitoring()
             } catch {
                 DispatchQueue.main.async {
@@ -184,19 +210,38 @@ class WebSocketServer: ObservableObject {
 
 
     func stop() {
+        // Clear sessions first to avoid accessing deallocated objects
+        sessionBoxes.removeAll()
+        
+        // Stop the server
         server.stop()
-        activeSessions.removeAll()
-        // Clear any active mirror state when server stops
+        
+        // Clear mirror state immediately
         DispatchQueue.main.async {
             AppState.shared.isMirrorActive = false
             AppState.shared.latestMirrorFrame = nil
             AppState.shared.isMirroring = false
             AppState.shared.isMirrorRequestPending = false
-        }
-        DispatchQueue.main.async {
             AppState.shared.webSocketStatus = .stopped
         }
+        
+        #if os(macOS)
+        // Simple window cleanup
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            if let window = self.mirrorWindow {
+                window.delegate = nil
+                self.mirrorWindowDelegate = nil
+                window.orderOut(nil)
+            }
+            self.mirrorWindow = nil
+        }
+        #endif
+        
         stopNetworkMonitoring()
+        
+        // Clear decoder callback when server stops
+        unifiedDecoder.onDecodedFrame = nil
     }
 
 
@@ -210,87 +255,111 @@ class WebSocketServer: ObservableObject {
     """
         sendToFirstAvailable(message: message)
     }
-
+    
+    func sendClipboardUpdate(_ message: String) {
+        sendToFirstAvailable(message: message)
+    }
 
     private func setupWebSocket() {
         server["/socket"] = websocket(
             text: { [weak self] session, text in
-                guard let self = self else { return }
+                autoreleasepool {
+                    guard let self = self else { return }
 
-                print("[websocket] [raw] incoming text length=\(text.count)")
-                // Step 1: Decrypt the message
-                let decryptedText: String
-                if let key = self.symmetricKey {
-                    decryptedText = decryptMessage(text, using: key) ?? ""
-                } else {
-                    decryptedText = text
-                }
-                let usedEncryption = (self.symmetricKey != nil)
-                print("[websocket] [decrypt] used=\(usedEncryption) decryptedLen=\(decryptedText.count)")
+                    print("[websocket] [raw] incoming text length=\(text.count)")
+                    // Step 1: Decrypt the message
+                    let decryptedText: String
+                    if let key = self.symmetricKey {
+                        decryptedText = decryptMessage(text, using: key) ?? ""
+                    } else {
+                        decryptedText = text
+                    }
+                    let usedEncryption = (self.symmetricKey != nil)
+                    print("[websocket] [decrypt] used=\(usedEncryption) decryptedLen=\(decryptedText.count)")
 
-                let truncated = decryptedText.count > 300
-                ? decryptedText.prefix(300) + "..."
-                : decryptedText
-                print("[websocket] [received] \n\(truncated)")
+                    let truncated = decryptedText.count > 300
+                    ? decryptedText.prefix(300) + "..."
+                    : decryptedText
+                    print("[websocket] [received] \n\(truncated)")
 
 
-                // Step 2: Decode JSON and handle
-                if let data = decryptedText.data(using: .utf8) {
-                    do {
-                        // Use JSONSerialization instead of Codable for flexible parsing
-                        guard let jsonObject = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                            print("[websocket] Failed to parse JSON as dictionary")
-                            return
+                    // Step 2: Decode JSON and handle
+                    if let data = decryptedText.data(using: .utf8) {
+                        do {
+                            // Use JSONSerialization instead of Codable for flexible parsing
+                            guard let jsonObject = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                                print("[websocket] Failed to parse JSON as dictionary")
+                                return
+                            }
+                            
+                            // Extract type and data manually
+                            guard let typeString = jsonObject["type"] as? String,
+                                  let messageType = MessageType(rawValue: typeString) else {
+                                print("[websocket] Invalid or missing message type")
+                                return
+                            }
+                            
+                            let messageData = jsonObject["data"] as? [String: Any] ?? [:]
+                            print("[websocket] ✅ Parsed JSON - type: \(typeString), data keys: \(messageData.keys.joined(separator: ", "))")
+                            
+                            // Create message with raw dictionary data
+                            let message = FlexibleMessage(type: messageType, data: messageData)
+                            DispatchQueue.main.async {
+                                    self.handleFlexibleMessage(message)
+                            }
+                        } catch {
+                            let snippet = String(decryptedText.prefix(200))
+                            print("[websocket] WebSocket JSON decode failed: \(error) | snippet=\(snippet)")
                         }
-                        
-                        // Extract type and data manually
-                        guard let typeString = jsonObject["type"] as? String,
-                              let messageType = MessageType(rawValue: typeString) else {
-                            print("[websocket] Invalid or missing message type")
-                            return
-                        }
-                        
-                        let messageData = jsonObject["data"] as? [String: Any] ?? [:]
-                        print("[websocket] ✅ Parsed JSON - type: \(typeString), data keys: \(messageData.keys.joined(separator: ", "))")
-                        
-                        // Create message with raw dictionary data
-                        let message = FlexibleMessage(type: messageType, data: messageData)
-                        DispatchQueue.main.async {
-                                self.handleFlexibleMessage(message)
-                        }
-                    } catch {
-                        let snippet = String(decryptedText.prefix(200))
-                        print("[websocket] WebSocket JSON decode failed: \(error) | snippet=\(snippet)")
                     }
                 }
             },
 
             connected: { [weak self] session in
                 guard let self = self else { return }
-                print("[websocket] Device connected")
+                print("[websocket] ✅ Device connected successfully!")
+                print("[websocket] Session info: \(session)")
+                
                 // Enforce single active session to avoid reconnect loops
-                if !self.activeSessions.isEmpty {
+                if !self.sessionBoxes.isEmpty {
+                    print("[websocket] Replacing existing session")
                     // Keep only the newest session; drop references to older ones
-                    self.activeSessions.removeAll()
+                    self.sessionBoxes.removeAll()
                 }
-                self.activeSessions.append(session)
+                
+                // Add new session with weak reference
+                self.sessionBoxes.append(WeakSessionBox(session))
                 print("[websocket] Active sessions: \(self.activeSessions.count)")
+                
+                // Send a welcome message to confirm connection
+                let welcomeMessage = """
+                {
+                    "type": "connectionConfirmed",
+                    "data": {
+                        "message": "Connected to Mac successfully",
+                        "timestamp": "\(Date().timeIntervalSince1970)"
+                    }
+                }
+                """
+                
+                // Send message on a background queue to avoid blocking
+                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                    self?.sendToFirstAvailable(message: welcomeMessage)
+                }
             },
             disconnected: { [weak self] session in
                 guard let self = self else { return }
                 print("[websocket] Device disconnected")
 
-                self.activeSessions.removeAll(where: { $0 === session })
+                // Remove the session safely
+                self.sessionBoxes.removeAll(where: { $0.session === session })
 
                 // Only call disconnectDevice if no other sessions remain
-                if self.activeSessions.isEmpty {
+                let isEmpty = self.activeSessions.isEmpty
+                if isEmpty {
                     DispatchQueue.main.async {
                         AppState.shared.disconnectDevice()
-                    }
-                }
-                // Also clear mirror state when the last session disconnects
-                if self.activeSessions.isEmpty {
-                    DispatchQueue.main.async {
+                        // Clear mirror state when last session disconnects
                         AppState.shared.isMirrorActive = false
                         AppState.shared.latestMirrorFrame = nil
                     }
@@ -708,6 +777,7 @@ class WebSocketServer: ObservableObject {
                let text = dict["text"] as? String {
                 print("[websocket] clipboardUpdate len=\(text.count)")
                 DispatchQueue.main.async {
+                    guard !text.isEmpty else { return }
                     AppState.shared.updateClipboardFromAndroid(text)
                 }
             }
@@ -1076,7 +1146,7 @@ class WebSocketServer: ObservableObject {
                 if self.activeSessions.count > 1 {
                     // Keep only the last (most recent) session; drop references to older ones
                     if let last = self.activeSessions.last {
-                        self.activeSessions = [last]
+                        self.sessionBoxes = [WeakSessionBox(last)]
                     }
                     print("[mirror] Pruned extra sessions; now \(self.activeSessions.count)")
                 }
@@ -1108,34 +1178,29 @@ class WebSocketServer: ObservableObject {
         case .mirrorStop:
             print("[mirror] 🛑 Received mirrorStop from Android")
             
-            // Reset decoder on background thread to prevent blocking
-            DispatchQueue.global(qos: .utility).async { [weak self] in
-                self?.unifiedDecoder.reset()
-                self?.unifiedDecoder.flush()
-            }
+            // Update state immediately
+            AppState.shared.isMirrorActive = false
+            AppState.shared.latestMirrorFrame = nil
+            AppState.shared.isMirroring = false
+            AppState.shared.isMirrorRequestPending = false
             
-            // Update UI state on main thread with proper error handling
+            #if os(macOS)
+            // Simple window cleanup
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
-                
-                // Safely update AppState properties
-                AppState.shared.isMirrorActive = false
-                AppState.shared.latestMirrorFrame = nil
-                AppState.shared.isMirroring = false
-                AppState.shared.isMirrorRequestPending = false
-                
-                #if os(macOS)
-                // Safely close mirror window
                 if let window = self.mirrorWindow {
-                    if !window.isReleasedWhenClosed && window.isVisible {
-                        window.orderOut(nil)
-                    }
+                    window.delegate = nil
+                    self.mirrorWindowDelegate = nil
+                    window.orderOut(nil)
                 }
                 self.mirrorWindow = nil
-                #endif
-                
-                print("[mirror] ✅ Mirror stopped successfully - no auto-restart")
             }
+            #endif
+            
+        // Stop processing decoded frames immediately
+        unifiedDecoder.onDecodedFrame = nil
+            
+            print("[mirror] ✅ Mirror stopped successfully")
             sendMirrorAck(action: "stop", ok: true)
             
         case .mirrorStatus:
@@ -1156,25 +1221,8 @@ class WebSocketServer: ObservableObject {
                     break
                 }
 
-                // Use unified decoder for all formats
+                // Use unified decoder for all formats - no H.264 fallback
                 unifiedDecoder.decode(frameData: data, format: format, isConfig: isConfig)
-                
-                // Legacy fallback for non-H.264 formats
-                if format != "h264" && format != "jpeg" && format != nil {
-                    // Handle JPEG/PNG as before
-                    if let nsImage = NSImage(data: data) {
-                        DispatchQueue.main.async {
-                            let wasActive = AppState.shared.isMirrorActive
-                            if !wasActive {
-                                AppState.shared.isMirrorActive = true
-                                // Removed posting notification line here as per instructions
-                            }
-                            AppState.shared.latestMirrorFrame = nsImage
-                        }
-                    } else {
-                        print("[websocket] mirrorFrame failed to create NSImage from decoded data (format=\(format ?? "unknown"))")
-                    }
-                }
             }
 
         case .remoteConnectResponse:
@@ -1906,18 +1954,31 @@ class WebSocketServer: ObservableObject {
     }
 
     private func sendToFirstAvailable(message: String) {
-        guard let first = activeSessions.first else {
+        guard !activeSessions.isEmpty else {
             let preview = message.prefix(60)
             print("[websocket] [send] No active sessions; dropping message preview=\(preview)")
             return
         }
-        if let key = symmetricKey, let encrypted = encryptMessage(message, using: key) {
-            print("[websocket] [send] encrypted len=\(encrypted.count)")
-            first.writeText(encrypted)
-        } else {
-            let encryptionState = (symmetricKey != nil) ? "enabled-but-failed" : "disabled"
-            print("[websocket] [send] plain len=\(message.count) (encryption=\(encryptionState))")
-            first.writeText(message)
+        
+        // Get first session safely
+        guard let first = activeSessions.first else {
+            return
+        }
+        
+        // Send message with error handling
+        do {
+            if let key = symmetricKey, let encrypted = encryptMessage(message, using: key) {
+                print("[websocket] [send] encrypted len=\(encrypted.count)")
+                first.writeText(encrypted)
+            } else {
+                let encryptionState = (symmetricKey != nil) ? "enabled-but-failed" : "disabled"
+                print("[websocket] [send] plain len=\(message.count) (encryption=\(encryptionState))")
+                first.writeText(message)
+            }
+        } catch {
+            print("[websocket] [send] Error sending message: \(error)")
+            // Remove the failed session
+            sessionBoxes.removeAll(where: { $0.session === first })
         }
     }
     
@@ -2240,7 +2301,11 @@ class WebSocketServer: ObservableObject {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.mirrorWindow = window
-        window.delegate = MirrorWindowDelegate.shared(self)
+        
+        // Create per-window delegate instance and store it strongly
+        let delegate = MirrorWindowDelegate(server: self)
+        self.mirrorWindowDelegate = delegate
+        window.delegate = delegate
         #endif
     }
 
@@ -2395,10 +2460,6 @@ class WebSocketServer: ObservableObject {
         sendToFirstAvailable(message: message)
     }
 
-    func sendClipboardUpdate(_ message: String) {
-        sendToFirstAvailable(message: message)
-    }
-
     // MARK: - SMS/Messaging
     
     func requestSmsThreads(limit: Int = 50) {
@@ -2546,7 +2607,9 @@ class WebSocketServer: ObservableObject {
                 "volume": 50, // Hardcoded for now - will be replaced later
                 "isMuted": false, // Hardcoded for now - will be replaced later
                 "albumArt": albumArtBase64 ?? "",
-                "likeStatus": "none" // Hardcoded for now - will be replaced later
+                "likeStatus": "none", // Hardcoded for now - will be replaced later
+                "elapsedTime": musicInfo.elapsedTime ?? 0,
+                "duration": musicInfo.duration ?? 0
             ]
             statusDict["music"] = musicDict
         }
@@ -2892,7 +2955,7 @@ class WebSocketServer: ObservableObject {
     func stopMirroring() {
         print("[mirror] 🛑 Mac requesting to stop mirroring")
         
-        // Send stopMirroring message to Android
+        // Send stop message to Android
         let message = """
         {
             "type": "stopMirroring",
@@ -2901,59 +2964,56 @@ class WebSocketServer: ObservableObject {
         """
         sendToFirstAvailable(message: message)
         
-        // Update local state immediately with proper safety
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            
-            AppState.shared.isMirrorRequestPending = false
-            AppState.shared.isMirroring = false
-            AppState.shared.isMirrorActive = false
-            AppState.shared.latestMirrorFrame = nil
-            
-            #if os(macOS)
-            // Safely close window - check if window exists and is valid
-            if let window = self.mirrorWindow, !window.isReleasedWhenClosed {
-                // Remove delegate first to prevent recursion
-                window.delegate = nil
-                if window.isVisible {
-                    window.orderOut(nil)
-                }
-                self.mirrorWindow = nil
-            }
-            #endif
-        }
-        
-        // Reset decoder on background thread
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            self?.unifiedDecoder.reset()
-            self?.unifiedDecoder.flush()
-        }
-    }
-    
-    // Stop mirroring without closing window (called from window delegate)
-    fileprivate func stopMirroringWithoutClosingWindow() {
-        print("[mirror] 🛑 Stopping mirroring (window already closing)")
-        
-        // Send stopMirroring message to Android
-        let message = """
-        {
-            "type": "stopMirroring",
-            "data": {}
-        }
-        """
-        sendToFirstAvailable(message: message)
-        
-        // Update local state
+        // Update state immediately
         AppState.shared.isMirrorRequestPending = false
         AppState.shared.isMirroring = false
         AppState.shared.isMirrorActive = false
         AppState.shared.latestMirrorFrame = nil
         
-        // Reset decoder on background thread
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            self?.unifiedDecoder.reset()
-            self?.unifiedDecoder.flush()
+        #if os(macOS)
+        // Simple window cleanup
+        if let window = self.mirrorWindow {
+            window.delegate = nil
+            self.mirrorWindowDelegate = nil
+            window.orderOut(nil)
         }
+        self.mirrorWindow = nil
+        #endif
+        
+        // Stop processing decoded frames immediately
+        unifiedDecoder.onDecodedFrame = nil
+        
+        print("[mirror] ✅ Stop mirroring completed")
+        
+        // Disconnect after a short delay to allow the stop message to be sent
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            AppState.shared.disconnectDevice()
+        }
+    }
+    
+    // Stop mirroring without closing window (called from window delegate)
+    func stopMirroringWithoutClosingWindow() {
+        print("[mirror] 🛑 Stopping mirroring (window already closing)")
+        
+        // Send stop message to Android
+        let message = """
+        {
+            "type": "stopMirroring",
+            "data": {}
+        }
+        """
+        sendToFirstAvailable(message: message)
+        
+        // Update state immediately
+        AppState.shared.isMirrorRequestPending = false
+        AppState.shared.isMirroring = false
+        AppState.shared.isMirrorActive = false
+        AppState.shared.latestMirrorFrame = nil
+        
+        // Stop processing decoded frames immediately
+        unifiedDecoder.onDecodedFrame = nil
+        
+        print("[mirror] ✅ Stop mirroring without closing window completed")
     }
     
     // MARK: - Mac Media Control
@@ -2962,86 +3022,29 @@ class WebSocketServer: ObservableObject {
         #if os(macOS)
         var success = false
         
-        // Check if Music app is running
-        let runningApps = NSWorkspace.shared.runningApplications
-        let musicRunning = runningApps.contains { $0.bundleIdentifier == "com.apple.Music" }
-        
-        if !musicRunning {
-            print("[websocket] ⚠️ Music app not running, attempting to launch...")
-            // Try to launch Music app
-            if let musicURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Music") {
-                if #available(macOS 10.15, *) {
-                    let config = NSWorkspace.OpenConfiguration()
-                    NSWorkspace.shared.openApplication(at: musicURL, configuration: config) { _, error in
-                        if let error = error {
-                            print("[websocket] Failed to launch Music: \(error)")
-                        }
-                    }
-                } else {
-                    _ = try? NSWorkspace.shared.launchApplication(at: musicURL, options: [], configuration: [:])
-                }
-                // Wait a moment for app to launch
-                Thread.sleep(forTimeInterval: 0.5)
-            }
-        }
-        
-        // Use NSAppleScript to control media playback
-        let script: String
+        // Use system media keys to control the currently playing app (not just Music)
+        let keyCode: Int32
         
         switch action {
-        case "play":
-            script = "tell application \"Music\" to play"
-        case "pause":
-            script = "tell application \"Music\" to pause"
-        case "playPause":
-            script = "tell application \"Music\" to playpause"
+        case "play", "pause", "playPause":
+            keyCode = NX_KEYTYPE_PLAY
         case "next":
-            script = "tell application \"Music\" to next track"
+            keyCode = NX_KEYTYPE_NEXT
         case "previous":
-            script = "tell application \"Music\" to previous track"
+            keyCode = NX_KEYTYPE_PREVIOUS
         default:
             print("[websocket] ❌ Unknown Mac media control action: \(action)")
             sendMacMediaControlResponse(action: action, success: false)
             return
         }
         
-        // Execute AppleScript
-        if let appleScript = NSAppleScript(source: script) {
-            var error: NSDictionary?
-            let result = appleScript.executeAndReturnError(&error)
-            
-            if let error = error {
-                let errorNumber = error["NSAppleScriptErrorNumber"] as? Int ?? 0
-                if errorNumber == -1743 {
-                    print("[websocket] ⚠️ Permission needed: Go to System Settings → Privacy & Security → Automation → AirSync → Enable Music")
-                    // Show alert to user
-                    DispatchQueue.main.async {
-                        let alert = NSAlert()
-                        alert.messageText = "Permission Required"
-                        alert.informativeText = "AirSync needs permission to control Music.\n\nGo to:\nSystem Settings → Privacy & Security → Automation\n\nThen enable 'Music' for AirSync."
-                        alert.alertStyle = .warning
-                        alert.addButton(withTitle: "Open System Settings")
-                        alert.addButton(withTitle: "Cancel")
-                        
-                        if alert.runModal() == .alertFirstButtonReturn {
-                            if #available(macOS 13.0, *) {
-                                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!)
-                            } else {
-                                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!)
-                            }
-                        }
-                    }
-                }
-                print("[websocket] ❌ AppleScript error: \(error)")
-                success = false
-            } else {
-                success = true
-                print("[websocket] ✅ Mac media control '\(action)' executed via AppleScript")
-                print("[websocket] Result: \(result)")
-            }
+        // Send media key event
+        success = sendMediaKeyEvent(keyCode: keyCode)
+        
+        if success {
+            print("[websocket] ✅ Mac media control '\(action)' executed via system media keys")
         } else {
-            print("[websocket] ❌ Failed to create AppleScript")
-            success = false
+            print("[websocket] ❌ Failed to send media key event for '\(action)'")
         }
         
         // Send response back to Android
@@ -3051,19 +3054,61 @@ class WebSocketServer: ObservableObject {
         #endif
     }
     
+    private func sendMediaKeyEvent(keyCode: Int32) -> Bool {
+        #if os(macOS)
+        // Create NSEvent for media key
+        let flags: Int = 0xA00 // Key down flags
+        let data1: Int = ((Int(keyCode) << 16) | flags)
+        
+        // Key down event
+        if let downEvent = NSEvent.otherEvent(
+            with: .systemDefined,
+            location: NSPoint.zero,
+            modifierFlags: NSEvent.ModifierFlags(rawValue: 0),
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            subtype: 8, // Media key subtype
+            data1: data1,
+            data2: -1
+        ) {
+            downEvent.cgEvent?.post(tap: .cghidEventTap)
+        }
+        
+        // Key up event
+        let upFlags: Int = 0xB00 // Key up flags
+        let upData1: Int = ((Int(keyCode) << 16) | upFlags)
+        
+        if let upEvent = NSEvent.otherEvent(
+            with: .systemDefined,
+            location: NSPoint.zero,
+            modifierFlags: NSEvent.ModifierFlags(rawValue: 0),
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            subtype: 8, // Media key subtype
+            data1: upData1,
+            data2: -1
+        ) {
+            upEvent.cgEvent?.post(tap: .cghidEventTap)
+        }
+        
+        return true
+        #else
+        return false
+        #endif
+    }
+    
 }
 
 
 #if os(macOS)
 private class MirrorWindowDelegate: NSObject, NSWindowDelegate {
     private weak var server: WebSocketServer?
-    private static var _shared: MirrorWindowDelegate?
-    static func shared(_ server: WebSocketServer) -> MirrorWindowDelegate {
-        if let s = _shared { s.server = server; return s }
-        let d = MirrorWindowDelegate()
-        d.server = server
-        _shared = d
-        return d
+    
+    init(server: WebSocketServer) {
+        self.server = server
+        super.init()
     }
     
     func windowShouldClose(_ sender: NSWindow) -> Bool {
@@ -3077,19 +3122,9 @@ private class MirrorWindowDelegate: NSObject, NSWindowDelegate {
         alert.addButton(withTitle: "Stop Mirroring")
         alert.addButton(withTitle: "Cancel")
         
-        let response = alert.runModal()
-        
-        if response == .alertFirstButtonReturn {
+        if alert.runModal() == .alertFirstButtonReturn {
             // User confirmed - stop mirroring
-            // Remove delegate immediately to prevent any callbacks
-            sender.delegate = nil
-            
-            // Clear window reference to prevent re-entry
-            server.mirrorWindow = nil
-            
-            // Stop mirroring without touching the window
             server.stopMirroringWithoutClosingWindow()
-            
             return true
         } else {
             // User cancelled - keep window open
