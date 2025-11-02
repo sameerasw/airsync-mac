@@ -59,11 +59,11 @@ class AppState: ObservableObject {
             .string(forKey: "notificationSound") ?? "default"
         self.dismissNotif = UserDefaults.standard
             .bool(forKey: "dismissNotif")
-
+        
         // Default to true for backward compatibility - existing behavior should continue
         let savedNowPlayingStatus = UserDefaults.standard.object(forKey: "sendNowPlayingStatus")
         self.sendNowPlayingStatus = savedNowPlayingStatus == nil ? true : UserDefaults.standard.bool(forKey: "sendNowPlayingStatus")
-
+        
         if isClipboardSyncEnabled {
             startClipboardMonitoring()
         }
@@ -120,7 +120,7 @@ class AppState: ObservableObject {
                 // Validate pinned apps when connecting to a device
                 validatePinnedApps()
             }
-
+            
             // Automatically switch to the appropriate tab when device connection state changes
             if device == nil {
                 selectedTab = .qr
@@ -131,11 +131,10 @@ class AppState: ObservableObject {
     }
     @Published var notifications: [Notification] = []
     @Published var status: DeviceStatus? = nil
-    @Published var currentCall: CallState? = nil
     @Published var myDevice: Device? = nil
     @Published var port: UInt16 = Defaults.serverPort
     @Published var androidApps: [String: AndroidApp] = [:]
-
+    
     @Published var pinnedApps: [PinnedApp] = [] {
         didSet {
             savePinnedApps()
@@ -371,40 +370,6 @@ class AppState: ObservableObject {
         }
     }
 
-    // MARK: - Call control helpers (invoke WebSocketServer to send commands to Android)
-    func acceptCall() {
-        guard let call = currentCall else { return }
-        var params: [String: Any] = [:]
-        if let id = call.id { params["id"] = id }
-        WebSocketServer.shared.sendCallControl(action: "accept", params: params)
-    }
-
-    func declineCall() {
-        guard let call = currentCall else { return }
-        var params: [String: Any] = [:]
-        if let id = call.id { params["id"] = id }
-        WebSocketServer.shared.sendCallControl(action: "decline", params: params)
-    }
-
-    func endCall() {
-        guard let call = currentCall else { return }
-        var params: [String: Any] = [:]
-        if let id = call.id { params["id"] = id }
-        WebSocketServer.shared.sendCallControl(action: "end", params: params)
-    }
-
-    func toggleMute(_ muted: Bool) {
-        WebSocketServer.shared.sendCallControl(action: muted ? "mute" : "unmute", params: nil)
-    }
-
-    func toggleSpeaker(_ speakerOn: Bool) {
-        WebSocketServer.shared.sendCallControl(action: speakerOn ? "speaker_on" : "speaker_off", params: nil)
-    }
-
-    func sendDTMF(_ tones: String) {
-        WebSocketServer.shared.sendCallControl(action: "dtmf", params: ["tones": tones])
-    }
-
     func addNotification(_ notif: Notification) {
         DispatchQueue.main.async {
             withAnimation {
@@ -436,22 +401,13 @@ class AppState: ObservableObject {
         package: String? = nil,
         actions: [NotificationAction] = [],
         extraActions: [UNNotificationAction] = [],
-        extraUserInfo: [String: Any] = [:],
-        subtitle: String? = nil,
-        prependAppName: Bool = true
+        extraUserInfo: [String: Any] = [:]
     ) {
         let center = UNUserNotificationCenter.current()
         let content = UNMutableNotificationContent()
-        if prependAppName {
-            content.title = "\(appName) - \(title)"
-        } else {
-            content.title = title
-        }
-        if let subtitle = subtitle {
-            content.subtitle = subtitle
-        }
+        content.title = "\(appName) - \(title)"
         content.body = body
-
+        
         // Use custom sound if selected, otherwise use default
         if notificationSound == "default" {
             content.sound = .default
@@ -527,27 +483,12 @@ class AppState: ObservableObject {
     }
 
     private func saveIconToTemporaryFile(icon: NSImage) -> URL? {
-                let finalImage: NSImage
-                var size = icon.size
-                if size.width == 0 || size.height == 0 { size = NSSize(width: 64, height: 64) }
-
-                let colored = NSImage(size: size)
-                colored.lockFocus()
-                NSColor.controlAccentColor.setFill()
-                let rect = NSRect(origin: .zero, size: size)
-                rect.fill()
-                let maskImage = icon
-                maskImage.isTemplate = true
-                maskImage.draw(in: rect, from: NSZeroRect, operation: .destinationIn, fraction: 1.0)
-                colored.unlockFocus()
-
-                finalImage = colored
-
-                guard let tiffData = finalImage.tiffRepresentation,
-                            let bitmap = NSBitmapImageRep(data: tiffData),
-                            let pngData = bitmap.representation(using: .png, properties: [:]) else {
-                        return nil
-                }
+        // Save NSImage as a temporary PNG file to attach in notification
+        guard let tiffData = icon.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData),
+              let pngData = bitmap.representation(using: .png, properties: [:]) else {
+            return nil
+        }
 
         let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
         let tempFile = tempDir.appendingPathComponent("notification_icon_\(UUID().uuidString).png")
@@ -718,19 +659,19 @@ class AppState: ObservableObject {
     }
 
     // MARK: - Pinned Apps Management
-
+    
     func loadPinnedApps() {
         guard let data = UserDefaults.standard.data(forKey: "pinnedApps") else {
             return
         }
-
+        
         do {
             pinnedApps = try JSONDecoder().decode([PinnedApp].self, from: data)
         } catch {
             print("[state] (pinned) Error loading pinned apps: \(error)")
         }
     }
-
+    
     func savePinnedApps() {
         do {
             let data = try JSONEncoder().encode(pinnedApps)
@@ -739,27 +680,27 @@ class AppState: ObservableObject {
             print("[state] (pinned) Error saving pinned apps: \(error)")
         }
     }
-
+    
     func addPinnedApp(_ app: AndroidApp) -> Bool {
         // Check if already pinned
         guard !pinnedApps.contains(where: { $0.packageName == app.packageName }) else {
             return false
         }
-
+        
         // Check if under the limit of 3 apps
         guard pinnedApps.count < 3 else {
             return false
         }
-
+        
         let pinnedApp = PinnedApp(packageName: app.packageName, appName: app.name, iconUrl: app.iconUrl)
         pinnedApps.append(pinnedApp)
         return true
     }
-
+    
     func removePinnedApp(_ packageName: String) {
         pinnedApps.removeAll { $0.packageName == packageName }
     }
-
+    
     func validatePinnedApps() {
         // Remove pinned apps that are no longer available
         pinnedApps.removeAll { pinnedApp in
@@ -776,43 +717,43 @@ class AppState: ObservableObject {
             }
         }
     }
-
+    
     /// Revalidates the current network adapter selection and falls back to auto if no longer valid
     func revalidateNetworkAdapter() {
         let currentSelection = selectedNetworkAdapterName
         let validated = validateAndGetNetworkAdapter(savedName: currentSelection)
-
+        
         if currentSelection != validated {
             print("[state] Network adapter changed from '\(currentSelection ?? "auto")' to '\(validated ?? "auto")'")
             selectedNetworkAdapterName = validated
             shouldRefreshQR = true
         }
     }
-
+    
     /// Validates a saved network adapter name and returns it if available with valid IP, otherwise returns nil (auto)
     private func validateAndGetNetworkAdapter(savedName: String?) -> String? {
         guard let savedName = savedName else {
             print("[state] No saved network adapter, using auto selection")
             return nil // Auto mode
         }
-
+        
         // Get available adapters from WebSocketServer
         let availableAdapters = WebSocketServer.shared.getAvailableNetworkAdapters()
-
+        
         // Check if the saved adapter is still available
         guard availableAdapters
             .first(where: { $0.name == savedName }) != nil else {
             print("[state] Saved network adapter '\(savedName)' not found, falling back to auto")
             return nil // Fall back to auto
         }
-
+        
         // Verify the adapter has a valid IP address
         let ipAddress = WebSocketServer.shared.getLocalIPAddress(adapterName: savedName)
         guard let validIP = ipAddress, !validIP.isEmpty, validIP != "127.0.0.1" else {
             print("[state] Saved network adapter '\(savedName)' has no valid IP (\(ipAddress ?? "nil")), falling back to auto")
             return nil // Fall back to auto
         }
-
+        
         print("[state] Using saved network adapter: \(savedName) -> \(validIP)")
         return savedName
     }

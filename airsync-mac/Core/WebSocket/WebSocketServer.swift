@@ -11,7 +11,6 @@ import UniformTypeIdentifiers
 import MobileCoreServices
 #endif
 import UserNotifications
-import Cocoa
 import Swifter
 internal import Combine
 import CryptoKit
@@ -317,7 +316,7 @@ class WebSocketServer: ObservableObject {
                 if UserDefaults.standard.hasPairedDeviceOnce == false {
                     UserDefaults.standard.hasPairedDeviceOnce = true
                 }
-
+                
                 // Send Mac info response to Android
                 sendMacInfoResponse()
                }
@@ -484,93 +483,6 @@ class WebSocketServer: ObservableObject {
                 AppState.shared.updateClipboardFromAndroid(text)
             }
 
-        case .callState:
-            if let dict = message.data.value as? [String: Any] {
-                // Map incoming keys to our CallState model
-                let callId = dict["id"] as? String
-                let phone = (dict["phoneNumber"] as? String) ?? (dict["number"] as? String) ?? (dict["phone"] as? String)
-                let caller = (dict["callerName"] as? String) ?? (dict["caller"] as? String) ?? (dict["name"] as? String)
-                let typeStr = (dict["callType"] as? String) ?? (dict["type"] as? String)
-                let statusStr = (dict["callStatus"] as? String) ?? (dict["status"] as? String)
-                let duration = dict["durationSeconds"] as? Int ?? dict["duration"] as? Int
-
-                var callType: CallType? = nil
-                if let t = typeStr { callType = CallType(rawValue: t) }
-
-                var callStatus: CallStatus = .disconnected
-                if let s = statusStr, let cs = CallStatus(rawValue: s) {
-                    callStatus = cs
-                }
-
-                let state = CallState(id: callId, phoneNumber: phone, callerName: caller, callType: callType, callStatus: callStatus, durationSeconds: duration)
-
-                DispatchQueue.main.async {
-                    AppState.shared.currentCall = state
-
-                    // Present native notification for call events
-                    let nid = "call_\(callId ?? (phone ?? "unknown"))"
-                    let displayName = state.callerName ?? state.phoneNumber ?? "Unknown"
-                    var typeText = ""
-                    switch state.callStatus {
-                    case .ringing:
-                        typeText = (state.callType == .outgoing) ? "outgoing" : "incoming"
-                    case .active:
-                        typeText = "active"
-                    case .held:
-                        typeText = "held"
-                    case .disconnected:
-                        typeText = "disconnected"
-                    }
-                    let title = "\(displayName) \(typeText) call"
-                    let subtitle = state.phoneNumber ?? ""
-
-                    // include call metadata in userInfo so NotificationDelegate can send control commands
-                    let extraUserInfo: [String: Any] = ["callId": callId ?? "", "phoneNumber": phone ?? ""]
-
-                    // Determine actions based on call type & status
-                    var extraActions: [UNNotificationAction] = []
-
-                    var appIcon: NSImage? = nil
-                    if let symImage = NSImage(systemSymbolName: "phone.fill", accessibilityDescription: "Call") {
-                        appIcon = symImage
-                    }
-                    if state.callStatus == .ringing {
-                        if state.callType == .outgoing {
-                            // Outgoing ringing (dialing) - allow only End
-                            let end = UNNotificationAction(identifier: "CALL_END", title: "End", options: [])
-                            extraActions = [end]
-                        } else {
-                            // Incoming ringing - Accept / Decline
-                            let accept = UNNotificationAction(identifier: "CALL_ACCEPT", title: "Accept", options: [.foreground])
-                            let decline = UNNotificationAction(identifier: "CALL_DECLINE", title: "Decline", options: [])
-                            extraActions = [accept, decline]
-                        }
-                        // Post ringing notification using SF Symbol as icon
-                        AppState.shared.postNativeNotification(id: nid, appName: "Phone", title: title, body: "", appIcon: appIcon, package: nil, extraActions: extraActions, extraUserInfo: extraUserInfo, subtitle: subtitle, prependAppName: false)
-                    } else if state.callStatus == .active || state.callStatus == .held {
-                        // Active or held calls: show single End action
-                        let end = UNNotificationAction(identifier: "CALL_END", title: "End", options: [])
-                        extraActions = [end]
-                        AppState.shared.postNativeNotification(id: nid, appName: "Phone", title: title, body: "", appIcon: appIcon, package: nil, extraActions: extraActions, extraUserInfo: extraUserInfo, subtitle: subtitle, prependAppName: false)
-                    }
-
-                    // Auto-dismiss when disconnected
-                    if state.callStatus == .disconnected {
-                        let nid = "call_\(callId ?? (phone ?? "unknown"))"
-                        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [nid])
-                        AppState.shared.currentCall = nil
-                    }
-                }
-            }
-
-        case .callControlResponse:
-            if let dict = message.data.value as? [String: Any],
-               let action = dict["action"] as? String,
-               let success = dict["success"] as? Bool {
-                let msg = dict["message"] as? String ?? ""
-                print("[websocket] Call control response action=\(action) success=\(success) message=\(msg)")
-            }
-
         // File transfer messages (Android -> Mac)
         case .fileTransferInit:
             if let dict = message.data.value as? [String: Any],
@@ -705,7 +617,7 @@ class WebSocketServer: ObservableObject {
             // This case handles macInfo messages from Android to Mac
             // Currently not expected as Mac sends macInfo to Android, not vice versa
             print("[websocket] Received macInfo message from Android (not typically expected)")
-
+            
         case .wakeUpRequest:
             // This case handles wake-up requests from Android to Mac
             // Currently not expected as Mac sends wake-up requests to Android, not vice versa
@@ -740,7 +652,7 @@ class WebSocketServer: ObservableObject {
         case "stop":
             NowPlayingCLI.shared.stop()
             print("[websocket] Mac media control: stop")
-
+            
         default:
             print("[websocket] Unknown Mac media control action: \(action)")
         }
@@ -886,24 +798,6 @@ class WebSocketServer: ObservableObject {
         }
         """
         sendToFirstAvailable(message: message)
-    }
-
-    // MARK: - Call Controls (Mac -> Android)
-    func sendCallControl(action: String, params: [String: Any]? = nil) {
-        var data: [String: Any] = ["action": action]
-        if let p = params {
-            for (k, v) in p { data[k] = v }
-        }
-
-        let messageDict: [String: Any] = ["type": "callControl", "data": data]
-        do {
-            let jsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
-            if let json = String(data: jsonData, encoding: .utf8) {
-                sendToFirstAvailable(message: json)
-            }
-        } catch {
-            print("[websocket] Error creating callControl message: \(error)")
-        }
     }
 
     // MARK: - Volume Controls
@@ -1229,9 +1123,9 @@ class WebSocketServer: ObservableObject {
             // print("[websocket] (network) No change detected")
         }
     }
-
+    
     // MARK: - Quick Connect Delegate
-
+    
     /// Delegates wake-up functionality to QuickConnectManager
     func wakeUpLastConnectedDevice() {
         QuickConnectManager.shared.wakeUpLastConnectedDevice()
