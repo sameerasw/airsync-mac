@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>AndroidVersion</key>
-	<string>2.1.1</string>
+	<string>2.1.4</string>
 	<key>CFBundleIcons</key>
 	<dict>
 		<key>CFBundleAlternateIcons</key>
@@ -26,8 +26,6 @@
 	</dict>
 	<key>ForceUpdateKey</key>
 	<string>002</string>
-	<key>TrialSecret</key>
-	<string>$(TRIAL_SECRET)</string>
 	<key>NSAppleScriptEnabled</key>
 	<true/>
 	<key>OSAScriptingDefinition</key>
@@ -40,6 +38,8 @@
 	<string>https://sameerasw.github.io/airsync-mac/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>sHwLY7+V1LUTP7lmY9FYK8FAZgn2zlUhYCEiDazyaMQ=</string>
+	<key>TrialSecret</key>
+	<string>$(TRIAL_SECRET)</string>
 	<key>UpdateFeedURL</key>
 	<string>https://sameerasw.github.io/airsync-mac/releases/latest</string>
 </dict>
