@@ -35,8 +35,6 @@ class AppState: ObservableObject {
         self.adbEnabled = UserDefaults.standard.bool(forKey: "adbEnabled")
         self.showMenubarText = UserDefaults.standard.bool(forKey: "showMenubarText")
 
-        let savedDockSize = UserDefaults.standard.double(forKey: "dockSize")
-        self.dockSize = savedDockSize > 0 ? savedDockSize : 48.0
         // Default to true if not previously set
         let showNameObj = UserDefaults.standard.object(forKey: "showMenubarDeviceName")
         self.showMenubarDeviceName = showNameObj == nil
@@ -46,13 +44,9 @@ class AppState: ObservableObject {
         let savedMaxLength = UserDefaults.standard.integer(forKey: "menubarTextMaxLength")
         self.menubarTextMaxLength = savedMaxLength > 0 ? savedMaxLength : 30
 
-        self.useNativeTabs = UserDefaults.standard.bool(forKey: "useNativeTabs")
-
         self.isClipboardSyncEnabled = UserDefaults.standard.bool(forKey: "isClipboardSyncEnabled")
         self.windowOpacity = UserDefaults.standard
             .double(forKey: "windowOpacity")
-        self.toolbarContrast = UserDefaults.standard
-            .bool(forKey: "toolbarContrast")
         self.hideDockIcon = UserDefaults.standard
             .bool(forKey: "hideDockIcon")
         self.alwaysOpenWindow = UserDefaults.standard
@@ -227,12 +221,6 @@ class AppState: ObservableObject {
         }
     }
 
-    @Published var toolbarContrast: Bool {
-        didSet {
-            UserDefaults.standard.set(toolbarContrast, forKey: "toolbarContrast")
-        }
-    }
-
     @Published var hideDockIcon: Bool {
         didSet {
             UserDefaults.standard.set(hideDockIcon, forKey: "hideDockIcon")
@@ -268,18 +256,6 @@ class AppState: ObservableObject {
     @Published var isMusicCardHidden: Bool = false {
         didSet {
             UserDefaults.standard.set(isMusicCardHidden, forKey: "isMusicCardHidden")
-        }
-    }
-
-    @Published var dockSize: CGFloat {
-        didSet {
-            UserDefaults.standard.set(dockSize, forKey: "dockSize")
-        }
-    }
-
-    @Published var useNativeTabs: Bool {
-        didSet {
-            UserDefaults.standard.set(useNativeTabs, forKey: "useNativeTabs")
         }
     }
 
