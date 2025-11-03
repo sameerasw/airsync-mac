@@ -37,10 +37,13 @@ struct AppGridView: View {
                     }
                 }
                 .padding(12)
-                Spacer(minLength: 100)
+                
+                if !appState.useNativeTabs {
+                    Spacer(minLength: 100 + (appState.dockSize - 48))
+                }
             }
         }
-        .searchable(text: $searchText)
+        .searchable(text: $searchText, placement: .toolbar, prompt: "Search Apps")
         .padding(0)
     }
 }
@@ -150,7 +153,7 @@ private struct AppContextMenuContent: View {
     var isPinned: Bool {
         appState.pinnedApps.contains(where: { $0.packageName == app.packageName })
     }
-    
+
     var body: some View {
         // Pin/Unpin option (only for Plus members)
         if appState.isPlus {

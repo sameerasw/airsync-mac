@@ -39,7 +39,9 @@ struct TransfersView: View {
                         TransferRow(session: session)
                             .padding(.vertical, 6)
                     }
-                    Spacer(minLength: 100)
+                    if !appState.useNativeTabs {
+                        Spacer(minLength: 100 + (appState.dockSize - 48))
+                    }
                 }
                 .scrollContentBackground(.hidden)
                 .background(.clear)

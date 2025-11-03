@@ -9,6 +9,24 @@ import SwiftUI
 
 struct AppContentView: View {
     @ObservedObject var appState = AppState.shared
+
+    var body: some View {
+        // Use native TabView if:
+        // 1. macOS < 26 (no choice, must use native)
+        // 2. macOS 26+ with useNativeTabs toggle enabled
+        let shouldUseNativeTabs = !OSVersionChecker.isMacOS26OrLater || appState.useNativeTabs
+
+        if shouldUseNativeTabs {
+            NativeTabBar()
+        } else {
+            CustomTabBarView()
+        }
+    }
+}
+
+// MARK: - Custom Tab Bar Implementation (macOS 26+)
+struct CustomTabBarView: View {
+    @ObservedObject var appState = AppState.shared
     @State private var showAboutSheet = false
     @State private var showHelpSheet = false
     @AppStorage("notificationStacks") private var notificationStacks = true
@@ -168,4 +186,3 @@ struct AppContentView: View {
 #Preview {
     AppContentView()
 }
-
