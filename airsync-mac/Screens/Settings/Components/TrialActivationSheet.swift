@@ -17,6 +17,34 @@ struct TrialActivationSheet: View {
                     .foregroundStyle(.red)
             }
 
+            // Device ID display
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Device ID")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                
+                HStack(spacing: 8) {
+                    Text(manager.deviceIdentifier)
+                        .font(.caption2)
+                        .monospaced()
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    
+                    Button(action: {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(manager.deviceIdentifier, forType: .string)
+                    }) {
+                        Image(systemName: "doc.on.doc")
+                            .font(.caption2)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy Device ID")
+                }
+                .padding(8)
+                .background(Color.secondary.opacity(0.1))
+                .cornerRadius(6)
+            }
+
             HStack(spacing: 12) {
                 Spacer()
                 GlassButtonView(

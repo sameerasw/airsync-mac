@@ -14,9 +14,9 @@ final class TrialManager: ObservableObject {
     @Published private(set) var hasSecretConfigured: Bool = false
 
     private(set) var token: String?
+    private(set) var deviceIdentifier: String
 
     private let endpoint = URL(string: "https://sameerasw.com/.netlify/functions/trial")!
-    private let deviceIdentifier: String
     private var countdownTimer: Timer?
     private var lastSyncDate: Date?
     private let syncThrottle: TimeInterval = 60
