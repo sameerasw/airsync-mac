@@ -182,7 +182,11 @@ struct ScannerView: View {
                 .padding(.top, 12)
             }
 
-            Spacer(minLength: 100)
+            if !appState.useNativeTabs {
+                Spacer(minLength: 100 + (appState.dockSize - 48))
+            } else {
+                Spacer()
+            }
         }
         .onAppear {
             generateQRAsync()

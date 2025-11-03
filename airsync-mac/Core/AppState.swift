@@ -46,6 +46,8 @@ class AppState: ObservableObject {
         let savedMaxLength = UserDefaults.standard.integer(forKey: "menubarTextMaxLength")
         self.menubarTextMaxLength = savedMaxLength > 0 ? savedMaxLength : 30
 
+        self.useNativeTabs = UserDefaults.standard.bool(forKey: "useNativeTabs")
+
         self.isClipboardSyncEnabled = UserDefaults.standard.bool(forKey: "isClipboardSyncEnabled")
         self.windowOpacity = UserDefaults.standard
             .double(forKey: "windowOpacity")
@@ -272,6 +274,12 @@ class AppState: ObservableObject {
     @Published var dockSize: CGFloat {
         didSet {
             UserDefaults.standard.set(dockSize, forKey: "dockSize")
+        }
+    }
+
+    @Published var useNativeTabs: Bool {
+        didSet {
+            UserDefaults.standard.set(useNativeTabs, forKey: "useNativeTabs")
         }
     }
 
