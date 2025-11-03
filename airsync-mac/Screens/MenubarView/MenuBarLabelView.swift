@@ -16,12 +16,13 @@ struct MenuBarLabelView: View {
     var deviceStatusText: String? {
         guard let device = appState.device else { return nil }
 
-        if appState.notifications.count > 0 {
-            return "\(appState.notifications.count) Unread"
-        } else if let music = appState.status?.music, music.isPlaying {
+        let unreadCount = appState.notifications.count
+        let unreadPrefix = unreadCount > 0 ? "\(unreadCount)* • " : ""
+
+        if let music = appState.status?.music, music.isPlaying {
             let title = music.title.isEmpty ? "Unknown Title" : music.title
             let artist = music.artist.isEmpty ? "Unknown Artist" : music.artist
-            return "\(title) - \(artist)"
+            return unreadPrefix + "\(title) • \(artist)"
         } else {
             var parts: [String] = []
             if appState.showMenubarDeviceName {
@@ -31,7 +32,8 @@ struct MenuBarLabelView: View {
             if let batteryLevel = appState.status?.battery.level {
                 parts.append("\(batteryLevel)%")
             }
-            return parts.isEmpty ? nil : parts.joined(separator: " ")
+            let statusText = parts.isEmpty ? nil : parts.joined(separator: " • ")
+            return statusText.map { unreadPrefix + $0 }
         }
     }
 
