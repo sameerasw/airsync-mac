@@ -35,8 +35,7 @@ struct HomeView: View {
         .navigationTitle("")
         .background(.background.opacity(appState.windowOpacity))
         .toolbarBackground(
-            appState.toolbarContrast ? Material.ultraThinMaterial.opacity(1)
-            : Material.ultraThinMaterial.opacity(0),
+            .clear,
             for: .windowToolbar
         )
         // Show onboarding sheet when needed
