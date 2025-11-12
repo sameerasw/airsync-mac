@@ -1,7 +1,5 @@
  # AirSync macOS app source code
 
-> During beta testing, You can use the code `i-am-a-tester` to try out and test AirSync+ features. Also these + features are subject to change and currently they are limited because to test if the workflow works.
-
 <p align="center">
   <img src="https://github.com/user-attachments/assets/1b59fa22-780b-455d-87b1-6bb028c69d37" />
 <!--   <img src="https://github.com/user-attachments/assets/7c81bd2a-3799-44f2-b63a-350344f68e42" width="30%" />
