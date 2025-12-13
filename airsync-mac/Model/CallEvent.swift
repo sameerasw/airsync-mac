@@ -13,6 +13,8 @@ enum CallState: String, Codable {
     case rejected
     case ended
     case missed
+    case offhook
+    case idle
 }
 
 enum CallDirection: String, Codable {

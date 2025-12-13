@@ -55,11 +55,11 @@ class AppState: ObservableObject {
             .string(forKey: "notificationSound") ?? "default"
         self.dismissNotif = UserDefaults.standard
             .bool(forKey: "dismissNotif")
-        
+
         // Default to true for backward compatibility - existing behavior should continue
         let savedNowPlayingStatus = UserDefaults.standard.object(forKey: "sendNowPlayingStatus")
         self.sendNowPlayingStatus = savedNowPlayingStatus == nil ? true : UserDefaults.standard.bool(forKey: "sendNowPlayingStatus")
-        
+
         if isClipboardSyncEnabled {
             startClipboardMonitoring()
         }
@@ -116,7 +116,7 @@ class AppState: ObservableObject {
                 // Validate pinned apps when connecting to a device
                 validatePinnedApps()
             }
-            
+
             // Automatically switch to the appropriate tab when device connection state changes
             if device == nil {
                 selectedTab = .qr
@@ -131,7 +131,7 @@ class AppState: ObservableObject {
     @Published var myDevice: Device? = nil
     @Published var port: UInt16 = Defaults.serverPort
     @Published var androidApps: [String: AndroidApp] = [:]
-    
+
     @Published var pinnedApps: [PinnedApp] = [] {
         didSet {
             savePinnedApps()
@@ -321,7 +321,7 @@ class AppState: ObservableObject {
         print("[state] [START] updateCallEvent called for: \(callEvent.contactName)")
         print("[state] Current callEvents count before update: \(self.callEvents.count)")
         print("[state] Thread: \(Thread.current)")
-        
+
         // Ensure we're on main thread
         if !Thread.isMainThread {
             DispatchQueue.main.async {
@@ -329,7 +329,7 @@ class AppState: ObservableObject {
             }
             return
         }
-        
+
         // Check if this event already exists (update) or is new (insert)
         if let existingIndex = self.callEvents.firstIndex(where: { $0.eventId == callEvent.eventId }) {
             // Update existing call event
@@ -343,46 +343,57 @@ class AppState: ObservableObject {
             print("[state] Call added, new count: \(self.callEvents.count)")
             print("[state] All eventIds now: \(self.callEvents.map { $0.eventId })")
         }
-        
-        // Show macOS notification for incoming/ringing calls
-        if callEvent.direction == .incoming && callEvent.state == .ringing {
-            print("[state] Posting system notification for ringing call")
+
+        // Show macOS notification for ringing calls (incoming) or active outgoing calls
+        if (callEvent.direction == .incoming && callEvent.state == .ringing) || 
+           (callEvent.direction == .outgoing && callEvent.state == .offhook) {
+            print("[state] Posting system notification for call")
             self.postCallSystemNotification(callEvent)
-        } else if callEvent.state == .ended || callEvent.state == .rejected || callEvent.state == .missed {
-            // Remove notification from system
-            print("[state] Call ended/rejected/missed, removing notification")
-            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [callEvent.eventId])
-            
-            // Auto-remove from UI after 5 seconds for ended calls
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-                self.removeCallEventById(callEvent.eventId)
+        } else if callEvent.state == .ended || callEvent.state == .rejected || callEvent.state == .missed || callEvent.state == .idle {
+            // Remove ALL call notifications when any call ends
+            print("[state] Call ended/rejected/missed/idle, removing ALL call notifications")
+            let allEventIds = self.callEvents.map { $0.eventId }
+            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: allEventIds)
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: allEventIds)
+
+            // Auto-remove all call events from UI after 2 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                self.callEvents.removeAll()
             }
         }
-        
+
         print("[state] [END] updateCallEvent, final count: \(self.callEvents.count)")
     }
 
     private func postCallSystemNotification(_ callEvent: CallEvent) {
         let center = UNUserNotificationCenter.current()
         let content = UNMutableNotificationContent()
-        
-        // Format the notification
+
+        // Format the notification based on call direction
         let displayName = callEvent.contactName.isEmpty ? callEvent.normalizedNumber : callEvent.contactName
-        content.title = "☎️ Incoming Call"
+        let title = callEvent.direction == .incoming ? "☎ Incoming Call" : "☎ Outgoing Call"
+        content.title = title
         content.body = displayName
         content.sound = .default
+
+        // Add call-related actions - different buttons for incoming vs outgoing
+        var actions: [UNNotificationAction] = []
+        if callEvent.direction == .incoming {
+            actions.append(UNNotificationAction(identifier: "ACCEPT_CALL", title: "Accept", options: [.foreground]))
+            actions.append(UNNotificationAction(identifier: "DECLINE_CALL", title: "Decline", options: [.destructive]))
+        } else {
+            // For outgoing calls, show End Call button
+            actions.append(UNNotificationAction(identifier: "DECLINE_CALL", title: "End Call", options: [.destructive]))
+        }
         
-        // Add call-related actions
-        let acceptAction = UNNotificationAction(identifier: "ACCEPT_CALL", title: "Accept", options: [.foreground])
-        let declineAction = UNNotificationAction(identifier: "DECLINE_CALL", title: "Decline", options: [.destructive])
         let category = UNNotificationCategory(
             identifier: "CALL_NOTIFICATION",
-            actions: [acceptAction, declineAction],
+            actions: actions,
             intentIdentifiers: [],
             options: [.customDismissAction]
         )
         center.setNotificationCategories([category])
-        
+
         content.categoryIdentifier = "CALL_NOTIFICATION"
         content.userInfo = [
             "eventId": callEvent.eventId,
@@ -391,10 +402,10 @@ class AppState: ObservableObject {
             "direction": callEvent.direction.rawValue,
             "type": "call"
         ]
-        
+
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let request = UNNotificationRequest(identifier: callEvent.eventId, content: content, trigger: trigger)
-        
+
         center.add(request) { error in
             if let error = error {
                 print("[state] Failed to post call notification: \(error)")
@@ -489,7 +500,7 @@ class AppState: ObservableObject {
         let content = UNMutableNotificationContent()
         content.title = "\(appName) - \(title)"
         content.body = body
-        
+
         // Use custom sound if selected, otherwise use default
         if notificationSound == "default" {
             content.sound = .default
@@ -741,19 +752,19 @@ class AppState: ObservableObject {
     }
 
     // MARK: - Pinned Apps Management
-    
+
     func loadPinnedApps() {
         guard let data = UserDefaults.standard.data(forKey: "pinnedApps") else {
             return
         }
-        
+
         do {
             pinnedApps = try JSONDecoder().decode([PinnedApp].self, from: data)
         } catch {
             print("[state] (pinned) Error loading pinned apps: \(error)")
         }
     }
-    
+
     func savePinnedApps() {
         do {
             let data = try JSONEncoder().encode(pinnedApps)
@@ -762,27 +773,27 @@ class AppState: ObservableObject {
             print("[state] (pinned) Error saving pinned apps: \(error)")
         }
     }
-    
+
     func addPinnedApp(_ app: AndroidApp) -> Bool {
         // Check if already pinned
         guard !pinnedApps.contains(where: { $0.packageName == app.packageName }) else {
             return false
         }
-        
+
         // Check if under the limit of 3 apps
         guard pinnedApps.count < 3 else {
             return false
         }
-        
+
         let pinnedApp = PinnedApp(packageName: app.packageName, appName: app.name, iconUrl: app.iconUrl)
         pinnedApps.append(pinnedApp)
         return true
     }
-    
+
     func removePinnedApp(_ packageName: String) {
         pinnedApps.removeAll { $0.packageName == packageName }
     }
-    
+
     func validatePinnedApps() {
         // Remove pinned apps that are no longer available
         pinnedApps.removeAll { pinnedApp in
@@ -799,43 +810,43 @@ class AppState: ObservableObject {
             }
         }
     }
-    
+
     /// Revalidates the current network adapter selection and falls back to auto if no longer valid
     func revalidateNetworkAdapter() {
         let currentSelection = selectedNetworkAdapterName
         let validated = validateAndGetNetworkAdapter(savedName: currentSelection)
-        
+
         if currentSelection != validated {
             print("[state] Network adapter changed from '\(currentSelection ?? "auto")' to '\(validated ?? "auto")'")
             selectedNetworkAdapterName = validated
             shouldRefreshQR = true
         }
     }
-    
+
     /// Validates a saved network adapter name and returns it if available with valid IP, otherwise returns nil (auto)
     private func validateAndGetNetworkAdapter(savedName: String?) -> String? {
         guard let savedName = savedName else {
             print("[state] No saved network adapter, using auto selection")
             return nil // Auto mode
         }
-        
+
         // Get available adapters from WebSocketServer
         let availableAdapters = WebSocketServer.shared.getAvailableNetworkAdapters()
-        
+
         // Check if the saved adapter is still available
         guard availableAdapters
             .first(where: { $0.name == savedName }) != nil else {
             print("[state] Saved network adapter '\(savedName)' not found, falling back to auto")
             return nil // Fall back to auto
         }
-        
+
         // Verify the adapter has a valid IP address
         let ipAddress = WebSocketServer.shared.getLocalIPAddress(adapterName: savedName)
         guard let validIP = ipAddress, !validIP.isEmpty, validIP != "127.0.0.1" else {
             print("[state] Saved network adapter '\(savedName)' has no valid IP (\(ipAddress ?? "nil")), falling back to auto")
             return nil // Fall back to auto
         }
-        
+
         print("[state] Using saved network adapter: \(savedName) -> \(validIP)")
         return savedName
     }
