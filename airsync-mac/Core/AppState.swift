@@ -376,6 +376,13 @@ class AppState: ObservableObject {
         content.body = displayName
         content.sound = .default
 
+        // TODO: Add contact photo to notification in future
+        // Photo is available in: callEvent.contactPhoto (base64 encoded PNG, no padding)
+        // Currently stored but not displayed in notification
+        if let photoBase64 = callEvent.contactPhoto, !photoBase64.isEmpty {
+            print("[state] Contact photo received (size: \(photoBase64.count) chars) - stored for future use")
+        }
+
         // Add call-related actions - different buttons for incoming vs outgoing
         var actions: [UNNotificationAction] = []
         if callEvent.direction == .incoming {

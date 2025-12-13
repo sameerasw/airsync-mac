@@ -31,6 +31,7 @@ struct CallEvent: Codable, Identifiable, Equatable {
     let state: CallState
     let timestamp: Int64
     let deviceId: String
+    let contactPhoto: String? // Base64 encoded image
     
     var id: String { eventId }
 
@@ -43,6 +44,7 @@ struct CallEvent: Codable, Identifiable, Equatable {
         case state
         case timestamp
         case deviceId
+        case contactPhoto
     }
     
     func hash(into hasher: inout Hasher) {

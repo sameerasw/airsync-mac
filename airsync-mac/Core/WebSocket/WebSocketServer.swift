@@ -366,6 +366,7 @@ class WebSocketServer: ObservableObject {
                 }
                 
                 let deviceId = dict["deviceId"] as? String ?? ""
+                let contactPhoto = dict["contactPhoto"] as? String
                 let callEvent = CallEvent(
                     eventId: eventId,
                     contactName: contactName,
@@ -374,7 +375,8 @@ class WebSocketServer: ObservableObject {
                     direction: direction,
                     state: state,
                     timestamp: timestamp,
-                    deviceId: deviceId
+                    deviceId: deviceId,
+                    contactPhoto: contactPhoto
                 )
                 print("[websocket] Call event: \(contactName) - \(state.rawValue)")
                 DispatchQueue.main.async {
