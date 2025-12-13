@@ -12,6 +12,8 @@ import Sparkle
 
 @main
 struct airsync_macApp: App {
+    @Environment(\.openWindow) var openWindow
+    @Environment(\.dismissWindow) var dismissWindow
     @Environment(\.scenePhase) private var scenePhase
     let notificationDelegate = NotificationDelegate()
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -101,6 +103,29 @@ struct airsync_macApp: App {
                     .dropTarget(appState: appState)
             }
         }
+        .onChange(of: appState.activeCall) { oldValue, newValue in
+            if newValue != nil {
+                openWindow(id: "callWindow")
+            } else {
+                dismissWindow(id: "callWindow")
+            }
+        }
+
+        // Secondary Tool Window for Calls
+        Window("Call", id: "callWindow") {
+            if let activeCall = appState.activeCall {
+                if #available(macOS 15.0, *) {
+                    CallWindowView(callEvent: activeCall)
+                        .containerBackground(.ultraThinMaterial, for: .window)
+                } else {
+                    CallWindowView(callEvent: activeCall)
+                }
+            }
+        }
+        .defaultPosition(.topTrailing)
+        .defaultSize(width: 320, height: 480)
+        .windowStyle(.hiddenTitleBar)
+
     .commands {
         CommandGroup(after: .appInfo) {
             CheckForUpdatesView(updater: updaterController.updater)

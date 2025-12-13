@@ -127,6 +127,7 @@ class AppState: ObservableObject {
     }
     @Published var notifications: [Notification] = []
     @Published var callEvents: [CallEvent] = []
+    @Published var activeCall: CallEvent? = nil
     @Published var status: DeviceStatus? = nil
     @Published var myDevice: Device? = nil
     @Published var port: UInt16 = Defaults.serverPort
@@ -349,12 +350,20 @@ class AppState: ObservableObject {
            (callEvent.direction == .outgoing && callEvent.state == .offhook) {
             print("[state] Posting system notification for call")
             self.postCallSystemNotification(callEvent)
+            
+            // Set active call for sheet display
+            self.activeCall = callEvent
+            print("[state] Active call set for sheet display")
         } else if callEvent.state == .ended || callEvent.state == .rejected || callEvent.state == .missed || callEvent.state == .idle {
             // Remove ALL call notifications when any call ends
             print("[state] Call ended/rejected/missed/idle, removing ALL call notifications")
             let allEventIds = self.callEvents.map { $0.eventId }
             UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: allEventIds)
             UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: allEventIds)
+            
+            // Close sheet
+            self.activeCall = nil
+            print("[state] Closing call sheet")
 
             // Auto-remove all call events from UI after 2 seconds
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
@@ -431,6 +440,9 @@ class AppState: ObservableObject {
         }
     }
 
+    func sendCallAction(_ eventId: String, action: String) {
+        WebSocketServer.shared.sendCallAction(eventId: eventId, action: action)
+    }
 
     func hideNotification(_ notif: Notification) {
         DispatchQueue.main.async {
