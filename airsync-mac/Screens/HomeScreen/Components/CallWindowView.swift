@@ -60,74 +60,82 @@ struct CallWindowView: View {
     }
     
     var body: some View {
-        VStack(spacing: 12) {
-            // Header with direction
-            Text(callDirectionText + " ・ " + callStateText)
-                .font(.caption)
-                .foregroundColor(.secondary)
+        ZStack {
+            // Blurred background image (only if contact photo exists)
+            if let contactImage = contactImage {
+                Image(nsImage: contactImage)
+                    .resizable()
+                    .scaledToFill()
+                    .ignoresSafeArea()
+                    .blur(radius: 20)
+                    .opacity(0.3)
+            }
             
-            // Contact info
-            VStack(spacing: 6) {
-                if let contactImage = contactImage {
-                    Image(nsImage: contactImage)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 128, height: 128)
-                        .clipShape(Circle())
-                } else {
-                    Image(systemName: "person.circle.fill")
-                        .font(.system(size: 128))
-                        .foregroundColor(.blue)
+            // Content overlay
+            VStack(spacing: 12) {
+                // Header with direction
+                Text(callDirectionText + " ・ " + callStateText)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                // Contact info
+                VStack(spacing: 6) {
+                    if let contactImage = contactImage {
+                        Image(nsImage: contactImage)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 128, height: 128)
+                            .clipShape(Circle())
+                    } else {
+                        Image(systemName: "person.circle.fill")
+                            .font(.system(size: 128))
+                            .foregroundColor(.blue)
+                    }
+                    
+                    Text(callEvent.contactName)
+                        .font(.largeTitle)
+
+                    if !callEvent.normalizedNumber.isEmpty {
+                        Text(callEvent.normalizedNumber)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
                 
-                Text(callEvent.contactName)
-                    .font(.largeTitle)
+                // Action buttons (only show when ringing/offhook)
+                if showActionButtons {
+                    HStack(spacing: 16) {
 
-                if !callEvent.normalizedNumber.isEmpty {
-                    Text(callEvent.normalizedNumber)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        GlassButtonView(
+                            label: "Accept",
+                            systemImage: "phone.fill",
+                            size: .extraLarge,
+                            action: {
+                                appState.sendCallAction(callEvent.eventId, action: "accept")
+                            }
+                        )
+                        .foregroundStyle(.green)
+                        .transition(.identity)
+
+
+                        GlassButtonView(
+                            label: "Decline",
+                            systemImage: "phone.down.fill",
+                            size: .extraLarge,
+                            action: {
+                                appState.sendCallAction(callEvent.eventId, action: "decline")
+                            }
+                        )
+                        .foregroundStyle(.red)
+                        .transition(.identity)
+
+                    }
+                    .padding(.top, 8)
                 }
+
             }
-            
-            // Call state
-            Text(callStateText)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-            
-            // Action buttons (only show when ringing/offhook)
-            if showActionButtons {
-                HStack(spacing: 16) {
-
-                    GlassButtonView(
-                        label: "Accept",
-                        systemImage: "phone.fill",
-                        size: .extraLarge,
-                        action: {
-                            appState.sendCallAction(callEvent.eventId, action: "accept")
-                        }
-                    )
-                    .foregroundStyle(.green)
-                    .transition(.identity)
-
-
-                    GlassButtonView(
-                        label: "Decline",
-                        systemImage: "phone.down.fill",
-                        size: .extraLarge,
-                        action: {
-                            appState.sendCallAction(callEvent.eventId, action: "decline")
-                        }
-                    )
-                    .foregroundStyle(.red)
-                    .transition(.identity)
-
-                }
-                .padding(.top, 8)
-            }
-
+            .padding(24)
         }
-        .padding(24)
         .frame(minWidth: 320, minHeight: 320)
         .onAppear {
             NSWindow.allowsAutomaticWindowTabbing = false
