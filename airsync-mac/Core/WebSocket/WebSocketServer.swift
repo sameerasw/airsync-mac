@@ -343,6 +343,50 @@ class WebSocketServer: ObservableObject {
                     AppState.shared.addNotification(notif)
                 }
             }
+        
+        case .callEvent:
+            if let dict = message.data.value as? [String: Any],
+               let eventId = dict["eventId"] as? String,
+               let contactName = dict["contactName"] as? String,
+               let number = dict["number"] as? String,
+               let normalizedNumber = dict["normalizedNumber"] as? String,
+               let directionStr = dict["direction"] as? String,
+               let direction = CallDirection(rawValue: directionStr),
+               let stateStr = dict["state"] as? String,
+               let state = CallState(rawValue: stateStr) {
+                
+                // Handle timestamp as either Int or Int64
+                var timestamp: Int64 = 0
+                if let ts = dict["timestamp"] as? Int64 {
+                    timestamp = ts
+                } else if let ts = dict["timestamp"] as? Int {
+                    timestamp = Int64(ts)
+                } else if let ts = dict["timestamp"] as? NSNumber {
+                    timestamp = ts.int64Value
+                }
+                
+                let deviceId = dict["deviceId"] as? String ?? ""
+                let callEvent = CallEvent(
+                    eventId: eventId,
+                    contactName: contactName,
+                    number: number,
+                    normalizedNumber: normalizedNumber,
+                    direction: direction,
+                    state: state,
+                    timestamp: timestamp,
+                    deviceId: deviceId
+                )
+                print("[websocket] Call event: \(contactName) - \(state.rawValue)")
+                DispatchQueue.main.async {
+                    AppState.shared.updateCallEvent(callEvent)
+                }
+            } else {
+                print("[websocket] Failed to decode call event - missing or invalid fields")
+                if let dict = message.data.value as? [String: Any] {
+                    print("[websocket] Available fields: \(dict.keys.joined(separator: ", "))")
+                }
+            }
+        
         case .notificationActionResponse:
             if let dict = message.data.value as? [String: Any],
                let id = dict["id"] as? String,
@@ -753,6 +797,15 @@ class WebSocketServer: ObservableObject {
         if let t = text, !t.isEmpty { data["text"] = t }
         if let jsonData = try? JSONSerialization.data(withJSONObject: ["type": "notificationAction", "data": data], options: []),
            let json = String(data: jsonData, encoding: .utf8) {
+            sendToFirstAvailable(message: json)
+        }
+    }
+
+    func sendCallAction(eventId: String, action: String) {
+        let data: [String: Any] = ["eventId": eventId, "action": action]
+        if let jsonData = try? JSONSerialization.data(withJSONObject: ["type": "callAction", "data": data], options: []),
+           let json = String(data: jsonData, encoding: .utf8) {
+            print("[websocket] Sending call action: \(action) for event: \(eventId)")
             sendToFirstAvailable(message: json)
         }
     }

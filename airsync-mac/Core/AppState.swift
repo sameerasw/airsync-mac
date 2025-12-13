@@ -126,6 +126,7 @@ class AppState: ObservableObject {
         }
     }
     @Published var notifications: [Notification] = []
+    @Published var callEvents: [CallEvent] = []
     @Published var status: DeviceStatus? = nil
     @Published var myDevice: Device? = nil
     @Published var port: UInt16 = Defaults.serverPort
@@ -315,6 +316,103 @@ class AppState: ObservableObject {
             UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [nid])
         }
     }
+
+    func updateCallEvent(_ callEvent: CallEvent) {
+        print("[state] [START] updateCallEvent called for: \(callEvent.contactName)")
+        print("[state] Current callEvents count before update: \(self.callEvents.count)")
+        print("[state] Thread: \(Thread.current)")
+        
+        // Ensure we're on main thread
+        if !Thread.isMainThread {
+            DispatchQueue.main.async {
+                self.updateCallEvent(callEvent)
+            }
+            return
+        }
+        
+        // Check if this event already exists (update) or is new (insert)
+        if let existingIndex = self.callEvents.firstIndex(where: { $0.eventId == callEvent.eventId }) {
+            // Update existing call event
+            print("[state] Updating existing call at index \(existingIndex)")
+            self.callEvents[existingIndex] = callEvent
+            print("[state] Call updated, new count: \(self.callEvents.count)")
+        } else {
+            // Add new call event
+            print("[state] Adding new call event to beginning")
+            self.callEvents.insert(callEvent, at: 0)
+            print("[state] Call added, new count: \(self.callEvents.count)")
+            print("[state] All eventIds now: \(self.callEvents.map { $0.eventId })")
+        }
+        
+        // Show macOS notification for incoming/ringing calls
+        if callEvent.direction == .incoming && callEvent.state == .ringing {
+            print("[state] Posting system notification for ringing call")
+            self.postCallSystemNotification(callEvent)
+        } else if callEvent.state == .ended || callEvent.state == .rejected || callEvent.state == .missed {
+            // Remove notification from system
+            print("[state] Call ended/rejected/missed, removing notification")
+            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [callEvent.eventId])
+            
+            // Auto-remove from UI after 5 seconds for ended calls
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                self.removeCallEventById(callEvent.eventId)
+            }
+        }
+        
+        print("[state] [END] updateCallEvent, final count: \(self.callEvents.count)")
+    }
+
+    private func postCallSystemNotification(_ callEvent: CallEvent) {
+        let center = UNUserNotificationCenter.current()
+        let content = UNMutableNotificationContent()
+        
+        // Format the notification
+        let displayName = callEvent.contactName.isEmpty ? callEvent.normalizedNumber : callEvent.contactName
+        content.title = "☎️ Incoming Call"
+        content.body = displayName
+        content.sound = .default
+        
+        // Add call-related actions
+        let acceptAction = UNNotificationAction(identifier: "ACCEPT_CALL", title: "Accept", options: [.foreground])
+        let declineAction = UNNotificationAction(identifier: "DECLINE_CALL", title: "Decline", options: [.destructive])
+        let category = UNNotificationCategory(
+            identifier: "CALL_NOTIFICATION",
+            actions: [acceptAction, declineAction],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+        center.setNotificationCategories([category])
+        
+        content.categoryIdentifier = "CALL_NOTIFICATION"
+        content.userInfo = [
+            "eventId": callEvent.eventId,
+            "contactName": callEvent.contactName,
+            "number": callEvent.number,
+            "direction": callEvent.direction.rawValue,
+            "type": "call"
+        ]
+        
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(identifier: callEvent.eventId, content: content, trigger: trigger)
+        
+        center.add(request) { error in
+            if let error = error {
+                print("[state] Failed to post call notification: \(error)")
+            } else {
+                print("[state] Posted call notification for \(callEvent.contactName)")
+            }
+        }
+    }
+
+    func removeCallEventById(_ eventId: String) {
+        DispatchQueue.main.async {
+            withAnimation {
+                self.callEvents.removeAll { $0.eventId == eventId }
+            }
+            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [eventId])
+        }
+    }
+
 
     func hideNotification(_ notif: Notification) {
         DispatchQueue.main.async {

@@ -52,7 +52,7 @@ struct AppContentView: View {
                     }
                     .tag(TabIdentifier.notifications)
                     .toolbar {
-                        if appState.notifications.count > 0 {
+                        if appState.notifications.count > 0 || appState.callEvents.count > 0 {
                             ToolbarItem(placement: .primaryAction) {
                                 Button {
                                     notificationStacks.toggle()
@@ -69,7 +69,7 @@ struct AppContentView: View {
                                 }
                                 .help("Clear all notifications")
                                 .keyboardShortcut(.delete, modifiers: .command)
-                                .badge(appState.notifications.count)
+                                .badge(appState.notifications.count + appState.callEvents.count)
                             }
                         }
                     }

@@ -20,6 +20,7 @@ enum MessageType: String, Codable {
     case macMediaControlResponse
     case appIcons
     case clipboardUpdate
+    case callEvent = "call_event"
     // file transfer
     case fileTransferInit
     case fileChunk
