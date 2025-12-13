@@ -9,6 +9,7 @@ import Foundation
 import Cocoa
 internal import Combine
 import UserNotifications
+import AVFoundation
 
 class AppState: ObservableObject {
     static let shared = AppState()
@@ -157,6 +158,10 @@ class AppState: ObservableObject {
     @Published var adbConnected: Bool = false
     @Published var adbConnecting: Bool = false
     @Published var currentDeviceWallpaperBase64: String? = nil
+    
+    // Audio player for ringtone
+    private var ringtonePlayer: AVAudioPlayer?
+    
     @Published var selectedNetworkAdapterName: String? { // e.g., "en0"
         didSet {
             UserDefaults.standard.set(selectedNetworkAdapterName, forKey: "selectedNetworkAdapterName")
@@ -317,6 +322,59 @@ class AppState: ObservableObject {
             UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [nid])
         }
     }
+    
+    private func playCallRingtone() {
+        stopCallRingtone() // Stop any existing ringtone first
+        
+        do {
+            // Load custom ringtone.wav from bundle
+            guard let soundURL = Bundle.main.url(forResource: "ringtone", withExtension: "wav") else {
+                print("[state] Custom ringtone.wav not found in bundle")
+                playSystemToneFallback()
+                return
+            }
+            
+            ringtonePlayer = try AVAudioPlayer(contentsOf: soundURL)
+            ringtonePlayer?.numberOfLoops = -1 // Infinite looping
+            ringtonePlayer?.volume = 1.0
+            ringtonePlayer?.play()
+            print("[state] Playing custom ringtone.wav in loop")
+            
+        } catch {
+            print("[state] Error loading custom ringtone: \(error)")
+            playSystemToneFallback()
+        }
+    }
+    
+    private func playSystemToneFallback() {
+        // Fallback: Try various system sounds via NSSound
+        let soundNames = [
+            NSSound.Name("Submarine"),
+            NSSound.Name("Alarm"),
+            NSSound.Name("Morse"),
+            NSSound.Name("Siren")
+        ]
+        
+        for soundName in soundNames {
+            if let sound = NSSound(named: soundName) {
+                sound.loops = true
+                sound.play()
+                return
+            }
+        }
+        
+        // Final fallback
+        print("[state] Using system beep for ringtone")
+        NSSound.beep()
+    }
+    
+    private func stopCallRingtone() {
+        if let player = ringtonePlayer, player.isPlaying {
+            player.stop()
+            ringtonePlayer = nil
+            print("[state] Stopped call ringtone")
+        }
+    }
 
     func updateCallEvent(_ callEvent: CallEvent) {
         print("[state] [START] updateCallEvent called for: \(callEvent.contactName)")
@@ -350,6 +408,7 @@ class AppState: ObservableObject {
            (callEvent.direction == .outgoing && callEvent.state == .offhook) {
             print("[state] Posting system notification for call")
             self.postCallSystemNotification(callEvent)
+            self.playCallRingtone()
             
             // Set active call for sheet display
             self.activeCall = callEvent
@@ -360,6 +419,9 @@ class AppState: ObservableObject {
             let allEventIds = self.callEvents.map { $0.eventId }
             UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: allEventIds)
             UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: allEventIds)
+            
+            // Stop ringtone
+            self.stopCallRingtone()
             
             // Close sheet
             self.activeCall = nil
