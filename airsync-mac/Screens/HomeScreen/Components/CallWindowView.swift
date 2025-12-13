@@ -84,8 +84,8 @@ struct CallWindowView: View {
                         Image(nsImage: contactImage)
                             .resizable()
                             .scaledToFit()
-                            .frame(width: 128, height: 128)
-                            .clipShape(Circle())
+                            .frame(width: 150, height: 150)
+                            .clipShape(FlowerShape())
                     } else {
                         Image(systemName: "person.circle.fill")
                             .font(.system(size: 128))
