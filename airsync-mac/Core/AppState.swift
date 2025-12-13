@@ -425,7 +425,10 @@ class AppState: ObservableObject {
             } else if callNotificationMode == .popup {
                 // Show only popup window, no system notification
                 print("[state] Showing popup window only (user preference)")
-                self.playCallRingtone()
+                // Only play ringtone for incoming calls in ringing state
+                if callEvent.direction == .incoming && callEvent.state == .ringing {
+                    self.playCallRingtone()
+                }
                 self.activeCall = callEvent
                 print("[state] Active call set for popup display")
             } else if callNotificationMode == .none {
