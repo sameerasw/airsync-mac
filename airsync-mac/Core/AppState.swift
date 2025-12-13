@@ -56,6 +56,10 @@ class AppState: ObservableObject {
             .string(forKey: "notificationSound") ?? "default"
         self.dismissNotif = UserDefaults.standard
             .bool(forKey: "dismissNotif")
+        
+        let savedNotificationMode = UserDefaults.standard
+            .string(forKey: "callNotificationMode") ?? CallNotificationMode.popup.rawValue
+        self.callNotificationMode = CallNotificationMode(rawValue: savedNotificationMode) ?? .popup
 
         // Default to true for backward compatibility - existing behavior should continue
         let savedNowPlayingStatus = UserDefaults.standard.object(forKey: "sendNowPlayingStatus")
@@ -253,6 +257,12 @@ class AppState: ObservableObject {
         }
     }
 
+    @Published var callNotificationMode: CallNotificationMode = .popup {
+        didSet {
+            UserDefaults.standard.set(callNotificationMode.rawValue, forKey: "callNotificationMode")
+        }
+    }
+
     @Published var sendNowPlayingStatus: Bool {
         didSet {
             UserDefaults.standard.set(sendNowPlayingStatus, forKey: "sendNowPlayingStatus")
@@ -406,13 +416,22 @@ class AppState: ObservableObject {
         // Show macOS notification for ringing calls (incoming) or active outgoing calls
         if (callEvent.direction == .incoming && callEvent.state == .ringing) || 
            (callEvent.direction == .outgoing && callEvent.state == .offhook) {
-            print("[state] Posting system notification for call")
-            self.postCallSystemNotification(callEvent)
-            self.playCallRingtone()
             
-            // Set active call for sheet display
-            self.activeCall = callEvent
-            print("[state] Active call set for sheet display")
+            // Handle notification based on user preference
+            if callNotificationMode == .notification {
+                // Only show system notification
+                print("[state] Showing notification only (user preference)")
+                self.postCallSystemNotification(callEvent)
+            } else if callNotificationMode == .popup {
+                // Show only popup window, no system notification
+                print("[state] Showing popup window only (user preference)")
+                self.playCallRingtone()
+                self.activeCall = callEvent
+                print("[state] Active call set for popup display")
+            } else if callNotificationMode == .none {
+                // Don't show anything
+                print("[state] No notification (user preference)")
+            }
         } else if callEvent.state == .ended || callEvent.state == .rejected || callEvent.state == .missed || callEvent.state == .idle {
             // Remove ALL call notifications when any call ends
             print("[state] Call ended/rejected/missed/idle, removing ALL call notifications")

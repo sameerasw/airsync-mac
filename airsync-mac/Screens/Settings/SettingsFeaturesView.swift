@@ -276,6 +276,19 @@ struct SettingsFeaturesView: View {
             SettingsToggleView(name: "Send now playing status", icon: "play.circle", isOn: $appState.sendNowPlayingStatus)
 
             HStack {
+                Label("Call Alert", systemImage: "phone")
+                Spacer()
+                
+                Picker("", selection: $appState.callNotificationMode) {
+                    ForEach(CallNotificationMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(MenuPickerStyle())
+                .frame(minWidth: 120)
+            }
+
+            HStack {
                 Label("System Notifications", systemImage: "bell.badge")
 
                 Spacer()
