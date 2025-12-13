@@ -5,6 +5,28 @@ struct CallWindowView: View {
     @Environment(\.dismissWindow) var dismissWindow
     let callEvent: CallEvent
     
+    var contactImage: NSImage? {
+        guard let photoString = callEvent.contactPhoto, !photoString.isEmpty else {
+            return nil
+        }
+        
+        // Try to decode the base64 PNG data
+        if let photoData = Data(base64Encoded: photoString, options: .ignoreUnknownCharacters) {
+            if let image = NSImage(data: photoData) {
+                print("[CallWindow] Successfully decoded contact photo, size: \(photoData.count) bytes")
+                return image
+            } else {
+                print("[CallWindow] ERROR: Base64 decoded but NSImage creation failed. Data size: \(photoData.count) bytes")
+                print("[CallWindow] First 100 chars of photo string: \(photoString.prefix(100))")
+            }
+        } else {
+            print("[CallWindow] ERROR: Failed to decode base64 photo string. String size: \(photoString.count) chars")
+            print("[CallWindow] First 100 chars: \(photoString.prefix(100))")
+        }
+        
+        return nil
+    }
+    
     var callDirectionText: String {
         switch callEvent.direction {
         case .incoming:
@@ -40,15 +62,23 @@ struct CallWindowView: View {
     var body: some View {
         VStack(spacing: 12) {
             // Header with direction
-            Text(callDirectionText)
+            Text(callDirectionText + " ・ " + callStateText)
                 .font(.caption)
                 .foregroundColor(.secondary)
             
             // Contact info
             VStack(spacing: 6) {
-                Image(systemName: "person.circle.fill")
-                    .font(.system(size: 128))
-                    .foregroundColor(.blue)
+                if let contactImage = contactImage {
+                    Image(nsImage: contactImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 128, height: 128)
+                        .clipShape(Circle())
+                } else {
+                    Image(systemName: "person.circle.fill")
+                        .font(.system(size: 128))
+                        .foregroundColor(.blue)
+                }
                 
                 Text(callEvent.contactName)
                     .font(.largeTitle)
@@ -77,7 +107,7 @@ struct CallWindowView: View {
                             appState.sendCallAction(callEvent.eventId, action: "accept")
                         }
                     )
-                    .tint(.green)
+                    .foregroundStyle(.green)
                     .transition(.identity)
 
 
@@ -89,7 +119,7 @@ struct CallWindowView: View {
                             appState.sendCallAction(callEvent.eventId, action: "decline")
                         }
                     )
-                    .tint(.red)
+                    .foregroundStyle(.red)
                     .transition(.identity)
 
                 }
