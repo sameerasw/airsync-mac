@@ -52,9 +52,6 @@ struct NotificationView: View {
                         )
                     }
                 }
-            if !appState.useNativeTabs {
-                Spacer(minLength: 100 + (appState.dockSize - 48))
-            }
         }
         .scrollContentBackground(.hidden)
         .background(.clear)
@@ -116,9 +113,6 @@ struct NotificationView: View {
                 } header: {
                     Text(appState.androidApps[package]?.name ?? "AirSync")
                 }
-            }
-            if !appState.useNativeTabs {
-                Spacer(minLength: 100 + (appState.dockSize - 48))
             }
         }
         .scrollContentBackground(.hidden)
