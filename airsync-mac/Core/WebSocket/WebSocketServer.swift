@@ -347,13 +347,15 @@ class WebSocketServer: ObservableObject {
         case .callEvent:
             if let dict = message.data.value as? [String: Any],
                let eventId = dict["eventId"] as? String,
-               let contactName = dict["contactName"] as? String,
                let number = dict["number"] as? String,
                let normalizedNumber = dict["normalizedNumber"] as? String,
                let directionStr = dict["direction"] as? String,
                let direction = CallDirection(rawValue: directionStr),
                let stateStr = dict["state"] as? String,
                let state = CallState(rawValue: stateStr) {
+                
+                // contactName is optional - fallback to normalizedNumber if missing
+                let contactName = (dict["contactName"] as? String) ?? normalizedNumber
                 
                 // Handle timestamp as either Int or Int64
                 var timestamp: Int64 = 0
@@ -367,6 +369,11 @@ class WebSocketServer: ObservableObject {
                 
                 let deviceId = dict["deviceId"] as? String ?? ""
                 let contactPhoto = dict["contactPhoto"] as? String
+                
+                print("[websocket] Raw normalizedNumber: '\(normalizedNumber)' (length: \(normalizedNumber.count))")
+                print("[websocket] Raw number: '\(number)' (length: \(number.count))")
+                print("[websocket] Decoded call event - name: \(contactName), state: \(state), phone: \(normalizedNumber)")
+                
                 let callEvent = CallEvent(
                     eventId: eventId,
                     contactName: contactName,
@@ -378,6 +385,7 @@ class WebSocketServer: ObservableObject {
                     deviceId: deviceId,
                     contactPhoto: contactPhoto
                 )
+                print("[websocket] CallEvent created - normalizedNumber: '\(callEvent.normalizedNumber)' (length: \(callEvent.normalizedNumber.count))")
                 print("[websocket] Call event: \(contactName) - \(state.rawValue)")
                 DispatchQueue.main.async {
                     AppState.shared.updateCallEvent(callEvent)

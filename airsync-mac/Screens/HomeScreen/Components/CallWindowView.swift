@@ -4,12 +4,12 @@ struct CallWindowView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismissWindow) var dismissWindow
     let callEvent: CallEvent
-    
+
     var contactImage: NSImage? {
         guard let photoString = callEvent.contactPhoto, !photoString.isEmpty else {
             return nil
         }
-        
+
         // Try to decode the base64 PNG data
         if let photoData = Data(base64Encoded: photoString, options: .ignoreUnknownCharacters) {
             if let image = NSImage(data: photoData) {
@@ -23,10 +23,10 @@ struct CallWindowView: View {
             print("[CallWindow] ERROR: Failed to decode base64 photo string. String size: \(photoString.count) chars")
             print("[CallWindow] First 100 chars: \(photoString.prefix(100))")
         }
-        
+
         return nil
     }
-    
+
     var callDirectionText: String {
         switch callEvent.direction {
         case .incoming:
@@ -35,7 +35,7 @@ struct CallWindowView: View {
             return "Outgoing Call"
         }
     }
-    
+
     var callStateText: String {
         switch callEvent.state {
         case .ringing:
@@ -54,11 +54,11 @@ struct CallWindowView: View {
             return "Idle"
         }
     }
-    
+
     var showActionButtons: Bool {
         callEvent.state == .ringing || callEvent.state == .offhook
     }
-    
+
     var body: some View {
         ZStack {
             // Blurred background image (only if contact photo exists)
@@ -70,14 +70,14 @@ struct CallWindowView: View {
                     .blur(radius: 20)
                     .opacity(0.3)
             }
-            
+
             // Content overlay
             VStack(spacing: 12) {
                 // Header with direction
                 Text(callDirectionText + " ・ " + callStateText)
                     .font(.caption)
                     .foregroundColor(.secondary)
-                
+
                 // Contact info
                 VStack(spacing: 6) {
                     if let contactImage = contactImage {
@@ -91,7 +91,7 @@ struct CallWindowView: View {
                             .font(.system(size: 128))
                             .foregroundColor(.blue)
                     }
-                    
+
                     Text(callEvent.contactName)
                         .font(.largeTitle)
 
@@ -99,36 +99,55 @@ struct CallWindowView: View {
                         Text(callEvent.normalizedNumber)
                             .font(.caption)
                             .foregroundColor(.secondary)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+                            .onAppear {
+                                print("[CallWindow] Displaying normalizedNumber: '\(self.callEvent.normalizedNumber)' (length: \(self.callEvent.normalizedNumber.count))")
+                            }
                     }
                 }
-                
+
                 // Action buttons (only show when ringing/offhook)
                 if showActionButtons {
                     HStack(spacing: 16) {
 
-                        GlassButtonView(
-                            label: "Accept",
-                            systemImage: "phone.fill",
-                            size: .extraLarge,
-                            action: {
-                                appState.sendCallAction(callEvent.eventId, action: "accept")
-                            }
-                        )
-                        .foregroundStyle(.green)
-                        .transition(.identity)
+                        if callEvent.direction == .incoming {
+                            GlassButtonView(
+                                label: "Accept",
+                                systemImage: "phone.fill",
+                                size: .extraLarge,
+                                action: {
+                                    appState.sendCallAction(callEvent.eventId, action: "accept")
+                                }
+                            )
+                            .foregroundStyle(.green)
+                            .transition(.identity)
 
 
-                        GlassButtonView(
-                            label: "Decline",
-                            systemImage: "phone.down.fill",
-                            size: .extraLarge,
-                            action: {
-                                appState.sendCallAction(callEvent.eventId, action: "decline")
-                            }
-                        )
-                        .foregroundStyle(.red)
-                        .transition(.identity)
+                            GlassButtonView(
+                                label: "Decline",
+                                systemImage: "phone.down.fill",
+                                size: .extraLarge,
+                                action: {
+                                    appState.sendCallAction(callEvent.eventId, action: "decline")
+                                }
+                            )
+                            .foregroundStyle(.red)
+                            .transition(.identity)
 
+                        } else if callEvent.direction == .outgoing {
+
+                            GlassButtonView(
+                                label: "End",
+                                systemImage: "phone.down.fill",
+                                size: .extraLarge,
+                                action: {
+                                    appState.sendCallAction(callEvent.eventId, action: "decline")
+                                }
+                            )
+                            .foregroundStyle(.red)
+                            .transition(.identity)
+                        }
                     }
                     .padding(.top, 8)
                 }
