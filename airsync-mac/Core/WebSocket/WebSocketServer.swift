@@ -662,6 +662,22 @@ class WebSocketServer: ObservableObject {
                 handleMacMediaControl(action: action)
             }
 
+        case .callControl:
+            // This case handles call control messages from Android to Mac
+            // Currently not expected as Mac sends call control to Android, not vice versa
+            print("[websocket] Received callControl from Android (not typically expected)")
+
+        case .callControlResponse:
+            if let dict = message.data.value as? [String: Any],
+               let action = dict["action"] as? String,
+               let success = dict["success"] as? Bool {
+                let message = dict["message"] as? String ?? ""
+                print("[websocket] Call control \(action) \(success ? "succeeded" : "failed"): \(message)")
+                if !message.isEmpty {
+                    print("[websocket] Call control warning/info: \(message)")
+                }
+            }
+
         case .macMediaControlResponse:
             // This case handles responses from Android to Mac media control responses
             // Currently not needed as Mac sends responses to Android, not vice versa
@@ -812,11 +828,42 @@ class WebSocketServer: ObservableObject {
     }
 
     func sendCallAction(eventId: String, action: String) {
-        let data: [String: Any] = ["eventId": eventId, "action": action]
-        if let jsonData = try? JSONSerialization.data(withJSONObject: ["type": "callAction", "data": data], options: []),
-           let json = String(data: jsonData, encoding: .utf8) {
-            print("[websocket] Sending call action: \(action) for event: \(eventId)")
-            sendToFirstAvailable(message: json)
+        // Send key events via ADB to control calls
+        // KeyCode 5 = KEYCODE_CALL (Accept/Answer call)
+        // KeyCode 6 = KEYCODE_ENDCALL (End call)
+        let keyCode: String
+        switch action.lowercased() {
+        case "accept":
+            keyCode = "5"   // KEYCODE_CALL
+        case "decline", "end":
+            keyCode = "6"   // KEYCODE_ENDCALL
+        default:
+            keyCode = "6"
+        }
+        
+        // Execute: adb shell input keyevent <keyCode>
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let adbPath = ADBConnector.findExecutable(named: "adb", fallbackPaths: ADBConnector.possibleADBPaths) else {
+                print("[websocket] ADB not found for call action")
+                return
+            }
+            
+            if let ip = AppState.shared.device?.ipAddress {
+                // Use the ADB port that was successfully connected, not the WebSocket port
+                let adbPort = AppState.shared.adbPort
+                let fullAddress = "\(ip):\(adbPort)"
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: adbPath)
+                process.arguments = ["-s", fullAddress, "shell", "input", "keyevent", keyCode]
+                
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                    print("[websocket] Call action sent: keyevent \(keyCode) for event: \(eventId)")
+                } catch {
+                    print("[websocket] Failed to send call action: \(error.localizedDescription)")
+                }
+            }
         }
     }
 

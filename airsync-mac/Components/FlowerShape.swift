@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct FlowerShape: Shape {
-    var petals: Int = 12          // Android clock ≈ 8
+    var petals: Int = 12          // petals count
     var amplitude: CGFloat = 0.05 // How wavy the edges are
 
     func path(in rect: CGRect) -> Path {

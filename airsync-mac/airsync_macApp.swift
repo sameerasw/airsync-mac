@@ -116,9 +116,11 @@ struct airsync_macApp: App {
             if let activeCall = appState.activeCall {
                 if #available(macOS 15.0, *) {
                     CallWindowView(callEvent: activeCall)
+                        .environmentObject(appState)
                         .containerBackground(.ultraThinMaterial, for: .window)
                 } else {
                     CallWindowView(callEvent: activeCall)
+                        .environmentObject(appState)
                 }
             }
         }

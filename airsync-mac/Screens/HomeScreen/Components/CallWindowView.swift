@@ -107,8 +107,8 @@ struct CallWindowView: View {
                     }
                 }
 
-                // Action buttons (only show when ringing/offhook)
-                if showActionButtons {
+                // Action buttons (only show when ringing/offhook AND ADB is connected)
+                if showActionButtons && appState.adbConnected {
                     HStack(spacing: 16) {
 
                         if callEvent.direction == .incoming {
@@ -142,7 +142,7 @@ struct CallWindowView: View {
                                 systemImage: "phone.down.fill",
                                 size: .extraLarge,
                                 action: {
-                                    appState.sendCallAction(callEvent.eventId, action: "decline")
+                                    appState.sendCallAction(callEvent.eventId, action: "end")
                                 }
                             )
                             .foregroundStyle(.red)
