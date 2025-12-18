@@ -114,7 +114,9 @@ Raw output:
             let lines = trimmedMDNSOutput.components(separatedBy: .newlines)
             var tlsPorts: [UInt16] = []
             var normalPorts: [UInt16] = []
-
+            var effectiveIP = ip
+            
+            // First try the reported IP
             for line in lines {
                 guard let range = line.range(of: "\(ip):") else { continue }
 
@@ -126,6 +128,41 @@ Raw output:
                     } else if line.contains("_adb._tcp") {
                         normalPorts.append(port)
                     }
+                }
+            }
+            
+            // If no services found for reported IP, try to find any available service
+            // This handles cases where phone reports Tailscale IP but mDNS shows WiFi IP
+            if tlsPorts.isEmpty && normalPorts.isEmpty {
+                logBinaryDetection("No services found for reported IP \(ip), scanning all discovered services...")
+                
+                // Parse IP:port from any line containing _adb-tls-connect or _adb._tcp
+                // Format: "servicename\t_adb-tls-connect._tcp\t192.168.x.x:port"
+                for line in lines {
+                    // Look for IP:port pattern (IPv4)
+                    let pattern = #"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d+)"#
+                    if let regex = try? NSRegularExpression(pattern: pattern),
+                       let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) {
+                        if let ipRange = Range(match.range(at: 1), in: line),
+                           let portRange = Range(match.range(at: 2), in: line),
+                           let port = UInt16(line[portRange]) {
+                            let discoveredIP = String(line[ipRange])
+                            // Skip Tailscale IPs (100.x.x.x CGNAT range)
+                            if !discoveredIP.hasPrefix("100.") {
+                                effectiveIP = discoveredIP
+                                if line.contains("_adb-tls-connect._tcp") {
+                                    tlsPorts.append(port)
+                                } else if line.contains("_adb._tcp") {
+                                    normalPorts.append(port)
+                                }
+                                logBinaryDetection("Found service at \(discoveredIP):\(port)")
+                            }
+                        }
+                    }
+                }
+                
+                if effectiveIP != ip && (!tlsPorts.isEmpty || !normalPorts.isEmpty) {
+                    logBinaryDetection("Using discovered IP \(effectiveIP) instead of reported IP \(ip)")
                 }
             }
 
@@ -169,7 +206,7 @@ Please see the ADB console for more details.
             logBinaryDetection("Killing adb server: \(adbPath) kill-server")
             runADBCommand(adbPath: adbPath, arguments: ["kill-server"]) { _ in
                 // Step 3: Try connecting to each port until one succeeds
-                attemptConnectionToNextPort(adbPath: adbPath, ip: ip, portsToTry: portsToTry, currentIndex: 0)
+                attemptConnectionToNextPort(adbPath: adbPath, ip: effectiveIP, portsToTry: portsToTry, currentIndex: 0)
             }
         }
     }
