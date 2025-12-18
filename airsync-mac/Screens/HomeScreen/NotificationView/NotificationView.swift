@@ -12,6 +12,7 @@ struct NotificationView: View {
     @AppStorage("notificationStacks") private var notificationStacks = true
     @State private var expandedPackages: Set<String> = []
 
+    @ViewBuilder
     var body: some View {
         if !appState.notifications.isEmpty {
             ZStack {

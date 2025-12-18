@@ -12,3 +12,22 @@ enum Defaults {
     static let serverPort: UInt16 = 6996
 }
 
+enum CallNotificationMode: String, CaseIterable, Identifiable {
+    case popup = "popup"
+    case notification = "notification"
+    case none = "none"
+    
+    var id: String { self.rawValue }
+    
+    var displayName: String {
+        switch self {
+        case .popup:
+            return "Pop-up"
+        case .notification:
+            return "Notification"
+        case .none:
+            return "Nothing"
+        }
+    }
+}
+
