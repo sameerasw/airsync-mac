@@ -60,6 +60,9 @@ class AppState: ObservableObject {
         let savedNowPlayingStatus = UserDefaults.standard.object(forKey: "sendNowPlayingStatus")
         self.sendNowPlayingStatus = savedNowPlayingStatus == nil ? true : UserDefaults.standard.bool(forKey: "sendNowPlayingStatus")
         
+        // Auto-open links defaults to false
+        self.autoOpenLinks = UserDefaults.standard.bool(forKey: "autoOpenLinks")
+        
         if isClipboardSyncEnabled {
             startClipboardMonitoring()
         }
@@ -249,6 +252,12 @@ class AppState: ObservableObject {
     @Published var sendNowPlayingStatus: Bool {
         didSet {
             UserDefaults.standard.set(sendNowPlayingStatus, forKey: "sendNowPlayingStatus")
+        }
+    }
+
+    @Published var autoOpenLinks: Bool {
+        didSet {
+            UserDefaults.standard.set(autoOpenLinks, forKey: "autoOpenLinks")
         }
     }
 
@@ -536,18 +545,24 @@ class AppState: ObservableObject {
         pasteboard.setString(text, forType: .string)
         self.lastClipboardValue = text
 
-        // Only show "Continue browsing" if the whole text is a valid http/https URL
+        // Only handle URLs specially if the whole text is a valid http/https URL
         // AND the user has AirSync+ (isPlus). Otherwise show a regular clipboard update.
         if let url = exactURL(from: text), self.isPlus {
-            let open = UNNotificationAction(identifier: "OPEN_LINK", title: "Open", options: [])
-            self.postNativeNotification(
-                id: "clipboard",
-                appName: "Clipboard",
-                title: "Continue browsing",
-                body: text,
-                extraActions: [open],
-                extraUserInfo: ["url": url.absoluteString]
-            )
+            if self.autoOpenLinks {
+                // Auto-open the URL without showing a notification
+                NSWorkspace.shared.open(url)
+            } else {
+                // Show "Continue browsing" notification with Open action
+                let open = UNNotificationAction(identifier: "OPEN_LINK", title: "Open", options: [])
+                self.postNativeNotification(
+                    id: "clipboard",
+                    appName: "Clipboard",
+                    title: "Continue browsing",
+                    body: text,
+                    extraActions: [open],
+                    extraUserInfo: ["url": url.absoluteString]
+                )
+            }
         } else {
             // Non-plus users or non-URL clipboard content: simple clipboard update notification
             self.postNativeNotification(id: "clipboard", appName: "Clipboard", title: "Updated", body: text)

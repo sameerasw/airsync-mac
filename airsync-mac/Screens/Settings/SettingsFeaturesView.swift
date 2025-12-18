@@ -271,6 +271,15 @@ struct SettingsFeaturesView: View {
 
             SettingsToggleView(name: "Sync clipboard", icon: "clipboard", isOn: $appState.isClipboardSyncEnabled)
 
+            HStack {
+                Label("Auto-open shared links", systemImage: "link")
+                Spacer()
+                Toggle("", isOn: $appState.autoOpenLinks)
+                    .toggleStyle(.switch)
+                    .disabled(!appState.isClipboardSyncEnabled || !appState.isPlus)
+            }
+            .opacity(appState.isClipboardSyncEnabled && appState.isPlus ? 1.0 : 0.5)
+
             SettingsToggleView(name: "Sync notification dismissals", icon: "bell.badge", isOn: $appState.dismissNotif)
 
             SettingsToggleView(name: "Send now playing status", icon: "play.circle", isOn: $appState.sendNowPlayingStatus)
