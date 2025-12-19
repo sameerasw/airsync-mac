@@ -20,6 +20,10 @@ struct ADBConnector {
         "/opt/homebrew/bin/scrcpy",
         "/usr/local/bin/scrcpy"
     ]
+    
+    // Flag to prevent concurrent connection attempts
+    private static var isConnecting = false
+    private static let connectionLock = NSLock()
 
     // Try to locate a binary
     static func findExecutable(named name: String, fallbackPaths: [String]) -> String? {
@@ -73,14 +77,32 @@ struct ADBConnector {
         }
         print("[adb-connector] (Binary Detection) \(message)")
     }
+    
+    private static func clearConnectionFlag() {
+        connectionLock.lock()
+        defer { connectionLock.unlock() }
+        isConnecting = false
+    }
 
     static func connectToADB(ip: String) {
+        connectionLock.lock()
+        defer { connectionLock.unlock() }
+        
+        // Prevent concurrent connection attempts
+        if isConnecting {
+            logBinaryDetection("ADB connection already in progress, ignoring duplicate request")
+            return
+        }
+        
+        isConnecting = true
+        
         DispatchQueue.main.async { AppState.shared.adbConnecting = true }
         // Find adb
         guard let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) else {
             AppState.shared.adbConnectionResult = "ADB not found. Please install via Homebrew: brew install android-platform-tools"
             AppState.shared.adbConnected = false
             DispatchQueue.main.async { AppState.shared.adbConnecting = false }
+            clearConnectionFlag()
             return
         }
 
@@ -108,6 +130,7 @@ Raw output:
                     AppState.shared.adbConnected = false
                 }
                 DispatchQueue.main.async { AppState.shared.adbConnecting = false }
+                clearConnectionFlag()
                 return
             }
 
@@ -199,14 +222,18 @@ Please see the ADB console for more details.
                     alert.runModal()
                 }
                 DispatchQueue.main.async { AppState.shared.adbConnecting = false }
+                clearConnectionFlag()
                 return
             }
 
-            // Step 2: Kill adb server
+            // Step 2: Kill adb server and wait for it to complete
             logBinaryDetection("Killing adb server: \(adbPath) kill-server")
             runADBCommand(adbPath: adbPath, arguments: ["kill-server"]) { _ in
-                // Step 3: Try connecting to each port until one succeeds
-                attemptConnectionToNextPort(adbPath: adbPath, ip: effectiveIP, portsToTry: portsToTry, currentIndex: 0)
+                // Give the adb daemon time to fully terminate before attempting new connections
+                DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 1.0) {
+                    // Step 3: Try connecting to each port until one succeeds
+                    attemptConnectionToNextPort(adbPath: adbPath, ip: effectiveIP, portsToTry: portsToTry, currentIndex: 0)
+                }
             }
         }
     }
@@ -233,6 +260,7 @@ Possible fixes:
 """
                 AppState.shared.adbConnecting = false
             }
+            clearConnectionFlag()
             return
         }
 
@@ -253,19 +281,24 @@ Possible fixes:
                     // Success! Connection established
                     AppState.shared.adbConnected = true
                     AppState.shared.adbPort = currentPort
+                    AppState.shared.adbConnectedIP = ip  // Store the actual connected IP
                     AppState.shared.adbConnectionResult = trimmedOutput
                     logBinaryDetection("(/^▽^)/ ADB connection successful to \(fullAddress)")
                     AppState.shared.adbConnecting = false
+                    clearConnectionFlag()
                 }
                 else if trimmedOutput.contains("protocol fault") || trimmedOutput.contains("connection reset by peer") {
-                    // Connection exists elsewhere, show error
+                    // Connection exists elsewhere, show error and try next port
                     AppState.shared.adbConnected = false
                     logBinaryDetection("(T＿T) Port \(currentPort): ADB connection failed due to existing connection.")
                     AppState.shared.adbConnectionResult = (AppState.shared.adbConnectionResult ?? "") + """
 
 Port \(currentPort) (attempt \(portNumber)/\(totalPorts)): Connection failed - another ADB instance already using the device.
 """
-                    AppState.shared.adbConnecting = false
+                    // Try next port after a short delay instead of giving up
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        attemptConnectionToNextPort(adbPath: adbPath, ip: ip, portsToTry: portsToTry, currentIndex: currentIndex + 1)
+                    }
                 }
                 else {
                     // This port didn't work, try the next one
