@@ -19,7 +19,6 @@ struct SettingsFeaturesView: View {
     @AppStorage("continueApp") private var continueApp = false
     @AppStorage("directKeyInput") private var directKeyInput = true
 
-    @State private var adbPortString: String = ""
     @State private var showingPlusPopover = false
     @State private var tempBitrate: Double = 4.00
     @State private var tempResolution: Double = 1200.00
@@ -62,7 +61,7 @@ struct SettingsFeaturesView: View {
                             }
                         )
                         .disabled(
-                            adbPortString.isEmpty || appState.device == nil || appState.adbConnecting || !AppState.shared.isPlus
+                            appState.device == nil || (appState.device?.adbPorts.isEmpty ?? true) || appState.adbConnecting || !AppState.shared.isPlus
                         )
                     }
 
@@ -79,6 +78,19 @@ struct SettingsFeaturesView: View {
                     }
                     .frame(width: 55)
 
+                }
+                
+                // Show message when no ADB ports available
+                if let device = appState.device, device.adbPorts.isEmpty {
+                    HStack {
+                        Image(systemName: "info.circle")
+                            .foregroundColor(.orange)
+                        Text("ADB ports not available. Ensure device is properly connected.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+                    .padding(.top, 8)
                 }
                 
                 // Transparent tap area on top to show popover even if disabled
@@ -267,8 +279,6 @@ struct SettingsFeaturesView: View {
         }
         .padding()
         .onAppear{
-
-            adbPortString = String(appState.adbPort)
             xCoords = UserDefaults.standard.manualPositionCoords[0]
             yCoords = UserDefaults.standard.manualPositionCoords[1]
         }
@@ -343,7 +353,6 @@ struct SettingsFeaturesView: View {
         }
         .padding()
         .onAppear{
-            adbPortString = String(appState.adbPort)
             checkNotificationPermissions()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in

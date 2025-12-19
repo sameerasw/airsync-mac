@@ -69,28 +69,6 @@ struct SettingsView: View {
                                 }
                                 .frame(maxWidth: 100)
                         }
-
-                        HStack {
-                            Label("Custom ADB Port", systemImage: "powerplug.portrait")
-                                .padding(.trailing, 20)
-                            Spacer()
-                            TextField("Port", text: Binding(
-                                get: { appState.customAdbPort.map(String.init) ?? "" },
-                                set: { newValue in
-                                    let filtered = newValue.filter { "0123456789".contains($0) }
-                                    if let portNum = UInt16(filtered), portNum > 0 && portNum <= 65535 {
-                                        appState.customAdbPort = portNum
-                                    } else if filtered.isEmpty {
-                                        appState.customAdbPort = nil
-                                    }
-                                }
-                            ))
-                                .textFieldStyle(.roundedBorder)
-                                .frame(maxWidth: 100)
-
-                            Toggle("", isOn: $appState.useCustomAdbPort)
-                                .toggleStyle(.switch)
-                        }
                     }
                     .padding()
                     .background(.background.opacity(0.3))

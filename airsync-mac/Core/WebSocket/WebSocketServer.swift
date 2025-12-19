@@ -296,12 +296,14 @@ class WebSocketServer: ObservableObject {
                let port = dict["port"] as? Int {
 
                 let version = dict["version"] as? String ?? "2.0.0"
+                let adbPorts = dict["adbPorts"] as? [String] ?? []
 
                 AppState.shared.device = Device(
                     name: name,
                     ipAddress: ip,
                     port: port,
-                    version: version
+                    version: version,
+                    adbPorts: adbPorts
                 )
 
                 if let base64 = dict["wallpaper"] as? String {

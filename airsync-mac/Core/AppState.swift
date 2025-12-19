@@ -35,10 +35,6 @@ class AppState: ObservableObject {
         self.adbConnectedIP = UserDefaults.standard.string(forKey: "adbConnectedIP") ?? ""
         self.mirroringPlus = UserDefaults.standard.bool(forKey: "mirroringPlus")
         self.adbEnabled = UserDefaults.standard.bool(forKey: "adbEnabled")
-        
-        let customAdbPortValue = UserDefaults.standard.integer(forKey: "customAdbPort")
-        self.customAdbPort = customAdbPortValue > 0 ? UInt16(customAdbPortValue) : nil
-        self.useCustomAdbPort = UserDefaults.standard.bool(forKey: "useCustomAdbPort")
         self.suppressAdbFailureAlerts = UserDefaults.standard.bool(forKey: "suppressAdbFailureAlerts")
         
         self.showMenubarText = UserDefaults.standard.bool(forKey: "showMenubarText")
@@ -110,7 +106,8 @@ class AppState: ObservableObject {
                     adapterName: selectedNetworkAdapterName
                 ) ?? "N/A",
             port: port,
-            version:appVersion
+            version:appVersion,
+            adbPorts: []
         )
         self.licenseDetails = loadLicenseDetailsFromUserDefaults()
 
@@ -240,22 +237,6 @@ class AppState: ObservableObject {
     @Published var adbEnabled: Bool {
         didSet {
             UserDefaults.standard.set(adbEnabled, forKey: "adbEnabled")
-        }
-    }
-
-    @Published var customAdbPort: UInt16? = nil {
-        didSet {
-            if let port = customAdbPort, port > 0 && port <= 65535 {
-                UserDefaults.standard.set(Int(port), forKey: "customAdbPort")
-            } else {
-                UserDefaults.standard.removeObject(forKey: "customAdbPort")
-            }
-        }
-    }
-
-    @Published var useCustomAdbPort: Bool {
-        didSet {
-            UserDefaults.standard.set(useCustomAdbPort, forKey: "useCustomAdbPort")
         }
     }
 

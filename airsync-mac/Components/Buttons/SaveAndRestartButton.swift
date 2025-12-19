@@ -31,7 +31,8 @@ struct SaveAndRestartButton: View {
                     name: deviceName,
                     ipAddress: ipAddress,
                     port: Int(portNumber),
-                    version: version
+                    version: version,
+                    adbPorts: []
                 )
 
                 // Save
