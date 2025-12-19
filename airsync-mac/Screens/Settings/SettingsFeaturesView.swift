@@ -110,6 +110,13 @@ struct SettingsFeaturesView: View {
                 .transition(.opacity)
             }
 
+            HStack {
+                Label("Suppress failed messages", systemImage: "bell.slash")
+                Spacer()
+                Toggle("", isOn: $appState.suppressAdbFailureAlerts)
+                    .toggleStyle(.switch)
+            }
+
             // Show port field if ADB toggle is on
             if appState.isPlus, (appState.adbEnabled || appState.adbConnected){
 

@@ -106,6 +106,31 @@ struct ADBConnector {
             return
         }
 
+        // Check if custom ADB port is enabled and valid
+        if AppState.shared.useCustomAdbPort, let customPort = AppState.shared.customAdbPort, customPort > 0 && customPort <= 65535 {
+            logBinaryDetection("Using custom ADB port: \(customPort)")
+            let fullAddress = "\(ip):\(customPort)"
+            
+            // Kill adb server first
+            logBinaryDetection("Killing adb server: \(adbPath) kill-server")
+            runADBCommand(adbPath: adbPath, arguments: ["kill-server"]) { _ in
+                // Give the adb daemon time to fully terminate
+                DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 1.0) {
+                    // Explicitly start the server and wait for it
+                    logBinaryDetection("Starting adb server...")
+                    ADBConnector.runADBCommand(adbPath: adbPath, arguments: ["start-server"]) { _ in
+                        // Give server time to fully initialize
+                        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 1.5) {
+                            // Attempt direct connection with custom port
+                            ADBConnector.attemptDirectConnection(adbPath: adbPath, fullAddress: fullAddress)
+                        }
+                    }
+                }
+            }
+            return
+        }
+
+        // Standard mDNS discovery flow
         UserDefaults.standard.lastADBCommand = "adb mdns services"
 
         logBinaryDetection("Running: \(adbPath) mdns services")
@@ -206,12 +231,14 @@ Raw `adb mdns services` output:
 """
                     AppState.shared.adbConnected = false
 
-                    // Present alert only for this specific error case
-                    let alert = NSAlert()
-                    alert.alertStyle = .warning
-                    alert.addButton(withTitle: "OK")
-                    alert.messageText = "Failed to connect to ADB."
-                    alert.informativeText = """
+                    // Present alert only for this specific error case (unless suppressed)
+                    if !AppState.shared.suppressAdbFailureAlerts {
+                        let alert = NSAlert()
+                        alert.alertStyle = .warning
+                        alert.addButton(withTitle: "Don't warn me again")
+                        alert.addButton(withTitle: "OK")
+                        alert.messageText = "Failed to connect to ADB."
+                        alert.informativeText = """
 Suggestions:
 - Ensure your Android device is in Wireless debugging mode
 - Try toggling Wireless Debugging off and on again
@@ -219,7 +246,13 @@ Suggestions:
 
 Please see the ADB console for more details.
 """
-                    alert.runModal()
+                        let response = alert.runModal()
+                        if response == .alertFirstButtonReturn {
+                            DispatchQueue.main.async {
+                                AppState.shared.suppressAdbFailureAlerts = true
+                            }
+                        }
+                    }
                 }
                 DispatchQueue.main.async { AppState.shared.adbConnecting = false }
                 clearConnectionFlag()
@@ -232,16 +265,95 @@ Please see the ADB console for more details.
                 // Give the adb daemon time to fully terminate before attempting new connections
                 DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 1.0) {
                     // Step 3: Try connecting to each port until one succeeds
-                    attemptConnectionToNextPort(adbPath: adbPath, ip: effectiveIP, portsToTry: portsToTry, currentIndex: 0)
+                    attemptConnectionToNextPort(adbPath: adbPath, ip: effectiveIP, portsToTry: portsToTry, currentIndex: 0, reportedIP: ip)
+                }
+            }
+        }
+    }
+
+    // Attempt connection using custom port directly without mDNS discovery
+    private static func attemptDirectConnection(adbPath: String, fullAddress: String) {
+        logBinaryDetection("Attempting direct connection to custom port: \(adbPath) connect \(fullAddress)")
+
+        runADBCommand(adbPath: adbPath, arguments: ["connect", fullAddress]) { output in
+            let trimmedOutput = output.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+            DispatchQueue.main.async {
+                UserDefaults.standard.lastADBCommand = "adb connect \(fullAddress)"
+
+                if trimmedOutput.contains("connected to") {
+                    // Success! Connection established
+                    if let portStr = fullAddress.split(separator: ":").last,
+                       let port = UInt16(portStr) {
+                        AppState.shared.adbPort = port
+                    }
+                    AppState.shared.adbConnected = true
+                    AppState.shared.adbConnectionResult = trimmedOutput
+                    logBinaryDetection("(/^▽^)/ ADB connection successful to \(fullAddress)")
+                    AppState.shared.adbConnecting = false
+                    clearConnectionFlag()
+                } else {
+                    // Connection failed - show error popup only on final failure
+                    AppState.shared.adbConnected = false
+                    logBinaryDetection("(T＿T) Custom port connection failed: \(trimmedOutput)")
+                    AppState.shared.adbConnectionResult = """
+Failed to connect to custom ADB port.
+
+Address: \(fullAddress)
+Error: \(trimmedOutput)
+
+Possible fixes:
+- Verify the custom port is correct
+- Ensure Wireless Debugging is enabled on the device
+- Check that the device is reachable at the specified IP
+- Disable custom port and use automatic discovery
+"""
+                    AppState.shared.adbConnecting = false
+                    clearConnectionFlag()
+                    
+                    // Show alert popup for custom port failure (unless suppressed)
+                    if !AppState.shared.suppressAdbFailureAlerts {
+                        let alert = NSAlert()
+                        alert.alertStyle = .warning
+                        alert.addButton(withTitle: "Don't warn me again")
+                        alert.addButton(withTitle: "OK")
+                        alert.messageText = "Failed to connect to ADB on custom port."
+                        alert.informativeText = """
+Address: \(fullAddress)
+
+Possible fixes:
+- Verify the custom port is correct
+- Ensure Wireless Debugging is enabled on the device
+- Check that the device is reachable at the specified IP
+- Disable custom port and use automatic discovery
+
+Please see the ADB console for more details.
+"""
+                        let response = alert.runModal()
+                        if response == .alertFirstButtonReturn {
+                            DispatchQueue.main.async {
+                                AppState.shared.suppressAdbFailureAlerts = true
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 
     // Recursive function to try each port until one succeeds
-    private static func attemptConnectionToNextPort(adbPath: String, ip: String, portsToTry: [UInt16], currentIndex: Int) {
+    private static func attemptConnectionToNextPort(adbPath: String, ip: String, portsToTry: [UInt16], currentIndex: Int, reportedIP: String? = nil) {
         // If we've tried all ports, fail
         if currentIndex >= portsToTry.count {
+            // If we haven't tried the reported IP yet and it's different from the current IP, try it
+            if let reportedIP = reportedIP, reportedIP != ip {
+                logBinaryDetection("Failed to connect on discovered IP \(ip), attempting fallback to reported IP \(reportedIP)...")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    attemptConnectionToNextPort(adbPath: adbPath, ip: reportedIP, portsToTry: portsToTry, currentIndex: 0, reportedIP: nil)
+                }
+                return
+            }
+            
             DispatchQueue.main.async {
                 AppState.shared.adbConnected = false
                 logBinaryDetection("(∩︵∩) ADB connection failed on all ports.")
@@ -259,6 +371,31 @@ Possible fixes:
   Try killing any external adb instances in mac terminal with 'adb kill-server' command.
 """
                 AppState.shared.adbConnecting = false
+                
+                // Show alert popup only when all attempts have been exhausted (unless suppressed)
+                if !AppState.shared.suppressAdbFailureAlerts {
+                    let alert = NSAlert()
+                    alert.alertStyle = .warning
+                    alert.addButton(withTitle: "Don't warn me again")
+                    alert.addButton(withTitle: "OK")
+                    alert.messageText = "Failed to connect to ADB."
+                    alert.informativeText = """
+Suggestions:
+- Ensure your Android device is in Wireless debugging mode
+- Try toggling Wireless Debugging off and on again
+- Reconnect to the same Wi-Fi as your Mac
+- Ensure device is authorized for adb
+- Disconnect and reconnect Wireless Debugging
+
+Please see the ADB console for more details.
+"""
+                    let response = alert.runModal()
+                    if response == .alertFirstButtonReturn {
+                        DispatchQueue.main.async {
+                            AppState.shared.suppressAdbFailureAlerts = true
+                        }
+                    }
+                }
             }
             clearConnectionFlag()
             return
@@ -297,7 +434,7 @@ Port \(currentPort) (attempt \(portNumber)/\(totalPorts)): Connection failed - a
 """
                     // Try next port after a short delay instead of giving up
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        attemptConnectionToNextPort(adbPath: adbPath, ip: ip, portsToTry: portsToTry, currentIndex: currentIndex + 1)
+                        attemptConnectionToNextPort(adbPath: adbPath, ip: ip, portsToTry: portsToTry, currentIndex: currentIndex + 1, reportedIP: reportedIP)
                     }
                 }
                 else {
@@ -309,7 +446,7 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
 """
                     // Try next port after a short delay
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        attemptConnectionToNextPort(adbPath: adbPath, ip: ip, portsToTry: portsToTry, currentIndex: currentIndex + 1)
+                        attemptConnectionToNextPort(adbPath: adbPath, ip: ip, portsToTry: portsToTry, currentIndex: currentIndex + 1, reportedIP: reportedIP)
                     }
                 }
             }
