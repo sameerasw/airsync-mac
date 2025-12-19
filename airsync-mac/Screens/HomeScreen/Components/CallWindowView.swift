@@ -41,7 +41,8 @@ struct CallWindowView: View {
         case .ringing:
             return "Ringing..."
         case .offhook:
-            return "Ringing..."
+            // For incoming calls, offhook means accepted; for outgoing, it's still ringing
+            return callEvent.direction == .incoming ? "Accepted" : "Ringing..."
         case .accepted:
             return "Accepted"
         case .rejected:
@@ -56,7 +57,13 @@ struct CallWindowView: View {
     }
 
     var showActionButtons: Bool {
+        // Show buttons when ringing or offhook
         callEvent.state == .ringing || callEvent.state == .offhook
+    }
+    
+    var isCallAccepted: Bool {
+        // Call is accepted when it's offhook for an incoming call
+        callEvent.state == .offhook && callEvent.direction == .incoming
     }
 
     var body: some View {
@@ -112,28 +119,43 @@ struct CallWindowView: View {
                     HStack(spacing: 16) {
 
                         if callEvent.direction == .incoming {
-                            GlassButtonView(
-                                label: "Accept",
-                                systemImage: "phone.fill",
-                                size: .extraLarge,
-                                action: {
-                                    appState.sendCallAction(callEvent.eventId, action: "accept")
-                                }
-                            )
-                            .foregroundStyle(.green)
-                            .transition(.identity)
+                            if isCallAccepted {
+                                // Call is accepted - show only End button
+                                GlassButtonView(
+                                    label: "End",
+                                    systemImage: "phone.down.fill",
+                                    size: .extraLarge,
+                                    action: {
+                                        appState.sendCallAction(callEvent.eventId, action: "end")
+                                    }
+                                )
+                                .foregroundStyle(.red)
+                                .transition(.identity)
+                            } else {
+                                // Call is ringing - show Accept and Decline buttons
+                                GlassButtonView(
+                                    label: "Accept",
+                                    systemImage: "phone.fill",
+                                    size: .extraLarge,
+                                    action: {
+                                        appState.sendCallAction(callEvent.eventId, action: "accept")
+                                    }
+                                )
+                                .foregroundStyle(.green)
+                                .transition(.identity)
 
 
-                            GlassButtonView(
-                                label: "Decline",
-                                systemImage: "phone.down.fill",
-                                size: .extraLarge,
-                                action: {
-                                    appState.sendCallAction(callEvent.eventId, action: "decline")
-                                }
-                            )
-                            .foregroundStyle(.red)
-                            .transition(.identity)
+                                GlassButtonView(
+                                    label: "Decline",
+                                    systemImage: "phone.down.fill",
+                                    size: .extraLarge,
+                                    action: {
+                                        appState.sendCallAction(callEvent.eventId, action: "decline")
+                                    }
+                                )
+                                .foregroundStyle(.red)
+                                .transition(.identity)
+                            }
 
                         } else if callEvent.direction == .outgoing {
 

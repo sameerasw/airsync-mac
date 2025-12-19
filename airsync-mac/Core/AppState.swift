@@ -32,8 +32,11 @@ class AppState: ObservableObject {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
 
         self.adbPort = adbPortValue == 0 ? 5555 : UInt16(adbPortValue)
+        self.adbConnectedIP = UserDefaults.standard.string(forKey: "adbConnectedIP") ?? ""
         self.mirroringPlus = UserDefaults.standard.bool(forKey: "mirroringPlus")
         self.adbEnabled = UserDefaults.standard.bool(forKey: "adbEnabled")
+        self.suppressAdbFailureAlerts = UserDefaults.standard.bool(forKey: "suppressAdbFailureAlerts")
+        
         self.showMenubarText = UserDefaults.standard.bool(forKey: "showMenubarText")
 
         // Default to true if not previously set
@@ -56,7 +59,7 @@ class AppState: ObservableObject {
             .string(forKey: "notificationSound") ?? "default"
         self.dismissNotif = UserDefaults.standard
             .bool(forKey: "dismissNotif")
-        
+
         let savedNotificationMode = UserDefaults.standard
             .string(forKey: "callNotificationMode") ?? CallNotificationMode.popup.rawValue
         self.callNotificationMode = CallNotificationMode(rawValue: savedNotificationMode) ?? .popup
@@ -67,7 +70,7 @@ class AppState: ObservableObject {
 
         // Auto-open links defaults to false
         self.autoOpenLinks = UserDefaults.standard.bool(forKey: "autoOpenLinks")
-        
+
         if isClipboardSyncEnabled {
             startClipboardMonitoring()
         }
@@ -103,7 +106,8 @@ class AppState: ObservableObject {
                     adapterName: selectedNetworkAdapterName
                 ) ?? "N/A",
             port: port,
-            version:appVersion
+            version:appVersion,
+            adbPorts: []
         )
         self.licenseDetails = loadLicenseDetailsFromUserDefaults()
 
@@ -165,10 +169,10 @@ class AppState: ObservableObject {
     @Published var adbConnected: Bool = false
     @Published var adbConnecting: Bool = false
     @Published var currentDeviceWallpaperBase64: String? = nil
-    
+
     // Audio player for ringtone
     private var ringtonePlayer: AVAudioPlayer?
-    
+
     @Published var selectedNetworkAdapterName: String? { // e.g., "en0"
         didSet {
             UserDefaults.standard.set(selectedNetworkAdapterName, forKey: "selectedNetworkAdapterName")
@@ -215,6 +219,13 @@ class AppState: ObservableObject {
             UserDefaults.standard.set(adbPort, forKey: "adbPort")
         }
     }
+
+    @Published var adbConnectedIP: String = "" {
+        didSet {
+            UserDefaults.standard.set(adbConnectedIP, forKey: "adbConnectedIP")
+        }
+    }
+
     @Published var adbConnectionResult: String? = nil
 
     @Published var mirroringPlus: Bool {
@@ -226,6 +237,12 @@ class AppState: ObservableObject {
     @Published var adbEnabled: Bool {
         didSet {
             UserDefaults.standard.set(adbEnabled, forKey: "adbEnabled")
+        }
+    }
+
+    @Published var suppressAdbFailureAlerts: Bool {
+        didSet {
+            UserDefaults.standard.set(suppressAdbFailureAlerts, forKey: "suppressAdbFailureAlerts")
         }
     }
 
@@ -266,15 +283,16 @@ class AppState: ObservableObject {
         }
     }
 
-    @Published var sendNowPlayingStatus: Bool {
-        didSet {
-            UserDefaults.standard.set(sendNowPlayingStatus, forKey: "sendNowPlayingStatus")
-        }
-    }
 
     @Published var autoOpenLinks: Bool {
         didSet {
             UserDefaults.standard.set(autoOpenLinks, forKey: "autoOpenLinks")
+        }
+    }
+
+    @Published var sendNowPlayingStatus: Bool {
+        didSet {
+            UserDefaults.standard.set(sendNowPlayingStatus, forKey: "sendNowPlayingStatus")
         }
     }
 
@@ -341,10 +359,10 @@ class AppState: ObservableObject {
             UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [nid])
         }
     }
-    
+
     private func playCallRingtone() {
         stopCallRingtone() // Stop any existing ringtone first
-        
+
         do {
             // Load custom ringtone.wav from bundle
             guard let soundURL = Bundle.main.url(forResource: "ringtone", withExtension: "wav") else {
@@ -352,19 +370,19 @@ class AppState: ObservableObject {
                 playSystemToneFallback()
                 return
             }
-            
+
             ringtonePlayer = try AVAudioPlayer(contentsOf: soundURL)
             ringtonePlayer?.numberOfLoops = -1 // Infinite looping
             ringtonePlayer?.volume = 1.0
             ringtonePlayer?.play()
             print("[state] Playing custom ringtone.wav in loop")
-            
+
         } catch {
             print("[state] Error loading custom ringtone: \(error)")
             playSystemToneFallback()
         }
     }
-    
+
     private func playSystemToneFallback() {
         // Fallback: Try various system sounds via NSSound
         let soundNames = [
@@ -373,7 +391,7 @@ class AppState: ObservableObject {
             NSSound.Name("Morse"),
             NSSound.Name("Siren")
         ]
-        
+
         for soundName in soundNames {
             if let sound = NSSound(named: soundName) {
                 sound.loops = true
@@ -381,12 +399,12 @@ class AppState: ObservableObject {
                 return
             }
         }
-        
+
         // Final fallback
         print("[state] Using system beep for ringtone")
         NSSound.beep()
     }
-    
+
     private func stopCallRingtone() {
         if let player = ringtonePlayer, player.isPlaying {
             player.stop()
@@ -423,9 +441,9 @@ class AppState: ObservableObject {
         }
 
         // Show macOS notification for ringing calls (incoming) or active outgoing calls
-        if (callEvent.direction == .incoming && callEvent.state == .ringing) || 
+        if (callEvent.direction == .incoming && callEvent.state == .ringing) ||
            (callEvent.direction == .outgoing && callEvent.state == .offhook) {
-            
+
             // Handle notification based on user preference
             if callNotificationMode == .notification {
                 // Only show system notification
@@ -444,16 +462,24 @@ class AppState: ObservableObject {
                 // Don't show anything
                 print("[state] No notification (user preference)")
             }
+        } else if callEvent.direction == .incoming && callEvent.state == .offhook {
+            // Call has been answered (offhook state for incoming call)
+            print("[state] Incoming call answered - stopping ringtone and updating popup")
+            self.stopCallRingtone()
+
+            // Update activeCall to show accepted state instead of ringing
+            self.activeCall = callEvent
+            print("[state] Updated popup for accepted call")
         } else if callEvent.state == .ended || callEvent.state == .rejected || callEvent.state == .missed || callEvent.state == .idle {
             // Remove ALL call notifications when any call ends
             print("[state] Call ended/rejected/missed/idle, removing ALL call notifications")
             let allEventIds = self.callEvents.map { $0.eventId }
             UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: allEventIds)
             UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: allEventIds)
-            
+
             // Stop ringtone
             self.stopCallRingtone()
-            
+
             // Close sheet
             self.activeCall = nil
             print("[state] Closing call sheet")
@@ -494,7 +520,7 @@ class AppState: ObservableObject {
             // For outgoing calls, show End Call button
             actions.append(UNNotificationAction(identifier: "DECLINE_CALL", title: "End Call", options: [.destructive]))
         }
-        
+
         let category = UNNotificationCategory(
             identifier: "CALL_NOTIFICATION",
             actions: actions,

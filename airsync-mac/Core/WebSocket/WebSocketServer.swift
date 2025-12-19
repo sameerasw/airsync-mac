@@ -296,12 +296,14 @@ class WebSocketServer: ObservableObject {
                let port = dict["port"] as? Int {
 
                 let version = dict["version"] as? String ?? "2.0.0"
+                let adbPorts = dict["adbPorts"] as? [String] ?? []
 
                 AppState.shared.device = Device(
                     name: name,
                     ipAddress: ip,
                     port: port,
-                    version: version
+                    version: version,
+                    adbPorts: adbPorts
                 )
 
                 if let base64 = dict["wallpaper"] as? String {
@@ -848,21 +850,26 @@ class WebSocketServer: ObservableObject {
                 return
             }
             
-            if let ip = AppState.shared.device?.ipAddress {
-                // Use the ADB port that was successfully connected, not the WebSocket port
+            // Use the actual connected ADB IP address (discovered IP), not the device reported IP
+            let adbIP = AppState.shared.adbConnectedIP.isEmpty ? AppState.shared.device?.ipAddress ?? "" : AppState.shared.adbConnectedIP
+            if !adbIP.isEmpty {
                 let adbPort = AppState.shared.adbPort
-                let fullAddress = "\(ip):\(adbPort)"
+                let fullAddress = "\(adbIP):\(adbPort)"
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: adbPath)
                 process.arguments = ["-s", fullAddress, "shell", "input", "keyevent", keyCode]
                 
+                print("[websocket] Sending call action: \(action) (keyCode: \(keyCode)) to device \(fullAddress) for eventId: \(eventId)")
+                
                 do {
                     try process.run()
                     process.waitUntilExit()
-                    print("[websocket] Call action sent: keyevent \(keyCode) for event: \(eventId)")
+                    print("[websocket] Call action sent: keyevent \(keyCode) for event: \(eventId) on \(fullAddress)")
                 } catch {
                     print("[websocket] Failed to send call action: \(error.localizedDescription)")
                 }
+            } else {
+                print("[websocket] ERROR: No device address found for call action (adbConnectedIP: '\(AppState.shared.adbConnectedIP)', device IP: \(AppState.shared.device?.ipAddress ?? "nil"))")
             }
         }
     }
