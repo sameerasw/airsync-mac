@@ -152,23 +152,23 @@ private struct AppContextMenuContent: View {
 
     var body: some View {
         // Pin/Unpin option (only for Plus members)
-        if appState.isPlus {
-            if !isPinned {
-                Button {
-                    _ = appState.addPinnedApp(app)
-                } label: {
-                    Label("Pin to Dock", systemImage: "pin")
-                }
-            } else {
-                Button {
-                    appState.removePinnedApp(app.packageName)
-                } label: {
-                    Label("Unpin from Dock", systemImage: "pin.slash")
-                }
-            }
-
-            Divider()
-        }
+//        if appState.isPlus {
+//            if !isPinned {
+//                Button {
+//                    _ = appState.addPinnedApp(app)
+//                } label: {
+//                    Label("Pin to Dock", systemImage: "pin")
+//                }
+//            } else {
+//                Button {
+//                    appState.removePinnedApp(app.packageName)
+//                } label: {
+//                    Label("Unpin from Dock", systemImage: "pin.slash")
+//                }
+//            }
+//
+//            Divider()
+//        }
 
         // Notification toggle
         Button {
