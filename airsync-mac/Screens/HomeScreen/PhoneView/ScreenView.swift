@@ -11,6 +11,8 @@ struct ScreenView: View {
     @ObservedObject var appState = AppState.shared
     var body: some View {
         VStack{
+            ConnectionStateView()
+                .padding(.top, 12)
 
             Spacer()
 

@@ -96,8 +96,6 @@ struct ADBConnector {
         
         isConnecting = true
         
-        DispatchQueue.main.async { AppState.shared.adbConnecting = true }
-        
         // Find adb
         guard let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) else {
             AppState.shared.adbConnectionResult = "ADB not found. Please install via Homebrew: brew install android-platform-tools"
@@ -107,19 +105,10 @@ struct ADBConnector {
             return
         }
 
+        DispatchQueue.main.async { AppState.shared.adbConnecting = true }
+
         // Get ADB ports from device info (required)
         guard let device = AppState.shared.device, !device.adbPorts.isEmpty else {
-            AppState.shared.adbConnectionResult = """
-No ADB ports available from device.
-
-The Android device must send ADB port information via the wireless connection.
-Please ensure:
-- Device is properly connected to AirSync
-- Wireless debugging is enabled on the device
-- Device app version is up to date
-
-If the issue persists, reconnect the device.
-"""
             AppState.shared.adbConnected = false
             DispatchQueue.main.async { AppState.shared.adbConnecting = false }
             clearConnectionFlag()
