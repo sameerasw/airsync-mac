@@ -64,6 +64,10 @@ class AppState: ObservableObject {
             .string(forKey: "callNotificationMode") ?? CallNotificationMode.popup.rawValue
         self.callNotificationMode = CallNotificationMode(rawValue: savedNotificationMode) ?? .popup
 
+        // Default to true for ring for calls
+        let savedRingForCalls = UserDefaults.standard.object(forKey: "ringForCalls")
+        self.ringForCalls = savedRingForCalls == nil ? true : UserDefaults.standard.bool(forKey: "ringForCalls")
+
         // Default to true for backward compatibility - existing behavior should continue
         let savedNowPlayingStatus = UserDefaults.standard.object(forKey: "sendNowPlayingStatus")
         self.sendNowPlayingStatus = savedNowPlayingStatus == nil ? true : UserDefaults.standard.bool(forKey: "sendNowPlayingStatus")
@@ -115,7 +119,7 @@ class AppState: ObservableObject {
         loadPinnedApps()
         // QuickConnectManager handles its own initialization
 
-//        postNativeNotification(id: "test_notification", appName: "AirSync Beta", title: "Hi there! (っ◕‿◕)っ", body: "Welcome to and thanks for testing out the app. Please don't forget to report issues to sameerasw.com@gmail.com or any other community you prefer. <3", appIcon: nil)
+//        postNativeNotification(id: "test_notification", appName: "AirSync Beta", title: "Hi there! (っ◕‿◕)っ", body: "Welcome to and thanks for testing out the app. Please don't forget to report issues to mail@sameerasw.com or any other community you prefer. <3", appIcon: nil)
     }
 
     @Published var minAndroidVersion = Bundle.main.infoDictionary?["AndroidVersion"] as? String ?? "2.0.0"
@@ -283,6 +287,11 @@ class AppState: ObservableObject {
         }
     }
 
+    @Published var ringForCalls: Bool {
+        didSet {
+            UserDefaults.standard.set(ringForCalls, forKey: "ringForCalls")
+        }
+    }
 
     @Published var autoOpenLinks: Bool {
         didSet {
@@ -452,8 +461,8 @@ class AppState: ObservableObject {
             } else if callNotificationMode == .popup {
                 // Show only popup window, no system notification
                 print("[state] Showing popup window only (user preference)")
-                // Only play ringtone for incoming calls in ringing state
-                if callEvent.direction == .incoming && callEvent.state == .ringing {
+                // Only play ringtone for incoming calls in ringing state if ringForCalls is enabled
+                if callEvent.direction == .incoming && callEvent.state == .ringing && self.ringForCalls {
                     self.playCallRingtone()
                 }
                 self.activeCall = callEvent
@@ -502,7 +511,7 @@ class AppState: ObservableObject {
         let title = callEvent.direction == .incoming ? "☎ Incoming Call" : "☎ Outgoing Call"
         content.title = title
         content.body = displayName
-        content.sound = .default
+        content.sound = self.ringForCalls ? .default : nil
 
         // TODO: Add contact photo to notification in future
         // Photo is available in: callEvent.contactPhoto (base64 encoded PNG, no padding)

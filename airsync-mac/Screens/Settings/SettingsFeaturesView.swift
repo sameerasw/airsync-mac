@@ -79,20 +79,7 @@ struct SettingsFeaturesView: View {
                     .frame(width: 55)
 
                 }
-                
-                // Show message when no ADB ports available
-                if let device = appState.device, device.adbPorts.isEmpty {
-                    HStack {
-                        Image(systemName: "info.circle")
-                            .foregroundColor(.orange)
-                        Text("ADB ports not available. Ensure device is properly connected.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Spacer()
-                    }
-                    .padding(.top, 8)
-                }
-                
+
                 // Transparent tap area on top to show popover even if disabled
                 if !AppState.shared.isPlus && AppState.shared.licenseCheck {
                     HStack{
@@ -146,7 +133,7 @@ struct SettingsFeaturesView: View {
                     DisclosureGroup(isExpanded: $isExpanded) {
                         VStack(spacing: 10){
                             Spacer()
-                            
+
                             HStack {
                                 Text("Video bitrate")
                                 Spacer()
@@ -296,29 +283,18 @@ struct SettingsFeaturesView: View {
                     .disabled(!appState.isClipboardSyncEnabled || !appState.isPlus)
             }
             .opacity(appState.isClipboardSyncEnabled && appState.isPlus ? 1.0 : 0.5)
+        }
+        .padding()
+
+        VStack{
 
             SettingsToggleView(name: "Sync notification dismissals", icon: "bell.badge", isOn: $appState.dismissNotif)
-
-            SettingsToggleView(name: "Send now playing status", icon: "play.circle", isOn: $appState.sendNowPlayingStatus)
-
-            HStack {
-                Label("Call Alert", systemImage: "phone")
-                Spacer()
-                
-                Picker("", selection: $appState.callNotificationMode) {
-                    ForEach(CallNotificationMode.allCases, id: \.self) { mode in
-                        Text(mode.displayName).tag(mode)
-                    }
-                }
-                .pickerStyle(MenuPickerStyle())
-                .frame(minWidth: 120)
-            }
 
             HStack {
                 Label("System Notifications", systemImage: "bell.badge")
 
                 Spacer()
-                
+
                 if notificationsGranted {
                     // Show sound picker when notifications are enabled
                     Picker("", selection: $appState.notificationSound) {
@@ -329,7 +305,7 @@ struct SettingsFeaturesView: View {
                     }
                     .pickerStyle(MenuPickerStyle())
                     .frame(minWidth: 100)
-                    
+
                     Button(action: {
                         SystemSounds.playSound(appState.notificationSound)
                     }) {
@@ -350,6 +326,7 @@ struct SettingsFeaturesView: View {
                 }
             }
 
+            SettingsToggleView(name: "Send now playing status", icon: "play.circle", isOn: $appState.sendNowPlayingStatus)
         }
         .padding()
         .onAppear{
@@ -360,6 +337,27 @@ struct SettingsFeaturesView: View {
             // This helps update the UI when user returns from System Preferences
             checkNotificationPermissions()
         }
+
+        VStack{
+
+            HStack {
+                Label("Call Alert", systemImage: "phone")
+                Spacer()
+
+                Picker("", selection: $appState.callNotificationMode) {
+                    ForEach(CallNotificationMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(MenuPickerStyle())
+                .frame(minWidth: 120)
+            }
+
+            SettingsToggleView(name: "Ring for calls", icon: "speaker.wave.3", isOn: $appState.ringForCalls)
+
+
+        }
+        .padding()
     }
 
     // MARK: - Notification Permission Helpers

@@ -100,7 +100,7 @@ struct SettingsView: View {
                     // App icons
                     AppIconView()
 
-                    // UI Tweaks Section
+
                     VStack {
 
                         HStack{
@@ -126,6 +126,12 @@ struct SettingsView: View {
                             Toggle("", isOn: $appState.alwaysOpenWindow)
                                 .toggleStyle(.switch)
                         }
+                    }
+                    .padding()
+                    .background(.background.opacity(0.3))
+                    .cornerRadius(12.0)
+
+                    VStack {
 
                         HStack{
                             Label("Menubar text", systemImage: "menubar.arrow.up.rectangle")

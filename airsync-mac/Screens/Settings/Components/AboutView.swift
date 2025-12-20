@@ -115,7 +115,7 @@ struct AboutView: View {
                         label: "My Website",
                         systemImage: "link",
                         action: {
-                            if let url = URL(string: "https://www.sameerasw.com") {
+                            if let url = URL(string: "https://sameerasw.com") {
                                 NSWorkspace.shared.open(url)
                             }
                         }
