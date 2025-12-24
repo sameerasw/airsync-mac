@@ -86,92 +86,80 @@ struct HealthView: View {
                         GridItem(.flexible(), spacing: 16),
                         GridItem(.flexible(), spacing: 16)
                     ], spacing: 16) {
-                        // Steps
-                        if let steps = summary.steps {
-                            HealthMetricCard(
-                                icon: "figure.walk",
-                                title: "Steps",
-                                value: "\(steps)",
-                                subtitle: "of 10,000",
-                                progress: summary.stepsProgress,
-                                color: .blue
-                            )
-                        }
+                        // Steps - always show
+                        HealthMetricCard(
+                            icon: "figure.walk",
+                            title: "Steps",
+                            value: summary.steps != nil ? "\(summary.steps!)" : "0",
+                            subtitle: "of 10,000",
+                            progress: summary.stepsProgress,
+                            color: .blue
+                        )
                         
-                        // Calories
-                        if let calories = summary.calories {
-                            HealthMetricCard(
-                                icon: "flame.fill",
-                                title: "Calories",
-                                value: "\(calories)",
-                                subtitle: "kcal",
-                                progress: summary.caloriesProgress,
-                                color: .orange
-                            )
-                        }
+                        // Calories - always show
+                        HealthMetricCard(
+                            icon: "flame.fill",
+                            title: "Calories",
+                            value: summary.calories != nil ? "\(summary.calories!)" : "0",
+                            subtitle: "kcal",
+                            progress: summary.caloriesProgress,
+                            color: .orange
+                        )
                         
-                        // Distance
-                        if let distance = summary.distance {
-                            HealthMetricCard(
-                                icon: "location.fill",
-                                title: "Distance",
-                                value: String(format: "%.1f", distance),
-                                subtitle: "km",
-                                progress: nil,
-                                color: .green
-                            )
-                        }
+                        // Distance - always show
+                        HealthMetricCard(
+                            icon: "location.fill",
+                            title: "Distance",
+                            value: summary.distance != nil ? String(format: "%.1f", summary.distance!) : "0.0",
+                            subtitle: "km",
+                            progress: nil,
+                            color: .green
+                        )
                         
-                        // Heart Rate
-                        if let heartRate = summary.heartRateAvg {
-                            HealthMetricCard(
-                                icon: "heart.fill",
-                                title: "Heart Rate",
-                                value: "\(heartRate)",
-                                subtitle: "bpm",
-                                progress: nil,
-                                color: .red
-                            )
-                        }
+                        // Heart Rate - always show
+                        HealthMetricCard(
+                            icon: "heart.fill",
+                            title: "Heart Rate",
+                            value: summary.heartRateAvg != nil ? "\(summary.heartRateAvg!)" : "--",
+                            subtitle: "bpm",
+                            progress: nil,
+                            color: .red
+                        )
                         
-                        // Sleep
-                        if let sleep = summary.sleepDuration {
-                            let hours = sleep / 60
-                            let minutes = sleep % 60
-                            HealthMetricCard(
-                                icon: "bed.double.fill",
-                                title: "Sleep",
-                                value: "\(hours)h \(minutes)m",
-                                subtitle: "of 8h",
-                                progress: Double(sleep) / 480.0,
-                                color: .purple
-                            )
-                        }
+                        // Sleep - always show
+                        let sleepHours = (summary.sleepDuration ?? 0) / 60
+                        let sleepMinutes = (summary.sleepDuration ?? 0) % 60
+                        let sleepProgress = summary.sleepDuration != nil ? Double(summary.sleepDuration!) / 480.0 : 0
+                        HealthMetricCard(
+                            icon: "bed.double.fill",
+                            title: "Sleep",
+                            value: summary.sleepDuration != nil ? "\(sleepHours)h \(sleepMinutes)m" : "--",
+                            subtitle: "of 8h",
+                            progress: sleepProgress,
+                            color: .purple
+                        )
                         
-                        // Active Minutes
-                        if let activeMinutes = summary.activeMinutes {
-                            HealthMetricCard(
-                                icon: "figure.run",
-                                title: "Active",
-                                value: "\(activeMinutes)",
-                                subtitle: "minutes",
-                                progress: nil,
-                                color: .cyan
-                            )
-                        }
+                        // Active Minutes - always show
+                        HealthMetricCard(
+                            icon: "figure.run",
+                            title: "Active",
+                            value: summary.activeMinutes != nil ? "\(summary.activeMinutes!)" : "0",
+                            subtitle: "minutes",
+                            progress: nil,
+                            color: .cyan
+                        )
                         
-                        // Additional Health Metrics
-                        if let floors = summary.floorsClimbed {
-                            HealthMetricCard(
-                                icon: "stairs",
-                                title: "Floors",
-                                value: "\(floors)",
-                                subtitle: "climbed",
-                                progress: nil,
-                                color: .brown
-                            )
-                        }
+                        // Floors - always show
+                        HealthMetricCard(
+                            icon: "stairs",
+                            title: "Floors",
+                            value: summary.floorsClimbed != nil ? "\(summary.floorsClimbed!)" : "0",
+                            subtitle: "climbed",
+                            progress: nil,
+                            color: .brown
+                        )
                         
+                        // Weight - show if available
                         if let weight = summary.weight {
                             HealthMetricCard(
                                 icon: "scalemass.fill",
@@ -183,6 +171,7 @@ struct HealthView: View {
                             )
                         }
                         
+                        // Blood Pressure - show if available
                         if let systolic = summary.bloodPressureSystolic,
                            let diastolic = summary.bloodPressureDiastolic {
                             HealthMetricCard(
@@ -195,17 +184,20 @@ struct HealthView: View {
                             )
                         }
                         
-                        if let oxygen = summary.oxygenSaturation {
+                        // Oxygen - show if available
+                        if let oxygen = summary.oxygenSaturation, oxygen > 0 {
+                            let oxygenProgress = oxygen.isFinite ? oxygen / 100.0 : 0
                             HealthMetricCard(
                                 icon: "lungs.fill",
                                 title: "Oxygen",
                                 value: String(format: "%.1f%%", oxygen),
                                 subtitle: "SpO2",
-                                progress: oxygen / 100.0,
+                                progress: oxygenProgress,
                                 color: .mint
                             )
                         }
                         
+                        // Resting HR - show if available
                         if let restingHR = summary.restingHeartRate {
                             HealthMetricCard(
                                 icon: "heart.text.square.fill",
@@ -217,7 +209,8 @@ struct HealthView: View {
                             )
                         }
                         
-                        if let vo2 = summary.vo2Max {
+                        // VO2 Max - show if available
+                        if let vo2 = summary.vo2Max, vo2 > 0 {
                             HealthMetricCard(
                                 icon: "figure.strengthtraining.traditional",
                                 title: "VO2 Max",
@@ -228,7 +221,8 @@ struct HealthView: View {
                             )
                         }
                         
-                        if let temp = summary.bodyTemperature {
+                        // Temperature - show if available
+                        if let temp = summary.bodyTemperature, temp > 0 {
                             HealthMetricCard(
                                 icon: "thermometer.medium",
                                 title: "Temperature",
@@ -239,7 +233,8 @@ struct HealthView: View {
                             )
                         }
                         
-                        if let glucose = summary.bloodGlucose {
+                        // Blood Glucose - show if available
+                        if let glucose = summary.bloodGlucose, glucose > 0 {
                             HealthMetricCard(
                                 icon: "drop.fill",
                                 title: "Blood Glucose",
@@ -250,13 +245,15 @@ struct HealthView: View {
                             )
                         }
                         
-                        if let hydration = summary.hydration {
+                        // Hydration - show if available
+                        if let hydration = summary.hydration, hydration > 0 {
+                            let hydrationProgress = hydration.isFinite ? hydration / 3.0 : 0
                             HealthMetricCard(
                                 icon: "drop.circle.fill",
                                 title: "Hydration",
                                 value: String(format: "%.1f", hydration),
                                 subtitle: "liters",
-                                progress: hydration / 3.0, // 3L daily goal
+                                progress: hydrationProgress,
                                 color: .blue
                             )
                         }
@@ -282,79 +279,68 @@ struct HealthView: View {
                                 GridItem(.flexible(), spacing: 16),
                                 GridItem(.flexible(), spacing: 16)
                             ], spacing: 16) {
-                                // Steps
-                                if let steps = summary.steps {
-                                    HealthMetricCard(
-                                        icon: "figure.walk",
-                                        title: "Steps",
-                                        value: "\(steps)",
-                                        subtitle: "of 10,000",
-                                        progress: summary.stepsProgress,
-                                        color: .blue
-                                    )
-                                }
+                                // Steps - always show
+                                HealthMetricCard(
+                                    icon: "figure.walk",
+                                    title: "Steps",
+                                    value: summary.steps != nil ? "\(summary.steps!)" : "0",
+                                    subtitle: "of 10,000",
+                                    progress: summary.stepsProgress,
+                                    color: .blue
+                                )
                                 
-                                // Calories
-                                if let calories = summary.calories {
-                                    HealthMetricCard(
-                                        icon: "flame.fill",
-                                        title: "Calories",
-                                        value: "\(calories)",
-                                        subtitle: "kcal",
-                                        progress: summary.caloriesProgress,
-                                        color: .orange
-                                    )
-                                }
+                                // Calories - always show
+                                HealthMetricCard(
+                                    icon: "flame.fill",
+                                    title: "Calories",
+                                    value: summary.calories != nil ? "\(summary.calories!)" : "0",
+                                    subtitle: "kcal",
+                                    progress: summary.caloriesProgress,
+                                    color: .orange
+                                )
                                 
-                                // Distance
-                                if let distance = summary.distance {
-                                    HealthMetricCard(
-                                        icon: "location.fill",
-                                        title: "Distance",
-                                        value: String(format: "%.1f", distance),
-                                        subtitle: "km",
-                                        progress: nil,
-                                        color: .green
-                                    )
-                                }
+                                // Distance - always show
+                                HealthMetricCard(
+                                    icon: "location.fill",
+                                    title: "Distance",
+                                    value: summary.distance != nil ? String(format: "%.1f", summary.distance!) : "0.0",
+                                    subtitle: "km",
+                                    progress: nil,
+                                    color: .green
+                                )
                                 
-                                // Heart Rate
-                                if let heartRate = summary.heartRateAvg {
-                                    HealthMetricCard(
-                                        icon: "heart.fill",
-                                        title: "Heart Rate",
-                                        value: "\(heartRate)",
-                                        subtitle: "bpm",
-                                        progress: nil,
-                                        color: .red
-                                    )
-                                }
+                                // Heart Rate - always show
+                                HealthMetricCard(
+                                    icon: "heart.fill",
+                                    title: "Heart Rate",
+                                    value: summary.heartRateAvg != nil ? "\(summary.heartRateAvg!)" : "--",
+                                    subtitle: "bpm",
+                                    progress: nil,
+                                    color: .red
+                                )
                                 
-                                // Sleep
-                                if let sleep = summary.sleepDuration {
-                                    let hours = sleep / 60
-                                    let minutes = sleep % 60
-                                    HealthMetricCard(
-                                        icon: "bed.double.fill",
-                                        title: "Sleep",
-                                        value: "\(hours)h \(minutes)m",
-                                        subtitle: "of 8h",
-                                        progress: Double(sleep) / 480.0,
-                                        color: .purple
-                                    )
-                                }
+                                // Sleep - always show
+                                let sleepHours2 = (summary.sleepDuration ?? 0) / 60
+                                let sleepMinutes2 = (summary.sleepDuration ?? 0) % 60
+                                let sleepProgress2 = summary.sleepDuration != nil ? Double(summary.sleepDuration!) / 480.0 : 0
+                                HealthMetricCard(
+                                    icon: "bed.double.fill",
+                                    title: "Sleep",
+                                    value: summary.sleepDuration != nil ? "\(sleepHours2)h \(sleepMinutes2)m" : "--",
+                                    subtitle: "of 8h",
+                                    progress: sleepProgress2,
+                                    color: .purple
+                                )
                                 
-                                // Active Minutes
-                                if let activeMinutes = summary.activeMinutes {
-                                    HealthMetricCard(
-                                        icon: "figure.run",
-                                        title: "Active",
-                                        value: "\(activeMinutes)",
-                                        subtitle: "minutes",
-                                        progress: nil,
-                                        color: .cyan
-                                    )
-                                }
+                                // Active Minutes - always show
+                                HealthMetricCard(
+                                    icon: "figure.run",
+                                    title: "Active",
+                                    value: summary.activeMinutes != nil ? "\(summary.activeMinutes!)" : "0",
+                                    subtitle: "minutes",
+                                    progress: nil,
+                                    color: .cyan
+                                )
                             }
                             .padding()
                         }
@@ -464,12 +450,12 @@ struct HealthView: View {
         print("[health-view] 📅 Requesting health data for: \(formatDate(date))")
         isLoadingData = true
         
-        // Request health data for specific date
-        WebSocketServer.shared.requestHealthSummary(for: date)
+        // First check cache - this will also trigger a request if needed
+        _ = manager.getHealthSummary(for: date)
         
-        // Stop loading indicator after 3 seconds
+        // Stop loading indicator after 3 seconds or when data arrives
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-            isLoadingData = false
+            self.isLoadingData = false
         }
     }
     
@@ -492,6 +478,13 @@ struct HealthMetricCard: View {
     let subtitle: String
     let progress: Double?
     let color: Color
+    
+    // Safe progress value that guards against NaN and Infinity
+    private var safeProgress: Double? {
+        guard let p = progress else { return nil }
+        guard p.isFinite else { return 0 }
+        return min(max(p, 0), 1.0)
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -522,7 +515,7 @@ struct HealthMetricCard: View {
             }
             
             // Progress bar
-            if let progress = progress {
+            if let progress = safeProgress {
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 4)
@@ -537,7 +530,7 @@ struct HealthMetricCard: View {
                                     endPoint: .trailing
                                 )
                             )
-                            .frame(width: geometry.size.width * CGFloat(min(progress, 1.0)), height: 6)
+                            .frame(width: max(0, geometry.size.width * CGFloat(progress)), height: 6)
                     }
                 }
                 .frame(height: 6)

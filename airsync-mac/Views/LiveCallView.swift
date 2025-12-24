@@ -39,7 +39,7 @@ struct LiveCallView: View {
             }
             
             // Duration (for active calls)
-            if call.state == .active {
+            if call.state == .accepted || call.state == .offhook {
                 Text(formatDuration(currentTime.timeIntervalSince(call.startTime)))
                     .font(.title2)
                     .monospacedDigit()
@@ -86,7 +86,7 @@ struct LiveCallView: View {
                     }
                     .buttonStyle(.plain)
                 }
-            } else if call.state == .active {
+            } else if call.state == .accepted || call.state == .offhook {
                 Button(action: {
                     manager.declineCall()
                 }) {

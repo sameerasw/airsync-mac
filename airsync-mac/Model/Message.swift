@@ -70,6 +70,10 @@ enum MessageType: String, Codable {
     case healthSummary
     case requestHealthData
     case healthData
+    // Audio Mirroring
+    case audioStart
+    case audioStop
+    case audioFrame
 }
 
 struct Message: Codable {

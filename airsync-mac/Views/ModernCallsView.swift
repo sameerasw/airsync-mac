@@ -15,7 +15,7 @@ struct CallsView: View {
         ScrollView {
             VStack(spacing: 20) {
                 // Active call banner
-                if let call = manager.activeCall, call.state != .disconnected {
+                if let call = manager.activeCall, call.state != .ended && call.state != .rejected && call.state != .missed {
                     ActiveCallCard(call: call)
                         .transition(.scale.combined(with: .opacity))
                 }
@@ -38,7 +38,8 @@ struct CallsView: View {
             .padding()
         }
         .onAppear {
-            WebSocketServer.shared.requestCallLogs()
+            // Use caching - this will return cached data immediately and request fresh data if needed
+            _ = manager.getCallLogs()
         }
     }
 }
@@ -72,7 +73,7 @@ struct ActiveCallCard: View {
             Spacer()
             
             // Duration
-            if call.state == .active {
+            if call.state == .accepted || call.state == .offhook {
                 Text(formatDuration(call.duration))
                     .font(.title3)
                     .fontWeight(.semibold)

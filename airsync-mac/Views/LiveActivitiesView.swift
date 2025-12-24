@@ -59,7 +59,7 @@ struct LiveCallCard: View {
                         .font(.subheadline)
                         .foregroundColor(callStateColor)
                     
-                    if activity.state == .active {
+                    if activity.state == .accepted || activity.state == .offhook {
                         Text("•")
                             .foregroundColor(.secondary)
                         
@@ -111,11 +111,11 @@ struct LiveCallCard: View {
         switch activity.state {
         case .ringing:
             return activity.isIncoming ? .blue : .orange
-        case .active:
+        case .accepted, .offhook:
             return .green
-        case .held:
+        case .idle:
             return .yellow
-        case .disconnected:
+        case .ended, .rejected, .missed:
             return .gray
         }
     }
@@ -124,11 +124,11 @@ struct LiveCallCard: View {
         switch activity.state {
         case .ringing:
             return activity.isIncoming ? "phone.arrow.down.left" : "phone.arrow.up.right"
-        case .active:
+        case .accepted, .offhook:
             return "phone.fill"
-        case .held:
+        case .idle:
             return "phone.badge.pause"
-        case .disconnected:
+        case .ended, .rejected, .missed:
             return "phone.down"
         }
     }
@@ -349,9 +349,9 @@ struct CompactCallIndicator: View {
         HStack(spacing: 4) {
             Image(systemName: "phone.fill")
                 .font(.caption)
-                .foregroundColor(activity.state == .active ? .green : .orange)
+                .foregroundColor((activity.state == .accepted || activity.state == .offhook) ? .green : .orange)
             
-            if activity.state == .active {
+            if activity.state == .accepted || activity.state == .offhook {
                 Text(formatDuration(activity.duration))
                     .font(.caption)
                     .monospacedDigit()

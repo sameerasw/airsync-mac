@@ -59,14 +59,14 @@ struct SidebarView: View {
                                     WebSocketServer.shared.stopMirroring()
                                     print("[ui] Requested stop mirroring")
                                 } else if !appState.isMirrorRequestPending {
-                                    guard let device = appState.device else { return }
-
                                     // If ADB is enabled AND connected AND tools are present -> use scrcpy
                                     let adbEnabled = appState.adbEnabled && appState.adbConnected
                                     let hasADB = ADBConnector.findExecutable(named: "adb", fallbackPaths: ADBConnector.possibleADBPaths) != nil
                                     let hasScrcpy = ADBConnector.findExecutable(named: "scrcpy", fallbackPaths: ADBConnector.possibleScrcpyPaths) != nil
 
                                     if adbEnabled && hasADB && hasScrcpy {
+                                        // Use scrcpy when ADB is connected
+                                        guard let device = appState.device else { return }
                                         ADBConnector.startScrcpy(
                                             ip: device.ipAddress,
                                             port: appState.adbPort,
@@ -80,9 +80,10 @@ struct SidebarView: View {
                                             package: nil,
                                             options: [
                                                 "transport": "websocket",
-                                                "fps": 30,
-                                                "quality": 0.6,
-                                                "maxWidth": 1280
+                                                "fps": appState.mirrorFPS,
+                                                "quality": appState.mirrorQuality,
+                                                "maxWidth": appState.mirrorMaxWidth,
+                                                "autoApprove": true
                                             ]
                                         )
                                         print("[ui] Requested WebSocket mirroring (device mode)")

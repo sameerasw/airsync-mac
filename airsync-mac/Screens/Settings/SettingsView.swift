@@ -9,6 +9,9 @@ struct SettingsView: View {
     @State private var port: String = "6996"
     @State private var availableAdapters: [(name: String, address: String)] = []
     @State private var currentIPAddress: String = "N/A"
+    
+    @AppStorage("automaticallyChecksForUpdates") private var automaticallyChecksForUpdates: Bool = true
+    @AppStorage("automaticallyDownloadsUpdates") private var automaticallyDownloadsUpdates: Bool = false
 
 
     var body: some View {

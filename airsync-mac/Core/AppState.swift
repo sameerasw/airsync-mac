@@ -16,6 +16,14 @@ enum CallNotificationMode: String, CaseIterable {
     case popup = "popup"
     case notification = "notification"
     case none = "none"
+    
+    var displayName: String {
+        switch self {
+        case .popup: return "Popup"
+        case .notification: return "Notification"
+        case .none: return "None"
+        }
+    }
 }
 
 class AppState: ObservableObject {

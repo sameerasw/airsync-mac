@@ -131,13 +131,42 @@ private struct DockPinnedAppItem: View {
     }
 
     private func launchApp() {
-        if let device = appState.device, appState.adbConnected {
+        // Guard against multiple mirror requests
+        guard !appState.isMirrorRequestPending && !appState.isMirroring else {
+            print("[dock] Mirror request already pending or active, ignoring")
+            return
+        }
+        
+        guard let device = appState.device else { return }
+        
+        // If ADB is enabled AND connected AND tools are present -> use scrcpy
+        let adbEnabled = appState.adbEnabled && appState.adbConnected
+        let hasADB = ADBConnector.findExecutable(named: "adb", fallbackPaths: ADBConnector.possibleADBPaths) != nil
+        let hasScrcpy = ADBConnector.findExecutable(named: "scrcpy", fallbackPaths: ADBConnector.possibleScrcpyPaths) != nil
+        
+        if adbEnabled && hasADB && hasScrcpy {
+            // Use scrcpy when ADB is connected
             ADBConnector.startScrcpy(
                 ip: device.ipAddress,
                 port: appState.adbPort,
                 deviceName: device.name,
                 package: pinnedApp.packageName
             )
+        } else {
+            // Use WebSocket mirroring for app-specific mirroring with auto-approve
+            WebSocketServer.shared.sendMirrorRequest(
+                action: "start",
+                mode: "app",
+                package: pinnedApp.packageName,
+                options: [
+                    "transport": "websocket",
+                    "fps": appState.mirrorFPS,
+                    "quality": appState.mirrorQuality,
+                    "maxWidth": appState.mirrorMaxWidth,
+                    "autoApprove": true
+                ]
+            )
+            print("[dock] Requested WebSocket app mirroring for: \(pinnedApp.packageName)")
         }
     }
 }

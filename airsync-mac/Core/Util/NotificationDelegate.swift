@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UserNotifications
+import AppKit
 internal import Combine
 
 class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
@@ -32,9 +33,9 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         
         // Handle Live Activities actions
         handleLiveActivitiesAction(response)
+        let userInfo = response.notification.request.content.userInfo
         
         if response.actionIdentifier == "OPEN_LINK" {
-            let userInfo = response.notification.request.content.userInfo
             if let urlString = userInfo["url"] as? String, let url = URL(string: urlString) {
                 NSWorkspace.shared.open(url)
             }

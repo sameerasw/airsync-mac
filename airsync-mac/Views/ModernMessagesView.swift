@@ -85,7 +85,8 @@ struct MessagesView: View {
             }
         }
         .onAppear {
-            WebSocketServer.shared.requestSmsThreads()
+            // Use caching - this will return cached data immediately and request fresh data if needed
+            _ = manager.getSmsThreads()
         }
     }
 }

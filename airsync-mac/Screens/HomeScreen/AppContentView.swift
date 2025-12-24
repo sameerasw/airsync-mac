@@ -69,7 +69,7 @@ struct AppContentView: View {
                         .toolbar {
                             ToolbarItem(placement: .primaryAction) {
                                 Button("Refresh", systemImage: "arrow.clockwise") {
-                                    WebSocketServer.shared.requestCallLogs()
+                                    _ = LiveNotificationManager.shared.getCallLogs(forceRefresh: true)
                                 }
                                 .help("Refresh call logs")
                             }
@@ -81,7 +81,7 @@ struct AppContentView: View {
                         .toolbar {
                             ToolbarItem(placement: .primaryAction) {
                                 Button("Refresh", systemImage: "arrow.clockwise") {
-                                    WebSocketServer.shared.requestSmsThreads()
+                                    _ = LiveNotificationManager.shared.getSmsThreads(forceRefresh: true)
                                 }
                                 .help("Refresh messages")
                             }
