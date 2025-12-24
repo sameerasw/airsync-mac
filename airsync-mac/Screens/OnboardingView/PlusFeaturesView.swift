@@ -10,6 +10,8 @@ import SwiftUI
 struct PlusFeaturesView: View {
     let onNext: () -> Void
 
+    @ObservedObject var appState = AppState.shared
+
     var body: some View {
         VStack(spacing: 15) {
             Text("AirSync+, to sync even more!")
@@ -41,7 +43,7 @@ struct PlusFeaturesView: View {
 
             HStack(spacing: 16) {
                 GlassButtonView(
-                    label: "Get AirSync+",
+                    label: appState.isPlus ? "Thank you" : "Get AirSync+",
                     systemImage: "plus.diamond",
                     size: .large,
                     fixedIconSize: 16,
@@ -51,6 +53,7 @@ struct PlusFeaturesView: View {
                         }
                     }
                 )
+                .disabled(appState.isPlus)
                 .transition(.identity)
 
                 GlassButtonView(

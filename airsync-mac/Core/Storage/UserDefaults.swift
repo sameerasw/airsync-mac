@@ -172,6 +172,10 @@ extension UserDefaults {
         return lastCompletedVersion == nil || lastCompletedVersion != currentForceUpdateKey
     }
     
+    var isReturningUser: Bool {
+        return lastOnboarding != nil
+    }
+    
     func markOnboardingCompleted() {
         let currentForceUpdateKey = Bundle.main.object(forInfoDictionaryKey: "ForceUpdateKey") as? String ?? "001"
         lastOnboarding = currentForceUpdateKey
