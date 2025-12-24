@@ -22,9 +22,9 @@ struct AppContentView: View {
                     NotificationView()
                         .transition(.blurReplace)
                         .toolbar {
-                            if (appState.notifications.count > 0){
+                            if appState.notifications.count > 0 || appState.callEvents.count > 0 {
                                 ToolbarItem(placement: .primaryAction) {
-                                Button {
+                                    Button {
                                         notificationStacks.toggle()
                                     } label: {
                                         Label("Toggle Notification Stacks", systemImage: notificationStacks ? "mail" : "mail.stack")
@@ -38,35 +38,28 @@ struct AppContentView: View {
                                         Label("Clear", systemImage: "wind")
                                     }
                                     .help("Clear all notifications")
-                                    .keyboardShortcut(
-                                        .delete,
-                                        modifiers: .command
-                                    )
-                                .badge(appState.notifications.count)
+                                    .keyboardShortcut(.delete, modifiers: .command)
+                                    .badge(appState.notifications.count + appState.callEvents.count)
                                 }
                             }
-                            .help("Refresh server")
                         }
-                    }
-            }
 
-            // Notifications Tab (only when device connected)
-            if appState.device != nil {
-                NotificationView()
-                    .tabItem {
-                        Image(systemName: "bell.badge")
-                        //                        Label("Notifications", systemImage: "bell.badge")
-                    }
-                    .tag(TabIdentifier.notifications)
-                    .toolbar {
-                        if appState.notifications.count > 0 || appState.callEvents.count > 0 {
+                case .apps:
+                    AppsView()
+                        .transition(.blurReplace)
+
+                case .transfers:
+                    TransfersView()
+                        .transition(.blurReplace)
+                        .toolbar {
                             ToolbarItem(placement: .primaryAction) {
                                 Button {
-                                    notificationStacks.toggle()
+                                    AppState.shared.removeCompletedTransfers()
                                 } label: {
-                                    Label("Toggle Notification Stacks", systemImage: notificationStacks ? "mail" : "mail.stack")
+                                    Label("Clear completed", systemImage: "trash")
                                 }
-                                .help(notificationStacks ? "Switch to stacked view" : "Switch to expanded view")
+                                .help("Remove all completed transfers from the list")
+                                .keyboardShortcut(.delete, modifiers: .command)
                             }
                         }
 
@@ -110,50 +103,18 @@ struct AppContentView: View {
                     SettingsView()
                         .transition(.blurReplace)
                         .toolbar {
-                            ToolbarItemGroup{
-                                Button("Help", systemImage: "questionmark.circle"){
+                            ToolbarItemGroup {
+                                Button("Help", systemImage: "questionmark.circle") {
                                     showHelpSheet = true
                                 }
                                 .help("Feedback and How to?")
-
-                                Button {
-                                    appState.clearNotifications()
-                                } label: {
-                                    Label("Clear", systemImage: "wind")
-                                }
-                                .help("Clear all notifications")
-                                .keyboardShortcut(.delete, modifiers: .command)
-                                .badge(appState.notifications.count + appState.callEvents.count)
                             }
                         }
-                    }
 
-                // Apps Tab
-                AppsView()
-                    .tabItem {
-                        Image(systemName: "app")
-                        //                        Label("Apps", systemImage: "app")
-                    }
-                    .tag(TabIdentifier.apps)
-
-                // Transfers Tab
-                TransfersView()
-                    .tabItem {
-                        Image(systemName: "tray.and.arrow.up")
-                        //                        Label("Transfers", systemImage: "tray.and.arrow.up")
-                    }
-                    .tag(TabIdentifier.transfers)
-                    .toolbar {
-                        ToolbarItem(placement: .primaryAction) {
-                            Button {
-                                AppState.shared.removeCompletedTransfers()
-                            } label: {
-                                Label("Clear completed", systemImage: "trash")
-                            }
-                            .help("Remove all completed transfers from the list")
-                            .keyboardShortcut(.delete, modifiers: .command)
-                        }
-                    }
+                case .qr:
+                    ScannerView()
+                        .transition(.blurReplace)
+                }
             }
             .animation(.easeInOut(duration: 0.35), value: AppState.shared.selectedTab)
             .frame(minWidth: 550)
