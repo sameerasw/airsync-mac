@@ -40,6 +40,9 @@ struct PhoneView: View {
                 ScreenView()
                     .padding(.horizontal, 4)
                     .transition(.blurReplace)
+                
+                // Seasonal Snowfall Overlay
+                SnowfallView()
             }
             .frame(width: cardWidth, height: cardHeight)
             .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))

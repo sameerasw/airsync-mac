@@ -44,6 +44,8 @@ extension View {
     func glassBoxIfAvailable(radius: CGFloat) -> some View {
         if !UIStyle.pretendOlderOS, #available(macOS 26.0, *) {
             self.glassEffect(in: .rect(cornerRadius: radius))
+        } else {
+            self.background(.thinMaterial, in: .rect(cornerRadius: radius))
         }
     }
 }

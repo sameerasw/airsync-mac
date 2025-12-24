@@ -21,12 +21,15 @@ struct MenuBarNotificationsListView: View {
                             deleteNotification: { appState.removeNotification(notif) },
                             hideNotification: { appState.hideNotification(notif) }
                         )
+                        .listRowInsets(EdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10))
+                        .listRowBackground(Color.clear)
                         .applyGlassViewIfAvailable()
                         .animation(nil, value: appState.notifications.count)
                     }
                 }
-                .listStyle(.sidebar)
+                .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .frame(maxWidth: .infinity)
                 .frame(minHeight: 100, maxHeight: 750)
                 .transaction { txn in txn.animation = nil }
             }

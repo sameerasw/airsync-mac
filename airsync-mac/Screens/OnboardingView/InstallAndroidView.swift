@@ -44,7 +44,7 @@ struct InstallAndroidView: View {
                 label: "Install from web",
                 size: .extraLarge,
                 action: {
-                    if let url = URL(string: "https://play.google.com/apps/testing/com.sameerasw.airsync") {
+                    if let url = URL(string: "https://play.google.com/store/apps/details?id=com.sameerasw.airsync") {
                         NSWorkspace.shared.open(url)
                     }
                 }

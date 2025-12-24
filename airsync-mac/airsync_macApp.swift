@@ -12,6 +12,8 @@ import Sparkle
 
 @main
 struct airsync_macApp: App {
+    @Environment(\.openWindow) var openWindow
+    @Environment(\.dismissWindow) var dismissWindow
     @Environment(\.scenePhase) private var scenePhase
     let notificationDelegate = NotificationDelegate()
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -27,6 +29,7 @@ struct airsync_macApp: App {
         let center = UNUserNotificationCenter.current()
         center.delegate = notificationDelegate
         updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+        updaterController.updater.checkForUpdatesInBackground()
 
         // Register base default category with generic View action; dynamic per-notification categories added later
         let viewAction = UNNotificationAction(identifier: "VIEW_ACTION", title: "View", options: [])
@@ -101,6 +104,31 @@ struct airsync_macApp: App {
                     .dropTarget(appState: appState)
             }
         }
+        .onChange(of: appState.activeCall) { oldValue, newValue in
+            if newValue != nil {
+                openWindow(id: "callWindow")
+            } else {
+                dismissWindow(id: "callWindow")
+            }
+        }
+
+        // Secondary Tool Window for Calls
+        Window("Call", id: "callWindow") {
+            if let activeCall = appState.activeCall {
+                if #available(macOS 15.0, *) {
+                    CallWindowView(callEvent: activeCall)
+                        .environmentObject(appState)
+                        .containerBackground(.ultraThinMaterial, for: .window)
+                } else {
+                    CallWindowView(callEvent: activeCall)
+                        .environmentObject(appState)
+                }
+            }
+        }
+        .defaultPosition(.topTrailing)
+        .defaultSize(width: 320, height: 480)
+        .windowStyle(.hiddenTitleBar)
+
     .commands {
         CommandGroup(after: .appInfo) {
             CheckForUpdatesView(updater: updaterController.updater)

@@ -49,7 +49,9 @@ struct NotificationCardView: View {
 
                 Spacer()
             }
-            .padding()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .swipeActions(edge: .leading) {
             Button(role: .cancel) {

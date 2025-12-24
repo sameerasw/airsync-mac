@@ -80,7 +80,7 @@ struct AboutView: View {
                                 label: "Get for Android",
                                 systemImage: "iphone.gen3",
                                 action: {
-                                    if let url = URL(string: "https://groups.google.com/forum/#!forum/airsync-testing/join") {
+                                    if let url = URL(string: "https://play.google.com/store/apps/details?id=com.sameerasw.airsync") {
                                         NSWorkspace.shared.open(url)
                                     }
                                 }
@@ -115,7 +115,7 @@ struct AboutView: View {
                         label: "My Website",
                         systemImage: "link",
                         action: {
-                            if let url = URL(string: "https://www.sameerasw.com") {
+                            if let url = URL(string: "https://sameerasw.com") {
                                 NSWorkspace.shared.open(url)
                             }
                         }

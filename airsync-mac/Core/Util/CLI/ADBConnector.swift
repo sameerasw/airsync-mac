@@ -20,6 +20,10 @@ struct ADBConnector {
         "/opt/homebrew/bin/scrcpy",
         "/usr/local/bin/scrcpy"
     ]
+    
+    // Flag to prevent concurrent connection attempts
+    private static var isConnecting = false
+    private static let connectionLock = NSLock()
 
     // Try to locate a binary
     static func findExecutable(named name: String, fallbackPaths: [String]) -> String? {
@@ -73,148 +77,208 @@ struct ADBConnector {
         }
         print("[adb-connector] (Binary Detection) \(message)")
     }
+    
+    private static func clearConnectionFlag() {
+        // Note: This function must ONLY be called while holding the connectionLock
+        // Do NOT try to acquire the lock here
+        isConnecting = false
+    }
 
     static func connectToADB(ip: String) {
-        DispatchQueue.main.async { AppState.shared.adbConnecting = true }
+        connectionLock.lock()
+        defer { connectionLock.unlock() }
+        
+        // Prevent concurrent connection attempts
+        if isConnecting {
+            logBinaryDetection("ADB connection already in progress, ignoring duplicate request")
+            return
+        }
+        
+        isConnecting = true
+        
         // Find adb
         guard let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) else {
             AppState.shared.adbConnectionResult = "ADB not found. Please install via Homebrew: brew install android-platform-tools"
             AppState.shared.adbConnected = false
             DispatchQueue.main.async { AppState.shared.adbConnecting = false }
+            clearConnectionFlag()
             return
         }
 
-        UserDefaults.standard.lastADBCommand = "adb mdns services"
+        DispatchQueue.main.async { AppState.shared.adbConnecting = true }
 
-        logBinaryDetection("Running: \(adbPath) mdns services")
-
-        // Step 1: Discover devices
-        runADBCommand(adbPath: adbPath, arguments: ["mdns", "services"]) { output in
-            let trimmedMDNSOutput = output.trimmingCharacters(in: .whitespacesAndNewlines)
-
-            if trimmedMDNSOutput.isEmpty {
-                DispatchQueue.main.async {
-                    AppState.shared.adbConnectionResult = """
-`adb mdns services` returned no results.
-
-Make sure:
-- Your Android device is on the same Wi-Fi network
-- Wireless debugging is enabled in Developer Options
-- You can see your device in `adb devices`
-
-Raw output:
-\(trimmedMDNSOutput)
-"""
-                    AppState.shared.adbConnected = false
-                }
-                DispatchQueue.main.async { AppState.shared.adbConnecting = false }
-                return
-            }
-
-            let lines = trimmedMDNSOutput.components(separatedBy: .newlines)
-            var tlsPorts: [UInt16] = []
-            var normalPorts: [UInt16] = []
-            var effectiveIP = ip
-            
-            // First try the reported IP
-            for line in lines {
-                guard let range = line.range(of: "\(ip):") else { continue }
-
-                let remaining = line[range.upperBound...]
-                if let portStr = remaining.split(separator: " ").first,
-                   let port = UInt16(portStr) {
-                    if line.contains("_adb-tls-connect._tcp") {
-                        tlsPorts.append(port)
-                    } else if line.contains("_adb._tcp") {
-                        normalPorts.append(port)
+        // Get ADB ports from device info
+        let devicePorts = AppState.shared.device?.adbPorts ?? []
+        
+        if devicePorts.isEmpty {
+            if AppState.shared.fallbackToMdns {
+                logBinaryDetection("Device reported no ADB ports, attempting mDNS discovery...")
+                discoverADBPorts(adbPath: adbPath, ip: ip) { ports in
+                    if ports.isEmpty {
+                        logBinaryDetection("mDNS discovery found no ports for \(ip).")
+                        DispatchQueue.main.async {
+                            AppState.shared.adbConnected = false
+                            AppState.shared.adbConnecting = false
+                            AppState.shared.adbConnectionResult = "No ADB ports reported by device and mDNS discovery failed."
+                        }
+                        connectionLock.lock()
+                        clearConnectionFlag()
+                        connectionLock.unlock()
+                    } else {
+                        logBinaryDetection("mDNS discovery found ports: \(ports.map(String.init).joined(separator: ", "))")
+                        self.proceedWithConnection(adbPath: adbPath, ip: ip, portsToTry: ports)
                     }
                 }
+            } else {
+                logBinaryDetection("Device reported no ADB ports and mDNS fallback is disabled.")
+                AppState.shared.adbConnected = false
+                DispatchQueue.main.async { AppState.shared.adbConnecting = false }
+                clearConnectionFlag()
             }
+            return
+        }
+        
+        logBinaryDetection("Using ADB ports from device: \(devicePorts.joined(separator: ", "))")
+        let portsToTry = devicePorts.compactMap { UInt16($0) }
+        
+        guard !portsToTry.isEmpty else {
+            AppState.shared.adbConnectionResult = "Device reported ADB ports but none could be parsed as valid port numbers."
+            AppState.shared.adbConnected = false
+            DispatchQueue.main.async { AppState.shared.adbConnecting = false }
+            clearConnectionFlag()
+            return
+        }
+        
+        proceedWithConnection(adbPath: adbPath, ip: ip, portsToTry: portsToTry)
+    }
+
+    private static func discoverADBPorts(adbPath: String, ip: String, completion: @escaping ([UInt16]) -> Void) {
+        runADBCommand(adbPath: adbPath, arguments: ["mdns", "services"]) { output in
+            let lines = output.components(separatedBy: .newlines)
+            var ports: [UInt16] = []
             
-            // If no services found for reported IP, try to find any available service
-            // This handles cases where phone reports Tailscale IP but mDNS shows WiFi IP
-            if tlsPorts.isEmpty && normalPorts.isEmpty {
-                logBinaryDetection("No services found for reported IP \(ip), scanning all discovered services...")
-                
-                // Parse IP:port from any line containing _adb-tls-connect or _adb._tcp
-                // Format: "servicename\t_adb-tls-connect._tcp\t192.168.x.x:port"
-                for line in lines {
-                    // Look for IP:port pattern (IPv4)
-                    let pattern = #"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d+)"#
-                    if let regex = try? NSRegularExpression(pattern: pattern),
-                       let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) {
-                        if let ipRange = Range(match.range(at: 1), in: line),
-                           let portRange = Range(match.range(at: 2), in: line),
-                           let port = UInt16(line[portRange]) {
-                            let discoveredIP = String(line[ipRange])
-                            // Skip Tailscale IPs (100.x.x.x CGNAT range)
-                            if !discoveredIP.hasPrefix("100.") {
-                                effectiveIP = discoveredIP
-                                if line.contains("_adb-tls-connect._tcp") {
-                                    tlsPorts.append(port)
-                                } else if line.contains("_adb._tcp") {
-                                    normalPorts.append(port)
-                                }
-                                logBinaryDetection("Found service at \(discoveredIP):\(port)")
+            for line in lines {
+                // Typical line: _adb-tls-connect._tcp.   192.168.1.100:34567
+                if line.contains(ip) {
+                    let parts = line.split(separator: ":")
+                    if parts.count >= 2 {
+                        let portPart = parts.last?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                        // Extract only the numeric part if there's trailing junk
+                        let numericPort = portPart.filter { "0123456789".contains($0) }
+                        if let port = UInt16(numericPort) {
+                            if !ports.contains(port) {
+                                ports.append(port)
                             }
                         }
                     }
                 }
-                
-                if effectiveIP != ip && (!tlsPorts.isEmpty || !normalPorts.isEmpty) {
-                    logBinaryDetection("Using discovered IP \(effectiveIP) instead of reported IP \(ip)")
+            }
+            completion(ports)
+        }
+    }
+
+    private static func proceedWithConnection(adbPath: String, ip: String, portsToTry: [UInt16]) {
+        // Kill adb server first
+        logBinaryDetection("Killing adb server: \(adbPath) kill-server")
+        runADBCommand(adbPath: adbPath, arguments: ["kill-server"]) { _ in
+            // Give the adb daemon time to fully terminate
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 1.0) {
+                // Explicitly start the server and wait for it
+                logBinaryDetection("Starting adb server...")
+                ADBConnector.runADBCommand(adbPath: adbPath, arguments: ["start-server"]) { _ in
+                    // Give server time to fully initialize
+                    DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 1.5) {
+                        // Try each port until one succeeds
+                        attemptConnectionToNextPort(adbPath: adbPath, ip: ip, portsToTry: portsToTry, currentIndex: 0, reportedIP: ip)
+                    }
                 }
             }
+        }
+    }
 
-            // Combine ports with TLS ports first (preferred), then normal ports
-            let portsToTry = tlsPorts + normalPorts
-            guard !portsToTry.isEmpty else {
-                DispatchQueue.main.async {
-                    AppState.shared.adbConnectionResult = """
-No ADB service found for IP \(ip).
+    // Attempt connection using custom port directly without mDNS discovery
+    private static func attemptDirectConnection(adbPath: String, fullAddress: String) {
+        logBinaryDetection("Attempting direct connection to custom port: \(adbPath) connect \(fullAddress)")
 
-Suggestions:
-- Ensure your Android device is in Wireless debugging mode
-- Try toggling Wireless Debugging off and on again
-- Reconnect to the same Wi-Fi as your Mac
+        runADBCommand(adbPath: adbPath, arguments: ["connect", fullAddress]) { output in
+            let trimmedOutput = output.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
-Raw `adb mdns services` output:
-\(trimmedMDNSOutput)
-"""
+            DispatchQueue.main.async {
+                UserDefaults.standard.lastADBCommand = "adb connect \(fullAddress)"
+
+                if trimmedOutput.contains("connected to") {
+                    // Success! Connection established
+                    if let portStr = fullAddress.split(separator: ":").last,
+                       let port = UInt16(portStr) {
+                        AppState.shared.adbPort = port
+                    }
+                    AppState.shared.adbConnected = true
+                    AppState.shared.adbConnectionResult = trimmedOutput
+                    logBinaryDetection("(/^▽^)/ ADB connection successful to \(fullAddress)")
+                    AppState.shared.adbConnecting = false
+                    clearConnectionFlag()
+                } else {
+                    // Connection failed - show error popup only on final failure
                     AppState.shared.adbConnected = false
+                    logBinaryDetection("(T＿T) Custom port connection failed: \(trimmedOutput)")
+                    AppState.shared.adbConnectionResult = """
+Failed to connect to custom ADB port.
 
-                    // Present alert only for this specific error case
-                    let alert = NSAlert()
-                    alert.alertStyle = .warning
-                    alert.addButton(withTitle: "OK")
-                    alert.messageText = "Failed to connect to ADB."
-                    alert.informativeText = """
-Suggestions:
-- Ensure your Android device is in Wireless debugging mode
-- Try toggling Wireless Debugging off and on again
-- Reconnect to the same Wi-Fi as your Mac
+Address: \(fullAddress)
+Error: \(trimmedOutput)
+
+Possible fixes:
+- Verify the custom port is correct
+- Ensure Wireless Debugging is enabled on the device
+- Check that the device is reachable at the specified IP
+- Disable custom port and use automatic discovery
+"""
+                    AppState.shared.adbConnecting = false
+                    clearConnectionFlag()
+                    
+                    // Show alert popup for custom port failure (unless suppressed)
+                    if !AppState.shared.suppressAdbFailureAlerts {
+                        let alert = NSAlert()
+                        alert.alertStyle = .warning
+                        alert.addButton(withTitle: "Don't warn me again")
+                        alert.addButton(withTitle: "OK")
+                        alert.messageText = "Failed to connect to ADB on custom port."
+                        alert.informativeText = """
+Address: \(fullAddress)
+
+Possible fixes:
+- Verify the custom port is correct
+- Ensure Wireless Debugging is enabled on the device
+- Check that the device is reachable at the specified IP
+- Disable custom port and use automatic discovery
 
 Please see the ADB console for more details.
 """
-                    alert.runModal()
+                        let response = alert.runModal()
+                        if response == .alertFirstButtonReturn {
+                            DispatchQueue.main.async {
+                                AppState.shared.suppressAdbFailureAlerts = true
+                            }
+                        }
+                    }
                 }
-                DispatchQueue.main.async { AppState.shared.adbConnecting = false }
-                return
-            }
-
-            // Step 2: Kill adb server
-            logBinaryDetection("Killing adb server: \(adbPath) kill-server")
-            runADBCommand(adbPath: adbPath, arguments: ["kill-server"]) { _ in
-                // Step 3: Try connecting to each port until one succeeds
-                attemptConnectionToNextPort(adbPath: adbPath, ip: effectiveIP, portsToTry: portsToTry, currentIndex: 0)
             }
         }
     }
 
     // Recursive function to try each port until one succeeds
-    private static func attemptConnectionToNextPort(adbPath: String, ip: String, portsToTry: [UInt16], currentIndex: Int) {
+    private static func attemptConnectionToNextPort(adbPath: String, ip: String, portsToTry: [UInt16], currentIndex: Int, reportedIP: String? = nil) {
         // If we've tried all ports, fail
         if currentIndex >= portsToTry.count {
+            // If we haven't tried the reported IP yet and it's different from the current IP, try it
+            if let reportedIP = reportedIP, reportedIP != ip {
+                logBinaryDetection("Failed to connect on discovered IP \(ip), attempting fallback to reported IP \(reportedIP)...")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    attemptConnectionToNextPort(adbPath: adbPath, ip: reportedIP, portsToTry: portsToTry, currentIndex: 0, reportedIP: nil)
+                }
+                return
+            }
+            
             DispatchQueue.main.async {
                 AppState.shared.adbConnected = false
                 logBinaryDetection("(∩︵∩) ADB connection failed on all ports.")
@@ -232,7 +296,33 @@ Possible fixes:
   Try killing any external adb instances in mac terminal with 'adb kill-server' command.
 """
                 AppState.shared.adbConnecting = false
+                
+                // Show alert popup only when all attempts have been exhausted (unless suppressed)
+                if !AppState.shared.suppressAdbFailureAlerts {
+                    let alert = NSAlert()
+                    alert.alertStyle = .warning
+                    alert.addButton(withTitle: "Don't warn me again")
+                    alert.addButton(withTitle: "OK")
+                    alert.messageText = "Failed to connect to ADB."
+                    alert.informativeText = """
+Suggestions:
+- Ensure your Android device is in Wireless debugging mode
+- Try toggling Wireless Debugging off and on again
+- Reconnect to the same Wi-Fi as your Mac
+- Ensure device is authorized for adb
+- Disconnect and reconnect Wireless Debugging
+
+Please see the ADB console for more details.
+"""
+                    let response = alert.runModal()
+                    if response == .alertFirstButtonReturn {
+                        DispatchQueue.main.async {
+                            AppState.shared.suppressAdbFailureAlerts = true
+                        }
+                    }
+                }
             }
+            clearConnectionFlag()
             return
         }
 
@@ -253,19 +343,24 @@ Possible fixes:
                     // Success! Connection established
                     AppState.shared.adbConnected = true
                     AppState.shared.adbPort = currentPort
+                    AppState.shared.adbConnectedIP = ip  // Store the actual connected IP
                     AppState.shared.adbConnectionResult = trimmedOutput
                     logBinaryDetection("(/^▽^)/ ADB connection successful to \(fullAddress)")
                     AppState.shared.adbConnecting = false
+                    clearConnectionFlag()
                 }
                 else if trimmedOutput.contains("protocol fault") || trimmedOutput.contains("connection reset by peer") {
-                    // Connection exists elsewhere, show error
+                    // Connection exists elsewhere, show error and try next port
                     AppState.shared.adbConnected = false
                     logBinaryDetection("(T＿T) Port \(currentPort): ADB connection failed due to existing connection.")
                     AppState.shared.adbConnectionResult = (AppState.shared.adbConnectionResult ?? "") + """
 
 Port \(currentPort) (attempt \(portNumber)/\(totalPorts)): Connection failed - another ADB instance already using the device.
 """
-                    AppState.shared.adbConnecting = false
+                    // Try next port after a short delay instead of giving up
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        attemptConnectionToNextPort(adbPath: adbPath, ip: ip, portsToTry: portsToTry, currentIndex: currentIndex + 1, reportedIP: reportedIP)
+                    }
                 }
                 else {
                     // This port didn't work, try the next one
@@ -276,7 +371,7 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
 """
                     // Try next port after a short delay
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        attemptConnectionToNextPort(adbPath: adbPath, ip: ip, portsToTry: portsToTry, currentIndex: currentIndex + 1)
+                        attemptConnectionToNextPort(adbPath: adbPath, ip: ip, portsToTry: portsToTry, currentIndex: currentIndex + 1, reportedIP: reportedIP)
                     }
                 }
             }

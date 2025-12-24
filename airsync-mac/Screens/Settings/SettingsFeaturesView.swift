@@ -19,7 +19,6 @@ struct SettingsFeaturesView: View {
     @AppStorage("continueApp") private var continueApp = false
     @AppStorage("directKeyInput") private var directKeyInput = true
 
-    @State private var adbPortString: String = ""
     @State private var showingPlusPopover = false
     @State private var tempBitrate: Double = 4.00
     @State private var tempResolution: Double = 1200.00
@@ -62,7 +61,7 @@ struct SettingsFeaturesView: View {
                             }
                         )
                         .disabled(
-                            adbPortString.isEmpty || appState.device == nil || appState.adbConnecting || !AppState.shared.isPlus
+                            appState.device == nil || (appState.device?.adbPorts.isEmpty ?? true) || appState.adbConnecting || !AppState.shared.isPlus
                         )
                     }
 
@@ -80,7 +79,7 @@ struct SettingsFeaturesView: View {
                     .frame(width: 55)
 
                 }
-                
+
                 // Transparent tap area on top to show popover even if disabled
                 if !AppState.shared.isPlus && AppState.shared.licenseCheck {
                     HStack{
@@ -110,6 +109,13 @@ struct SettingsFeaturesView: View {
                 .transition(.opacity)
             }
 
+            HStack {
+                Label("Suppress failed messages", systemImage: "bell.slash")
+                Spacer()
+                Toggle("", isOn: $appState.suppressAdbFailureAlerts)
+                    .toggleStyle(.switch)
+            }
+
             // Show port field if ADB toggle is on
             if appState.isPlus, (appState.adbEnabled || appState.adbConnected){
 
@@ -127,7 +133,7 @@ struct SettingsFeaturesView: View {
                     DisclosureGroup(isExpanded: $isExpanded) {
                         VStack(spacing: 10){
                             Spacer()
-                            
+
                             HStack {
                                 Text("Video bitrate")
                                 Spacer()
@@ -260,8 +266,6 @@ struct SettingsFeaturesView: View {
         }
         .padding()
         .onAppear{
-
-            adbPortString = String(appState.adbPort)
             xCoords = UserDefaults.standard.manualPositionCoords[0]
             yCoords = UserDefaults.standard.manualPositionCoords[1]
         }
@@ -276,19 +280,21 @@ struct SettingsFeaturesView: View {
                 Spacer()
                 Toggle("", isOn: $appState.autoOpenLinks)
                     .toggleStyle(.switch)
-                    .disabled(!appState.isClipboardSyncEnabled || !appState.isPlus)
+                    .disabled(!appState.isClipboardSyncEnabled)
             }
-            .opacity(appState.isClipboardSyncEnabled && appState.isPlus ? 1.0 : 0.5)
+            .opacity(appState.isClipboardSyncEnabled ? 1.0 : 0.5)
+        }
+        .padding()
+
+        VStack{
 
             SettingsToggleView(name: "Sync notification dismissals", icon: "bell.badge", isOn: $appState.dismissNotif)
-
-            SettingsToggleView(name: "Send now playing status", icon: "play.circle", isOn: $appState.sendNowPlayingStatus)
 
             HStack {
                 Label("System Notifications", systemImage: "bell.badge")
 
                 Spacer()
-                
+
                 if notificationsGranted {
                     // Show sound picker when notifications are enabled
                     Picker("", selection: $appState.notificationSound) {
@@ -299,7 +305,7 @@ struct SettingsFeaturesView: View {
                     }
                     .pickerStyle(MenuPickerStyle())
                     .frame(minWidth: 100)
-                    
+
                     Button(action: {
                         SystemSounds.playSound(appState.notificationSound)
                     }) {
@@ -320,10 +326,10 @@ struct SettingsFeaturesView: View {
                 }
             }
 
+            SettingsToggleView(name: "Send now playing status", icon: "play.circle", isOn: $appState.sendNowPlayingStatus)
         }
         .padding()
         .onAppear{
-            adbPortString = String(appState.adbPort)
             checkNotificationPermissions()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -331,6 +337,25 @@ struct SettingsFeaturesView: View {
             // This helps update the UI when user returns from System Preferences
             checkNotificationPermissions()
         }
+
+        VStack{
+
+            HStack {
+                Label("Call Alert", systemImage: "phone")
+                Spacer()
+
+                Picker("", selection: $appState.callNotificationMode) {
+                    ForEach(CallNotificationMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(MenuPickerStyle())
+                .frame(minWidth: 120)
+            }
+
+            SettingsToggleView(name: "Ring for calls", icon: "speaker.wave.3", isOn: $appState.ringForCalls)
+        }
+        .padding()
     }
 
     // MARK: - Notification Permission Helpers

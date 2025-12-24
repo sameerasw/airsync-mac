@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>AndroidVersion</key>
-	<string>2.1.5</string>
+	<string>2.2.0</string>
 	<key>CFBundleIcons</key>
 	<dict>
 		<key>CFBundleAlternateIcons</key>
@@ -25,7 +25,7 @@
 		</dict>
 	</dict>
 	<key>ForceUpdateKey</key>
-	<string>002</string>
+	<string>003</string>
 	<key>NSAppleScriptEnabled</key>
 	<true/>
 	<key>OSAScriptingDefinition</key>

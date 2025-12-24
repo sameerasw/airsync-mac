@@ -296,12 +296,14 @@ class WebSocketServer: ObservableObject {
                let port = dict["port"] as? Int {
 
                 let version = dict["version"] as? String ?? "2.0.0"
+                let adbPorts = dict["adbPorts"] as? [String] ?? []
 
                 AppState.shared.device = Device(
                     name: name,
                     ipAddress: ip,
                     port: port,
-                    version: version
+                    version: version,
+                    adbPorts: adbPorts
                 )
 
                 if let base64 = dict["wallpaper"] as? String {
@@ -343,6 +345,60 @@ class WebSocketServer: ObservableObject {
                     AppState.shared.addNotification(notif)
                 }
             }
+        
+        case .callEvent:
+            if let dict = message.data.value as? [String: Any],
+               let eventId = dict["eventId"] as? String,
+               let number = dict["number"] as? String,
+               let normalizedNumber = dict["normalizedNumber"] as? String,
+               let directionStr = dict["direction"] as? String,
+               let direction = CallDirection(rawValue: directionStr),
+               let stateStr = dict["state"] as? String,
+               let state = CallState(rawValue: stateStr) {
+                
+                // contactName is optional - fallback to normalizedNumber if missing
+                let contactName = (dict["contactName"] as? String) ?? normalizedNumber
+                
+                // Handle timestamp as either Int or Int64
+                var timestamp: Int64 = 0
+                if let ts = dict["timestamp"] as? Int64 {
+                    timestamp = ts
+                } else if let ts = dict["timestamp"] as? Int {
+                    timestamp = Int64(ts)
+                } else if let ts = dict["timestamp"] as? NSNumber {
+                    timestamp = ts.int64Value
+                }
+                
+                let deviceId = dict["deviceId"] as? String ?? ""
+                let contactPhoto = dict["contactPhoto"] as? String
+                
+                print("[websocket] Raw normalizedNumber: '\(normalizedNumber)' (length: \(normalizedNumber.count))")
+                print("[websocket] Raw number: '\(number)' (length: \(number.count))")
+                print("[websocket] Decoded call event - name: \(contactName), state: \(state), phone: \(normalizedNumber)")
+                
+                let callEvent = CallEvent(
+                    eventId: eventId,
+                    contactName: contactName,
+                    number: number,
+                    normalizedNumber: normalizedNumber,
+                    direction: direction,
+                    state: state,
+                    timestamp: timestamp,
+                    deviceId: deviceId,
+                    contactPhoto: contactPhoto
+                )
+                print("[websocket] CallEvent created - normalizedNumber: '\(callEvent.normalizedNumber)' (length: \(callEvent.normalizedNumber.count))")
+                print("[websocket] Call event: \(contactName) - \(state.rawValue)")
+                DispatchQueue.main.async {
+                    AppState.shared.updateCallEvent(callEvent)
+                }
+            } else {
+                print("[websocket] Failed to decode call event - missing or invalid fields")
+                if let dict = message.data.value as? [String: Any] {
+                    print("[websocket] Available fields: \(dict.keys.joined(separator: ", "))")
+                }
+            }
+        
         case .notificationActionResponse:
             if let dict = message.data.value as? [String: Any],
                let id = dict["id"] as? String,
@@ -608,6 +664,22 @@ class WebSocketServer: ObservableObject {
                 handleMacMediaControl(action: action)
             }
 
+        case .callControl:
+            // This case handles call control messages from Android to Mac
+            // Currently not expected as Mac sends call control to Android, not vice versa
+            print("[websocket] Received callControl from Android (not typically expected)")
+
+        case .callControlResponse:
+            if let dict = message.data.value as? [String: Any],
+               let action = dict["action"] as? String,
+               let success = dict["success"] as? Bool {
+                let message = dict["message"] as? String ?? ""
+                print("[websocket] Call control \(action) \(success ? "succeeded" : "failed"): \(message)")
+                if !message.isEmpty {
+                    print("[websocket] Call control warning/info: \(message)")
+                }
+            }
+
         case .macMediaControlResponse:
             // This case handles responses from Android to Mac media control responses
             // Currently not needed as Mac sends responses to Android, not vice versa
@@ -754,6 +826,51 @@ class WebSocketServer: ObservableObject {
         if let jsonData = try? JSONSerialization.data(withJSONObject: ["type": "notificationAction", "data": data], options: []),
            let json = String(data: jsonData, encoding: .utf8) {
             sendToFirstAvailable(message: json)
+        }
+    }
+
+    func sendCallAction(eventId: String, action: String) {
+        // Send key events via ADB to control calls
+        // KeyCode 5 = KEYCODE_CALL (Accept/Answer call)
+        // KeyCode 6 = KEYCODE_ENDCALL (End call)
+        let keyCode: String
+        switch action.lowercased() {
+        case "accept":
+            keyCode = "5"   // KEYCODE_CALL
+        case "decline", "end":
+            keyCode = "6"   // KEYCODE_ENDCALL
+        default:
+            keyCode = "6"
+        }
+        
+        // Execute: adb shell input keyevent <keyCode>
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let adbPath = ADBConnector.findExecutable(named: "adb", fallbackPaths: ADBConnector.possibleADBPaths) else {
+                print("[websocket] ADB not found for call action")
+                return
+            }
+            
+            // Use the actual connected ADB IP address (discovered IP), not the device reported IP
+            let adbIP = AppState.shared.adbConnectedIP.isEmpty ? AppState.shared.device?.ipAddress ?? "" : AppState.shared.adbConnectedIP
+            if !adbIP.isEmpty {
+                let adbPort = AppState.shared.adbPort
+                let fullAddress = "\(adbIP):\(adbPort)"
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: adbPath)
+                process.arguments = ["-s", fullAddress, "shell", "input", "keyevent", keyCode]
+                
+                print("[websocket] Sending call action: \(action) (keyCode: \(keyCode)) to device \(fullAddress) for eventId: \(eventId)")
+                
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                    print("[websocket] Call action sent: keyevent \(keyCode) for event: \(eventId) on \(fullAddress)")
+                } catch {
+                    print("[websocket] Failed to send call action: \(error.localizedDescription)")
+                }
+            } else {
+                print("[websocket] ERROR: No device address found for call action (adbConnectedIP: '\(AppState.shared.adbConnectedIP)', device IP: \(AppState.shared.device?.ipAddress ?? "nil"))")
+            }
         }
     }
 

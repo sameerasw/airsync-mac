@@ -83,7 +83,7 @@ This license is effective until terminated. It will terminate automatically with
 5. DISCLAIMER
 This Software is provided "as is" without warranty of any kind. In no event shall the author be liable for any damages arising from the use or inability to use the Software.
 
-For commercial licensing inquiries or special use cases, contact: sameerasw.com@gmail.com
+For commercial licensing inquiries or special use cases, contact: mail@sameerasw.com
 
 © 2025 sameerasw.com. All Rights Reserved.
 

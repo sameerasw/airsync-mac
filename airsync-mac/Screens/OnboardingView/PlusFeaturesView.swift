@@ -10,6 +10,8 @@ import SwiftUI
 struct PlusFeaturesView: View {
     let onNext: () -> Void
 
+    @ObservedObject var appState = AppState.shared
+
     var body: some View {
         VStack(spacing: 15) {
             Text("AirSync+, to sync even more!")
@@ -27,7 +29,7 @@ struct PlusFeaturesView: View {
                     featureRow(icon: "macbook.and.iphone", title: "Android Mirroring", description: "Mirror your Android screen and apps to your Mac with full control, wirelessly")
                     featureRow(icon: "music.note", title: "Media Controls", description: "Control music playback and volume directly from your Mac")
                     featureRow(icon: "desktopcomputer", title: "Wireless Desktop Mode", description: "Use the phone in a familiar way, with full desktop controls")
-                    featureRow(icon: "globe", title: "Continue Browsing", description: "Simply copy or share a link to prompt it open on the other device")
+                    featureRow(icon: "phone", title: "Control calls", description: "Accept, decline, or end phone calls from your Mac (ADB)")
                     featureRow(icon: "app.grid", title: "Custom App Icons", description: "Match your device, Make it personal")
                     featureRow(icon: "bell.badge", title: "Advanced Notifications", description: "Enhanced notification management and customization", soon: true)
                     featureRow(icon: "battery.25percent", title: "Low Battery Alerts", description: "Get notified when your Android device needs charging", soon: true)
@@ -41,7 +43,7 @@ struct PlusFeaturesView: View {
 
             HStack(spacing: 16) {
                 GlassButtonView(
-                    label: "Get AirSync+",
+                    label: appState.isPlus ? "Thank you" : "Get AirSync+",
                     systemImage: "plus.diamond",
                     size: .large,
                     fixedIconSize: 16,
@@ -51,6 +53,7 @@ struct PlusFeaturesView: View {
                         }
                     }
                 )
+                .disabled(appState.isPlus)
                 .transition(.identity)
 
                 GlassButtonView(

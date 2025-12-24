@@ -19,9 +19,10 @@ struct WelcomeView: View {
             VStack(spacing: 16) {
                 AnimatedAppIconCarousel(iconSize: 140, cornerRadius: 24)
 
-                Text("AirSync")
-                .font(.system(size: 50, weight: .bold, design: .rounded))
+                Text(UserDefaults.standard.isReturningUser ? "Welcome Back to AirSync!" : "AirSync")
+                    .font(.system(size: UserDefaults.standard.isReturningUser ? 30 : 50, weight: .bold, design: .rounded))
                 .tracking(0.5)
+                .multilineTextAlignment(.center)
 
                 if showDetails {
                     Text("The forbidden continuity for your mac and Android. (っ◕‿◕)っ")
@@ -64,6 +65,18 @@ struct WelcomeView: View {
                     Text("v\(Bundle.main.appVersion)")
                         .font(.footnote)
                         .foregroundStyle(.tertiary)
+
+                    GlassButtonView(
+                        label: "What's new?",
+                        image: "sparkles.2",
+                        action: {
+                            if let url = URL(string: "https://github.com/sameerasw/airsync-mac/releases/latest") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                    )
+
+
                 }
                 .transition(
                     .asymmetric(
