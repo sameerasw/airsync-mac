@@ -29,6 +29,7 @@ struct airsync_macApp: App {
         let center = UNUserNotificationCenter.current()
         center.delegate = notificationDelegate
         updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+        updaterController.updater.checkForUpdatesInBackground()
 
         // Register base default category with generic View action; dynamic per-notification categories added later
         let viewAction = UNNotificationAction(identifier: "VIEW_ACTION", title: "View", options: [])

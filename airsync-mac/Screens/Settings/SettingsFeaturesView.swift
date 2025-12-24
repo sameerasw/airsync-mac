@@ -354,8 +354,6 @@ struct SettingsFeaturesView: View {
             }
 
             SettingsToggleView(name: "Ring for calls", icon: "speaker.wave.3", isOn: $appState.ringForCalls)
-
-
         }
         .padding()
     }

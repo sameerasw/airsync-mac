@@ -2,6 +2,8 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var appState = AppState.shared
+    @AppStorage("SUEnableAutomaticChecks") private var automaticallyChecksForUpdates = true
+    @AppStorage("SUAutomaticallyUpdate") private var automaticallyDownloadsUpdates = false
 
     @State private var deviceName: String = ""
     @State private var port: String = "6996"
@@ -181,6 +183,14 @@ struct SettingsView: View {
                             .animation(.easeInOut(duration: 0.3), value: appState.showMenubarText)
 
                         }
+                    }
+                    .padding()
+                    .background(.background.opacity(0.3))
+                    .cornerRadius(12.0)
+
+                    VStack {
+                        SettingsToggleView(name: "Check for updates automatically", icon: "sparkles", isOn: $automaticallyChecksForUpdates)
+                        SettingsToggleView(name: "Download updates automatically", icon: "arrow.down.circle", isOn: $automaticallyDownloadsUpdates)
                     }
                     .padding()
                     .background(.background.opacity(0.3))
