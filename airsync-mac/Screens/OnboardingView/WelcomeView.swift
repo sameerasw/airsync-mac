@@ -64,6 +64,18 @@ struct WelcomeView: View {
                     Text("v\(Bundle.main.appVersion)")
                         .font(.footnote)
                         .foregroundStyle(.tertiary)
+
+                    GlassButtonView(
+                        label: "What's new?",
+                        image: "sparkles.2",
+                        action: {
+                            if let url = URL(string: "https://github.com/sameerasw/airsync-mac/releases/latest") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                    )
+
+
                 }
                 .transition(
                     .asymmetric(

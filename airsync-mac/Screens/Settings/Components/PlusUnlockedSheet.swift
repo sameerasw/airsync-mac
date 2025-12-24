@@ -17,7 +17,7 @@ struct PlusUnlockedSheet: View {
             VisualEffectBlur(material: .hudWindow, blendingMode: .behindWindow)
                 .edgesIgnoringSafeArea(.all)
 
-            VStack(spacing: 18) {
+            VStack(spacing: 14) {
                 Text("🎉")
                     .font(.system(size: 50))
                     .padding()
@@ -35,7 +35,7 @@ struct PlusUnlockedSheet: View {
                             featureRow(icon: "macbook.and.iphone", title: "Android Mirroring", description: "Mirror your Android screen and apps to your Mac with full control, wirelessly")
                             featureRow(icon: "music.note", title: "Media Controls", description: "Control music playback and volume directly from your Mac")
                             featureRow(icon: "desktopcomputer", title: "Wireless Desktop Mode", description: "Use the phone in a familiar way, with full desktop controls")
-                            featureRow(icon: "globe", title: "Continue Browsing", description: "Simply copy or share a link to prompt it open on the other device")
+                            featureRow(icon: "phone", title: "Call controls", description: "Accept, decline, or end calls directly from your Mac")
                             featureRow(icon: "app.grid", title: "Custom App Icons", description: "Match your device, Make it personal")
                     }
                     .listStyle(.sidebar)
