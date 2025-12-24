@@ -11,6 +11,13 @@ internal import Combine
 import UserNotifications
 import AVFoundation
 
+// MARK: - Call Notification Mode
+enum CallNotificationMode: String, CaseIterable {
+    case popup = "popup"
+    case notification = "notification"
+    case none = "none"
+}
+
 class AppState: ObservableObject {
     static let shared = AppState()
 
@@ -185,12 +192,6 @@ class AppState: ObservableObject {
         }
     }
 
-    @Published var pinnedApps: [PinnedApp] = [] {
-        didSet {
-            savePinnedApps()
-        }
-    }
-
     @Published var deviceWallpapers: [String: String] = [:] // key = deviceName-ip, value = file path
     @Published var isClipboardSyncEnabled: Bool {
         didSet {
@@ -209,6 +210,10 @@ class AppState: ObservableObject {
     @Published var adbConnected: Bool = false
     @Published var adbConnecting: Bool = false
     @Published var currentDeviceWallpaperBase64: String? = nil
+
+    // Call events tracking
+    @Published var callEvents: [CallEvent] = []
+    @Published var activeCall: CallEvent? = nil
 
     // Audio player for ringtone
     private var ringtonePlayer: AVAudioPlayer?

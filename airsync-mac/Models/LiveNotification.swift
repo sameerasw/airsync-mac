@@ -16,12 +16,7 @@ enum LiveNotificationType: String, Codable {
     case custom
 }
 
-enum CallState: String, Codable {
-    case ringing
-    case active
-    case held
-    case disconnected
-}
+// Use CallState from CallEvent.swift - no duplicate definition needed
 
 // MARK: - Live Call Notification
 
@@ -44,11 +39,11 @@ struct LiveCallNotification: Codable, Identifiable {
         switch state {
         case .ringing:
             return isIncoming ? "Incoming Call" : "Calling..."
-        case .active:
+        case .offhook, .accepted:
             return "In Call"
-        case .held:
+        case .idle:
             return "On Hold"
-        case .disconnected:
+        case .ended, .rejected, .missed:
             return "Call Ended"
         }
     }
