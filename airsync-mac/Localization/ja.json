@@ -9,6 +9,7 @@
   "onboarding.title": "AirSyncへようこそ",
   "notifications.empty.title": "新しい通知はないよ！",
   "notifications.empty.emoji": "└(=^‥^=)┐",
+  "notifications.calls": "Calls",
   "notifications.actions.hide": "非表示",
   "notifications.actions.dismiss": "閉じる",
   "notifications.tab": "通知",
