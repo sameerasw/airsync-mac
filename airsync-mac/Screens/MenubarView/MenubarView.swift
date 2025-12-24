@@ -168,9 +168,12 @@ struct MenubarView: View {
 
             if appState.device != nil {
                 MenuBarNotificationsListView()
+                    .frame(maxWidth: .infinity)
             }
 
         }
+        .frame(minWidth: minWidthTabs)
+        .frame(maxWidth: .infinity)
     }
 }
 
