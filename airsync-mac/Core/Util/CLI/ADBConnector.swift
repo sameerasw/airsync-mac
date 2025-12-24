@@ -107,16 +107,39 @@ struct ADBConnector {
 
         DispatchQueue.main.async { AppState.shared.adbConnecting = true }
 
-        // Get ADB ports from device info (required)
-        guard let device = AppState.shared.device, !device.adbPorts.isEmpty else {
-            AppState.shared.adbConnected = false
-            DispatchQueue.main.async { AppState.shared.adbConnecting = false }
-            clearConnectionFlag()
+        // Get ADB ports from device info
+        let devicePorts = AppState.shared.device?.adbPorts ?? []
+        
+        if devicePorts.isEmpty {
+            if AppState.shared.fallbackToMdns {
+                logBinaryDetection("Device reported no ADB ports, attempting mDNS discovery...")
+                discoverADBPorts(adbPath: adbPath, ip: ip) { ports in
+                    if ports.isEmpty {
+                        logBinaryDetection("mDNS discovery found no ports for \(ip).")
+                        DispatchQueue.main.async {
+                            AppState.shared.adbConnected = false
+                            AppState.shared.adbConnecting = false
+                            AppState.shared.adbConnectionResult = "No ADB ports reported by device and mDNS discovery failed."
+                        }
+                        connectionLock.lock()
+                        clearConnectionFlag()
+                        connectionLock.unlock()
+                    } else {
+                        logBinaryDetection("mDNS discovery found ports: \(ports.map(String.init).joined(separator: ", "))")
+                        self.proceedWithConnection(adbPath: adbPath, ip: ip, portsToTry: ports)
+                    }
+                }
+            } else {
+                logBinaryDetection("Device reported no ADB ports and mDNS fallback is disabled.")
+                AppState.shared.adbConnected = false
+                DispatchQueue.main.async { AppState.shared.adbConnecting = false }
+                clearConnectionFlag()
+            }
             return
         }
         
-        logBinaryDetection("Using ADB ports from device: \(device.adbPorts.joined(separator: ", "))")
-        let portsToTry = device.adbPorts.compactMap { UInt16($0) }
+        logBinaryDetection("Using ADB ports from device: \(devicePorts.joined(separator: ", "))")
+        let portsToTry = devicePorts.compactMap { UInt16($0) }
         
         guard !portsToTry.isEmpty else {
             AppState.shared.adbConnectionResult = "Device reported ADB ports but none could be parsed as valid port numbers."
@@ -126,6 +149,35 @@ struct ADBConnector {
             return
         }
         
+        proceedWithConnection(adbPath: adbPath, ip: ip, portsToTry: portsToTry)
+    }
+
+    private static func discoverADBPorts(adbPath: String, ip: String, completion: @escaping ([UInt16]) -> Void) {
+        runADBCommand(adbPath: adbPath, arguments: ["mdns", "services"]) { output in
+            let lines = output.components(separatedBy: .newlines)
+            var ports: [UInt16] = []
+            
+            for line in lines {
+                // Typical line: _adb-tls-connect._tcp.   192.168.1.100:34567
+                if line.contains(ip) {
+                    let parts = line.split(separator: ":")
+                    if parts.count >= 2 {
+                        let portPart = parts.last?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                        // Extract only the numeric part if there's trailing junk
+                        let numericPort = portPart.filter { "0123456789".contains($0) }
+                        if let port = UInt16(numericPort) {
+                            if !ports.contains(port) {
+                                ports.append(port)
+                            }
+                        }
+                    }
+                }
+            }
+            completion(ports)
+        }
+    }
+
+    private static func proceedWithConnection(adbPath: String, ip: String, portsToTry: [UInt16]) {
         // Kill adb server first
         logBinaryDetection("Killing adb server: \(adbPath) kill-server")
         runADBCommand(adbPath: adbPath, arguments: ["kill-server"]) { _ in

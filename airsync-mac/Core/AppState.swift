@@ -37,6 +37,9 @@ class AppState: ObservableObject {
         self.adbEnabled = UserDefaults.standard.bool(forKey: "adbEnabled")
         self.suppressAdbFailureAlerts = UserDefaults.standard.bool(forKey: "suppressAdbFailureAlerts")
         
+        let savedFallbackToMdns = UserDefaults.standard.object(forKey: "fallbackToMdns")
+        self.fallbackToMdns = savedFallbackToMdns == nil ? true : UserDefaults.standard.bool(forKey: "fallbackToMdns")
+
         self.showMenubarText = UserDefaults.standard.bool(forKey: "showMenubarText")
 
         // Default to true if not previously set
@@ -247,6 +250,12 @@ class AppState: ObservableObject {
     @Published var suppressAdbFailureAlerts: Bool {
         didSet {
             UserDefaults.standard.set(suppressAdbFailureAlerts, forKey: "suppressAdbFailureAlerts")
+        }
+    }
+
+    @Published var fallbackToMdns: Bool {
+        didSet {
+            UserDefaults.standard.set(fallbackToMdns, forKey: "fallbackToMdns")
         }
     }
 

@@ -69,6 +69,13 @@ struct SettingsView: View {
                                 }
                                 .frame(maxWidth: 100)
                         }
+
+                        HStack {
+                            Label("Fallback to mdns services", systemImage: "antenna.radiowaves.left.and.right")
+                            Spacer()
+                            Toggle("", isOn: $appState.fallbackToMdns)
+                                .toggleStyle(.switch)
+                        }
                     }
                     .padding()
                     .background(.background.opacity(0.3))
