@@ -87,6 +87,9 @@ class WebSocketServer: ObservableObject {
     private var lastKnownIP: String?
     private var networkMonitorTimer: Timer?
     private let networkCheckInterval: TimeInterval = 10.0 // seconds
+    
+    // Guard flag to prevent double teardown during mirror stop
+    private var isStoppingMirror = false
 
     // Incoming file transfers (Android -> Mac) — keep only IO here; state lives in AppState
     private struct IncomingFileIO {
@@ -100,8 +103,8 @@ class WebSocketServer: ObservableObject {
     // Outgoing transfer ack tracking
     private var outgoingAcks: [String: Set<Int>] = [:]
 
-    private let maxChunkRetries = 3
-    private let ackWaitMs: UInt16 = 2000 // 2s
+    private let maxChunkRetries = 10  // Increased from 3 for better reliability
+    private let ackWaitMs: UInt16 = 3000 // 3s (increased from 2s)
 
     private var lastKnownAdapters: [(name: String, address: String)] = []
     // Track last adapter selection we logged to avoid repetitive logs
@@ -140,7 +143,8 @@ class WebSocketServer: ObservableObject {
         unifiedDecoder.onDecodedFrame = { [weak self] image in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                guard AppState.shared.isMirroring else { return }
+                // Guard against processing frames when not mirroring or stopping
+                guard AppState.shared.isMirroring, !self.isStoppingMirror else { return }
                 
                 AppState.shared.latestMirrorFrame = image
                 if !AppState.shared.isMirrorActive {
@@ -216,6 +220,12 @@ class WebSocketServer: ObservableObject {
         // Stop the server
         server.stop()
         
+        // Clear decoder callback when server stops
+        unifiedDecoder.onDecodedFrame = nil
+        
+        // Reset mirror guard flag
+        isStoppingMirror = false
+        
         // Clear mirror state immediately
         DispatchQueue.main.async {
             AppState.shared.isMirrorActive = false
@@ -239,9 +249,6 @@ class WebSocketServer: ObservableObject {
         #endif
         
         stopNetworkMonitoring()
-        
-        // Clear decoder callback when server stops
-        unifiedDecoder.onDecodedFrame = nil
     }
 
 
@@ -486,7 +493,8 @@ class WebSocketServer: ObservableObject {
                         name: name,
                         ipAddress: ip,
                         port: port,
-                        version: version
+                        version: version,
+                        adbPorts: adbPorts
                     )
                 }
 
@@ -1178,29 +1186,61 @@ class WebSocketServer: ObservableObject {
         case .mirrorStop:
             print("[mirror] 🛑 Received mirrorStop from Android")
             
-            // Update state immediately
-            AppState.shared.isMirrorActive = false
-            AppState.shared.latestMirrorFrame = nil
-            AppState.shared.isMirroring = false
-            AppState.shared.isMirrorRequestPending = false
+            // Guard against duplicate stop events
+            guard !isStoppingMirror else {
+                print("[mirror] 🛑 Already stopping mirror, ignoring duplicate mirrorStop")
+                sendMirrorAck(action: "stop", ok: true)
+                return
+            }
             
-            #if os(macOS)
-            // Simple window cleanup
+            // Check if we're actually mirroring
+            let wasMirroring: Bool
+            if Thread.isMainThread {
+                wasMirroring = AppState.shared.isMirroring || AppState.shared.isMirrorActive
+            } else {
+                var result = false
+                DispatchQueue.main.sync {
+                    result = AppState.shared.isMirroring || AppState.shared.isMirrorActive
+                }
+                wasMirroring = result
+            }
+            
+            guard wasMirroring else {
+                print("[mirror] 🛑 Not mirroring, ignoring mirrorStop")
+                sendMirrorAck(action: "stop", ok: true)
+                return
+            }
+            
+            isStoppingMirror = true
+            
+            // Stop processing decoded frames immediately (before any async work)
+            unifiedDecoder.onDecodedFrame = nil
+            
+            // Update state on main thread
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
+                
+                AppState.shared.isMirrorActive = false
+                AppState.shared.latestMirrorFrame = nil
+                AppState.shared.isMirroring = false
+                AppState.shared.isMirrorRequestPending = false
+                
+                #if os(macOS)
+                // Safe window cleanup
                 if let window = self.mirrorWindow {
                     window.delegate = nil
                     self.mirrorWindowDelegate = nil
                     window.orderOut(nil)
                 }
                 self.mirrorWindow = nil
+                #endif
+                
+                print("[mirror] ✅ Mirror stopped successfully")
+                
+                // Reset guard flag after cleanup
+                self.isStoppingMirror = false
             }
-            #endif
             
-        // Stop processing decoded frames immediately
-        unifiedDecoder.onDecodedFrame = nil
-            
-            print("[mirror] ✅ Mirror stopped successfully")
             sendMirrorAck(action: "stop", ok: true)
             
         case .mirrorStatus:
@@ -1503,9 +1543,40 @@ class WebSocketServer: ObservableObject {
         case .healthSummary:
             print("[websocket] 📊 Received healthSummary message")
             if let dict = message.data.value as? [String: Any] {
-                print("[websocket] 📊 Health data dict: \(dict)")
+                print("[websocket] 📊 Health data dict keys: \(dict.keys.joined(separator: ", "))")
                 
-                // Try to parse date as Int64, Int, or Double
+                // Helper function to safely parse optional Int (handles NSNull and 0 as nil for certain fields)
+                func parseOptionalInt(_ key: String, treatZeroAsNil: Bool = false) -> Int? {
+                    guard let value = dict[key] else { return nil }
+                    if value is NSNull { return nil }
+                    if let intVal = value as? Int {
+                        return (treatZeroAsNil && intVal == 0) ? nil : intVal
+                    }
+                    if let doubleVal = value as? Double {
+                        let intVal = Int(doubleVal)
+                        return (treatZeroAsNil && intVal == 0) ? nil : intVal
+                    }
+                    if let numVal = value as? NSNumber {
+                        let intVal = numVal.intValue
+                        return (treatZeroAsNil && intVal == 0) ? nil : intVal
+                    }
+                    return nil
+                }
+                
+                // Helper function to safely parse optional Double (handles NSNull, NaN, Infinity)
+                func parseOptionalDouble(_ key: String) -> Double? {
+                    guard let value = dict[key] else { return nil }
+                    if value is NSNull { return nil }
+                    var result: Double? = nil
+                    if let doubleVal = value as? Double { result = doubleVal }
+                    else if let intVal = value as? Int { result = Double(intVal) }
+                    else if let numVal = value as? NSNumber { result = numVal.doubleValue }
+                    // Guard against NaN and Infinity
+                    if let r = result, !r.isFinite { return nil }
+                    return result
+                }
+                
+                // Try to parse date as Int64, Int, Double, or NSNumber
                 let dateMs: Int64
                 if let date64 = dict["date"] as? Int64 {
                     dateMs = date64
@@ -1513,40 +1584,49 @@ class WebSocketServer: ObservableObject {
                     dateMs = Int64(dateInt)
                 } else if let dateDouble = dict["date"] as? Double {
                     dateMs = Int64(dateDouble)
+                } else if let dateNum = dict["date"] as? NSNumber {
+                    dateMs = dateNum.int64Value
                 } else {
-                    print("[websocket] ❌ Failed to parse date from health summary - type: \(type(of: dict["date"]))")
+                    print("[websocket] ❌ Failed to parse date from health summary - type: \(type(of: dict["date"])), value: \(String(describing: dict["date"]))")
                     break
                 }
                 
-                print("[websocket] 📊 Parsing health summary with date: \(dateMs)")
+                // Validate date is reasonable (not in distant past or future)
+                let dateSeconds = Double(dateMs) / 1000.0
+                let date = Date(timeIntervalSince1970: dateSeconds)
+                let now = Date()
+                let oneYearAgo = now.addingTimeInterval(-365 * 24 * 60 * 60)
+                let oneWeekFromNow = now.addingTimeInterval(7 * 24 * 60 * 60)
                 
-                // Filter out 0 values for heart rate (treat as nil)
-                let heartRateAvg = dict["heartRateAvg"] as? Int
-                let heartRateMin = dict["heartRateMin"] as? Int
-                let heartRateMax = dict["heartRateMax"] as? Int
+                guard date > oneYearAgo && date < oneWeekFromNow else {
+                    print("[websocket] ❌ Health summary date out of range: \(date)")
+                    break
+                }
+                
+                print("[websocket] 📊 Parsing health summary with date: \(dateMs) (\(date))")
                 
                 let summary = HealthSummary(
-                    date: Date(timeIntervalSince1970: Double(dateMs) / 1000.0),
-                    steps: dict["steps"] as? Int,
-                    distance: dict["distance"] as? Double,
-                    calories: dict["calories"] as? Int,
-                    activeMinutes: dict["activeMinutes"] as? Int,
-                    heartRateAvg: (heartRateAvg == 0) ? nil : heartRateAvg,
-                    heartRateMin: (heartRateMin == 0) ? nil : heartRateMin,
-                    heartRateMax: (heartRateMax == 0) ? nil : heartRateMax,
-                    sleepDuration: dict["sleepDuration"] as? Int,
-                    floorsClimbed: dict["floorsClimbed"] as? Int,
-                    weight: dict["weight"] as? Double,
-                    bloodPressureSystolic: dict["bloodPressureSystolic"] as? Int,
-                    bloodPressureDiastolic: dict["bloodPressureDiastolic"] as? Int,
-                    oxygenSaturation: dict["oxygenSaturation"] as? Double,
-                    restingHeartRate: dict["restingHeartRate"] as? Int,
-                    vo2Max: dict["vo2Max"] as? Double,
-                    bodyTemperature: dict["bodyTemperature"] as? Double,
-                    bloodGlucose: dict["bloodGlucose"] as? Double,
-                    hydration: dict["hydration"] as? Double
+                    date: date,
+                    steps: parseOptionalInt("steps"),
+                    distance: parseOptionalDouble("distance"),
+                    calories: parseOptionalInt("calories"),
+                    activeMinutes: parseOptionalInt("activeMinutes"),
+                    heartRateAvg: parseOptionalInt("heartRateAvg", treatZeroAsNil: true),
+                    heartRateMin: parseOptionalInt("heartRateMin", treatZeroAsNil: true),
+                    heartRateMax: parseOptionalInt("heartRateMax", treatZeroAsNil: true),
+                    sleepDuration: parseOptionalInt("sleepDuration"),
+                    floorsClimbed: parseOptionalInt("floorsClimbed"),
+                    weight: parseOptionalDouble("weight"),
+                    bloodPressureSystolic: parseOptionalInt("bloodPressureSystolic", treatZeroAsNil: true),
+                    bloodPressureDiastolic: parseOptionalInt("bloodPressureDiastolic", treatZeroAsNil: true),
+                    oxygenSaturation: parseOptionalDouble("oxygenSaturation"),
+                    restingHeartRate: parseOptionalInt("restingHeartRate", treatZeroAsNil: true),
+                    vo2Max: parseOptionalDouble("vo2Max"),
+                    bodyTemperature: parseOptionalDouble("bodyTemperature"),
+                    bloodGlucose: parseOptionalDouble("bloodGlucose"),
+                    hydration: parseOptionalDouble("hydration")
                 )
-                print("[websocket] 📊 Created HealthSummary: steps=\(summary.steps ?? 0), calories=\(summary.calories ?? 0), distance=\(summary.distance ?? 0)")
+                print("[websocket] 📊 Created HealthSummary: steps=\(summary.steps ?? 0), calories=\(summary.calories ?? 0), distance=\(String(format: "%.2f", summary.distance ?? 0))")
                 LiveNotificationManager.shared.handleHealthSummary(summary)
                 print("[websocket] 📊 Health summary sent to LiveNotificationManager")
             } else {
@@ -1557,11 +1637,36 @@ class WebSocketServer: ObservableObject {
             print("[websocket] Received health data records")
             // Handle detailed health data if needed
             
+        // MARK: - Audio Mirroring Handlers
+        case .audioStart:
+            if let dict = message.data.value as? [String: Any] {
+                let sampleRate = dict["sampleRate"] as? Int ?? 44100
+                let channels = dict["channels"] as? Int ?? 2
+                let bitsPerSample = dict["bitsPerSample"] as? Int ?? 16
+                print("[audio] 🔊 Audio stream starting: sampleRate=\(sampleRate), channels=\(channels), bits=\(bitsPerSample)")
+                AudioStreamPlayer.shared.configure(sampleRate: sampleRate, channels: channels, bitsPerSample: bitsPerSample)
+                AudioStreamPlayer.shared.start()
+            }
+            
+        case .audioStop:
+            print("[audio] 🔇 Audio stream stopped")
+            AudioStreamPlayer.shared.stop()
+            
+        case .audioFrame:
+            if let dict = message.data.value as? [String: Any],
+               let base64Frame = dict["frame"] as? String {
+                let frameIndex = dict["index"] as? Int64 ?? 0
+                AudioStreamPlayer.shared.receiveFrame(base64Frame, frameIndex: frameIndex)
+            }
+            
         // Ignore requests sent from Android (shouldn't happen)
         case .requestSmsThreads, .requestSmsMessages, .sendSms, .markSmsRead,
              .requestCallLogs, .markCallLogRead, .callAction,
              .requestHealthSummary, .requestHealthData:
             print("[websocket] Received request message from Android (ignored)")
+            
+        case .callControl:
+            print("[websocket] Received callControl from Android (ignored on Mac)")
             
         @unknown default:
             print("[websocket] Warning: unhandled message type: \(message.type)")
@@ -1581,13 +1686,15 @@ class WebSocketServer: ObservableObject {
                let port = message.data["port"] as? Int {
 
                 let version = message.data["version"] as? String ?? "2.0.0"
+                let adbPorts = message.data["adbPorts"] as? [String] ?? []
 
                 DispatchQueue.main.async {
                     AppState.shared.device = Device(
                         name: name,
                         ipAddress: ip,
                         port: port,
-                        version: version
+                        version: version,
+                        adbPorts: adbPorts
                     )
 
                     if let base64 = message.data["wallpaper"] as? String {
@@ -1966,19 +2073,13 @@ class WebSocketServer: ObservableObject {
         }
         
         // Send message with error handling
-        do {
-            if let key = symmetricKey, let encrypted = encryptMessage(message, using: key) {
-                print("[websocket] [send] encrypted len=\(encrypted.count)")
-                first.writeText(encrypted)
-            } else {
-                let encryptionState = (symmetricKey != nil) ? "enabled-but-failed" : "disabled"
-                print("[websocket] [send] plain len=\(message.count) (encryption=\(encryptionState))")
-                first.writeText(message)
-            }
-        } catch {
-            print("[websocket] [send] Error sending message: \(error)")
-            // Remove the failed session
-            sessionBoxes.removeAll(where: { $0.session === first })
+        if let key = symmetricKey, let encrypted = encryptMessage(message, using: key) {
+            print("[websocket] [send] encrypted len=\(encrypted.count)")
+            first.writeText(encrypted)
+        } else {
+            let encryptionState = (symmetricKey != nil) ? "enabled-but-failed" : "disabled"
+            print("[websocket] [send] plain len=\(message.count) (encryption=\(encryptionState))")
+            first.writeText(message)
         }
     }
     
@@ -2172,7 +2273,22 @@ class WebSocketServer: ObservableObject {
     // MARK: - Mirror Request/Response Helpers
 
     func sendMirrorRequest(action: String, mode: String? = nil, package: String? = nil, options: [String: Any] = [:]) {
+        // Guard against multiple mirror requests
         if action == "start" {
+            var shouldProceed = false
+            if Thread.isMainThread {
+                shouldProceed = !AppState.shared.isMirrorRequestPending && !AppState.shared.isMirroring
+            } else {
+                DispatchQueue.main.sync {
+                    shouldProceed = !AppState.shared.isMirrorRequestPending && !AppState.shared.isMirroring
+                }
+            }
+            
+            guard shouldProceed else {
+                print("[mirror] ⚠️ Mirror request already pending or active, ignoring duplicate request")
+                return
+            }
+            
             DispatchQueue.main.async { AppState.shared.isMirrorRequestPending = true }
         }
         // Build a WebSocket URL to our existing /socket endpoint
@@ -2195,6 +2311,12 @@ class WebSocketServer: ObservableObject {
         // Provide sensible defaults if missing
         if combinedOptions["fps"] == nil { combinedOptions["fps"] = 30 }
         if combinedOptions["maxWidth"] == nil { combinedOptions["maxWidth"] = 1280 }
+        
+        // Enable auto-approve by default for seamless mirroring
+        if combinedOptions["autoApprove"] == nil { combinedOptions["autoApprove"] = true }
+        
+        // Enable audio mirroring by default
+        if combinedOptions["enableAudio"] == nil { combinedOptions["enableAudio"] = true }
 
         // Prefer bitrateKbps if caller set a general bitrate
         if combinedOptions["bitrateKbps"] == nil, let bitrate = combinedOptions["bitrate"] as? Int, bitrate > 0 {
@@ -2259,12 +2381,28 @@ class WebSocketServer: ObservableObject {
     // MARK: - Mirror UI Presentation
     private func presentMirrorWindowIfNeeded() {
         #if os(macOS)
-        // If a window already exists and is visible, bring it to front
-        if let win = mirrorWindow, win.isVisible {
-            win.level = .floating
-            win.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+        // Ensure we're on main thread
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.presentMirrorWindowIfNeeded()
+            }
             return
+        }
+        
+        // Safely check if window exists and is visible
+        if let win = mirrorWindow {
+            // Check if window is still valid before accessing isVisible
+            if win.contentView == nil {
+                // Window is invalid, clear reference and create new one
+                mirrorWindow = nil
+                mirrorWindowDelegate = nil
+                print("[mirror] Previous window invalid, creating new one")
+            } else if win.isVisible {
+                win.level = .floating
+                win.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+                return
+            }
         }
 
         // Create a new window hosting the mirror view
@@ -2661,8 +2799,34 @@ class WebSocketServer: ObservableObject {
 
         var nextIndexToSend = 0
         let startTime = Date()
+        
+        // Helper to check if we have an active connection
+        func hasActiveConnection() -> Bool {
+            return !self.activeSessions.isEmpty
+        }
+        
+        // Helper to wait for connection with timeout
+        func waitForConnection(timeoutSeconds: Double = 10) -> Bool {
+            let deadline = Date().addingTimeInterval(timeoutSeconds)
+            while Date() < deadline {
+                if hasActiveConnection() {
+                    return true
+                }
+                usleep(100_000) // 100ms
+            }
+            return false
+        }
 
-        func sendChunkAt(_ idx: Int) {
+        func sendChunkAt(_ idx: Int) -> Bool {
+            // Wait for connection if not available
+            if !hasActiveConnection() {
+                print("[websocket] (file-transfer) No connection, waiting...")
+                if !waitForConnection() {
+                    print("[websocket] (file-transfer) Connection timeout for chunk \(idx)")
+                    return false
+                }
+            }
+            
             let start = idx * chunkSize
             let end = min(start + chunkSize, totalSize)
             let chunk = data.subdata(in: start..<end)
@@ -2671,16 +2835,43 @@ class WebSocketServer: ObservableObject {
             sendToFirstAvailable(message: chunkMessage)
             sentBuffer[idx] = (payload: base64, attempts: 1, lastSent: Date())
             print("[websocket] (file-transfer) -> send chunk id=\(transferId) index=\(idx) size=\(chunk.count)")
+            return true
         }
 
         // Prime the window
         while nextIndexToSend < totalChunks && nextIndexToSend < windowSize {
-            sendChunkAt(nextIndexToSend)
+            if !sendChunkAt(nextIndexToSend) {
+                print("[websocket] (file-transfer) Failed to send initial chunk \(nextIndexToSend), aborting")
+                AppState.shared.failTransfer(id: transferId, reason: "Connection lost")
+                return
+            }
             nextIndexToSend += 1
         }
 
         // Loop until all chunks are acked
+        var connectionLostRetries = 0
+        let maxConnectionRetries = 5
+        
         while true {
+            // Check for connection loss
+            if !hasActiveConnection() {
+                connectionLostRetries += 1
+                if connectionLostRetries > maxConnectionRetries {
+                    print("[websocket] (file-transfer) Connection lost too many times, aborting transfer")
+                    AppState.shared.failTransfer(id: transferId, reason: "Connection lost")
+                    outgoingAcks.removeValue(forKey: transferId)
+                    return
+                }
+                print("[websocket] (file-transfer) Connection lost, waiting for reconnection (attempt \(connectionLostRetries)/\(maxConnectionRetries))...")
+                if !waitForConnection(timeoutSeconds: 30) {
+                    print("[websocket] (file-transfer) Reconnection timeout, aborting transfer")
+                    AppState.shared.failTransfer(id: transferId, reason: "Connection timeout")
+                    outgoingAcks.removeValue(forKey: transferId)
+                    return
+                }
+                print("[websocket] (file-transfer) Reconnected, resuming transfer")
+            }
+            
             let acked = outgoingAcks[transferId] ?? []
 
             // compute baseIndex = lowest unacked index (first missing starting from 0)
@@ -2702,7 +2893,10 @@ class WebSocketServer: ObservableObject {
 
             // send new chunks while window has space
             while nextIndexToSend < totalChunks && (nextIndexToSend - baseIndex) < windowSize {
-                sendChunkAt(nextIndexToSend)
+                if !sendChunkAt(nextIndexToSend) {
+                    print("[websocket] (file-transfer) Failed to send chunk \(nextIndexToSend)")
+                    // Don't abort immediately, let the retry logic handle it
+                }
                 nextIndexToSend += 1
             }
 
@@ -2714,9 +2908,19 @@ class WebSocketServer: ObservableObject {
                 if elapsedMs > Double(ackWaitMs) {
                     if entry.attempts >= maxChunkRetries {
                         print("[websocket] (file-transfer) Failed to get ack for chunk \(idx) after \(maxChunkRetries) attempts")
+                        AppState.shared.failTransfer(id: transferId, reason: "Chunk \(idx) failed after \(maxChunkRetries) retries")
                         outgoingAcks.removeValue(forKey: transferId)
                         return
                     }
+                    
+                    // Wait for connection before retransmit
+                    if !hasActiveConnection() {
+                        print("[websocket] (file-transfer) No connection for retransmit, waiting...")
+                        if !waitForConnection(timeoutSeconds: 15) {
+                            continue // Skip this retransmit attempt, will try again next loop
+                        }
+                    }
+                    
                     // retransmit
                     let start = idx * chunkSize
                     let end = min(start + chunkSize, totalSize)
@@ -2953,7 +3157,17 @@ class WebSocketServer: ObservableObject {
     }
     
     func stopMirroring() {
+        // Guard against re-entrant teardown
+        guard !isStoppingMirror else {
+            print("[mirror] 🛑 Already stopping mirror, ignoring duplicate call")
+            return
+        }
+        isStoppingMirror = true
+        
         print("[mirror] 🛑 Mac requesting to stop mirroring")
+        
+        // Stop processing decoded frames immediately (before any async work)
+        unifiedDecoder.onDecodedFrame = nil
         
         // Send stop message to Android
         let message = """
@@ -2964,36 +3178,45 @@ class WebSocketServer: ObservableObject {
         """
         sendToFirstAvailable(message: message)
         
-        // Update state immediately
-        AppState.shared.isMirrorRequestPending = false
-        AppState.shared.isMirroring = false
-        AppState.shared.isMirrorActive = false
-        AppState.shared.latestMirrorFrame = nil
-        
-        #if os(macOS)
-        // Simple window cleanup
-        if let window = self.mirrorWindow {
-            window.delegate = nil
-            self.mirrorWindowDelegate = nil
-            window.orderOut(nil)
-        }
-        self.mirrorWindow = nil
-        #endif
-        
-        // Stop processing decoded frames immediately
-        unifiedDecoder.onDecodedFrame = nil
-        
-        print("[mirror] ✅ Stop mirroring completed")
-        
-        // Disconnect after a short delay to allow the stop message to be sent
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            AppState.shared.disconnectDevice()
+        // Update state on main thread
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            AppState.shared.isMirrorRequestPending = false
+            AppState.shared.isMirroring = false
+            AppState.shared.isMirrorActive = false
+            AppState.shared.latestMirrorFrame = nil
+            
+            #if os(macOS)
+            // Safe window cleanup
+            if let window = self.mirrorWindow {
+                window.delegate = nil
+                self.mirrorWindowDelegate = nil
+                window.orderOut(nil)
+            }
+            self.mirrorWindow = nil
+            #endif
+            
+            print("[mirror] ✅ Stop mirroring completed")
+            
+            // Reset guard flag after cleanup
+            self.isStoppingMirror = false
         }
     }
     
     // Stop mirroring without closing window (called from window delegate)
     func stopMirroringWithoutClosingWindow() {
+        // Guard against re-entrant teardown
+        guard !isStoppingMirror else {
+            print("[mirror] 🛑 Already stopping mirror, ignoring duplicate call")
+            return
+        }
+        isStoppingMirror = true
+        
         print("[mirror] 🛑 Stopping mirroring (window already closing)")
+        
+        // Stop processing decoded frames immediately (before any async work)
+        unifiedDecoder.onDecodedFrame = nil
         
         // Send stop message to Android
         let message = """
@@ -3004,16 +3227,20 @@ class WebSocketServer: ObservableObject {
         """
         sendToFirstAvailable(message: message)
         
-        // Update state immediately
-        AppState.shared.isMirrorRequestPending = false
-        AppState.shared.isMirroring = false
-        AppState.shared.isMirrorActive = false
-        AppState.shared.latestMirrorFrame = nil
-        
-        // Stop processing decoded frames immediately
-        unifiedDecoder.onDecodedFrame = nil
-        
-        print("[mirror] ✅ Stop mirroring without closing window completed")
+        // Update state on main thread
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            AppState.shared.isMirrorRequestPending = false
+            AppState.shared.isMirroring = false
+            AppState.shared.isMirrorActive = false
+            AppState.shared.latestMirrorFrame = nil
+            
+            print("[mirror] ✅ Stop mirroring without closing window completed")
+            
+            // Reset guard flag after cleanup
+            self.isStoppingMirror = false
+        }
     }
     
     // MARK: - Mac Media Control

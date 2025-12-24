@@ -14,6 +14,7 @@ struct InteractiveMirrorView: View {
     @State private var screenSize: CGSize = .zero
     @State private var showControls: Bool = true
     @State private var dimAndroidScreen: Bool = false
+    @State private var keyboardMonitor: Any? = nil
     
     var body: some View {
         GeometryReader { geometry in
@@ -81,6 +82,10 @@ struct InteractiveMirrorView: View {
             .onAppear {
                 screenSize = geometry.size
                 PerformanceMonitor.shared.reset()
+                setupKeyboardMonitor()
+            }
+            .onDisappear {
+                removeKeyboardMonitor()
             }
             .onChange(of: geometry.size) { _, newSize in
                 screenSize = newSize
@@ -97,51 +102,92 @@ struct InteractiveMirrorView: View {
                 NSApp.keyWindow?.makeFirstResponder(NSApp.keyWindow?.contentView)
                 NSApp.keyWindow?.makeKey()
             }
+        }
+    }
+    
+    private func setupKeyboardMonitor() {
+        // Remove existing monitor if any
+        removeKeyboardMonitor()
+        
+        // Add local event monitor for keyboard
+        keyboardMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
+            // Only handle if mirror view is active
+            guard appState.latestMirrorFrame != nil else { return event }
             
-            // Add local event monitor for keyboard
-            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            if event.type == .keyDown {
                 return self.handleKeyPress(event)
             }
+            return event
+        }
+        
+        print("[mirror] ⌨️ Keyboard monitor installed")
+    }
+    
+    private func removeKeyboardMonitor() {
+        if let monitor = keyboardMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyboardMonitor = nil
+            print("[mirror] ⌨️ Keyboard monitor removed")
         }
     }
     
     private func handleKeyPress(_ event: NSEvent) -> NSEvent? {
-        print("[mirror] 🎹 Key pressed: keyCode=\(event.keyCode), characters=\(event.characters ?? "nil")")
+        // Check for modifier keys (Cmd, Ctrl, Alt)
+        let hasModifier = event.modifierFlags.contains(.command) || 
+                          event.modifierFlags.contains(.control) ||
+                          event.modifierFlags.contains(.option)
+        
+        // Pass through system shortcuts (Cmd+C, Cmd+V, etc.)
+        if hasModifier {
+            return event
+        }
         
         // Handle special keys
         switch event.keyCode {
         case 51: // Delete/Backspace
-            print("[mirror] 📤 Sending DELETE key")
             WebSocketServer.shared.sendKeyEvent(keyCode: 67, text: "") // KEYCODE_DEL
-            return nil // Consume event
-        case 53: // Escape
-            print("[mirror] 📤 Sending HOME action")
-            WebSocketServer.shared.sendNavAction("home")
+            return nil
+        case 53: // Escape - send BACK
+            WebSocketServer.shared.sendNavAction("back")
             return nil
         case 36: // Return/Enter
-            print("[mirror] 📤 Sending ENTER key")
             WebSocketServer.shared.sendKeyEvent(keyCode: 66, text: "\n") // KEYCODE_ENTER
             return nil
         case 48: // Tab
-            print("[mirror] 📤 Sending TAB key")
             WebSocketServer.shared.sendKeyEvent(keyCode: 61, text: "\t") // KEYCODE_TAB
             return nil
         case 49: // Space
-            print("[mirror] 📤 Sending SPACE key")
             WebSocketServer.shared.sendKeyEvent(keyCode: 62, text: " ") // KEYCODE_SPACE
+            return nil
+        case 123: // Left arrow
+            WebSocketServer.shared.sendKeyEvent(keyCode: 21, text: "") // KEYCODE_DPAD_LEFT
+            return nil
+        case 124: // Right arrow
+            WebSocketServer.shared.sendKeyEvent(keyCode: 22, text: "") // KEYCODE_DPAD_RIGHT
+            return nil
+        case 125: // Down arrow
+            WebSocketServer.shared.sendKeyEvent(keyCode: 20, text: "") // KEYCODE_DPAD_DOWN
+            return nil
+        case 126: // Up arrow
+            WebSocketServer.shared.sendKeyEvent(keyCode: 19, text: "") // KEYCODE_DPAD_UP
             return nil
         default:
             // Handle regular text input
             if let characters = event.characters, !characters.isEmpty {
-                print("[mirror] 📤 Sending text: \(characters)")
                 WebSocketServer.shared.sendTextInput(text: characters)
-                return nil // Consume event
+                return nil
             }
         }
         return event
     }
     
     private func handleTap(at point: CGPoint, in imageSize: CGSize) {
+        // Guard against zero image size to prevent division by zero
+        guard imageSize.width > 0, imageSize.height > 0 else {
+            print("[mirror] ⚠️ Ignoring tap - image size is zero")
+            return
+        }
+        
         // Convert Mac coordinates to Android pixel coordinates
         // Get actual Android screen size from latest frame if available
         let androidWidth: CGFloat
@@ -160,6 +206,12 @@ struct InteractiveMirrorView: View {
         let scaleX = androidWidth / imageSize.width
         let scaleY = androidHeight / imageSize.height
         
+        // Guard against infinite or NaN scale values
+        guard scaleX.isFinite, scaleY.isFinite else {
+            print("[mirror] ⚠️ Ignoring tap - invalid scale values")
+            return
+        }
+        
         let androidX = Int(point.x * scaleX)
         let androidY = Int(point.y * scaleY)
         
@@ -167,6 +219,12 @@ struct InteractiveMirrorView: View {
     }
     
     private func handleDrag(from start: CGPoint, to end: CGPoint, in imageSize: CGSize) {
+        // Guard against zero image size to prevent division by zero
+        guard imageSize.width > 0, imageSize.height > 0 else {
+            print("[mirror] ⚠️ Ignoring drag - image size is zero")
+            return
+        }
+        
         // Get actual Android screen size from latest frame if available
         let androidWidth: CGFloat
         let androidHeight: CGFloat
@@ -182,6 +240,12 @@ struct InteractiveMirrorView: View {
         let scaleX = androidWidth / imageSize.width
         let scaleY = androidHeight / imageSize.height
         
+        // Guard against infinite or NaN scale values
+        guard scaleX.isFinite, scaleY.isFinite else {
+            print("[mirror] ⚠️ Ignoring drag - invalid scale values")
+            return
+        }
+        
         let x1 = Int(start.x * scaleX)
         let y1 = Int(start.y * scaleY)
         let x2 = Int(end.x * scaleX)
@@ -195,6 +259,12 @@ struct InteractiveMirrorView: View {
     }
     
     private func handleScroll(delta: CGFloat, at point: CGPoint, in imageSize: CGSize) {
+        // Guard against zero image size to prevent division by zero
+        guard imageSize.width > 0, imageSize.height > 0 else {
+            print("[mirror] ⚠️ Ignoring scroll - image size is zero")
+            return
+        }
+        
         // Scroll is typically implemented as a swipe gesture
         let androidWidth: CGFloat
         let androidHeight: CGFloat
@@ -210,6 +280,12 @@ struct InteractiveMirrorView: View {
         let scaleX = androidWidth / imageSize.width
         let scaleY = androidHeight / imageSize.height
         
+        // Guard against infinite or NaN scale values
+        guard scaleX.isFinite, scaleY.isFinite else {
+            print("[mirror] ⚠️ Ignoring scroll - invalid scale values")
+            return
+        }
+        
         let x = Int(point.x * scaleX)
         let y = Int(point.y * scaleY)
         
@@ -222,7 +298,7 @@ struct InteractiveMirrorView: View {
     }
 }
 
-// SwiftUI-based interactive image view
+// SwiftUI-based interactive image view with proper scroll monitor lifecycle
 struct InteractiveImageView: View {
     let image: NSImage
     @Binding var screenSize: CGSize
@@ -231,13 +307,16 @@ struct InteractiveImageView: View {
     let onScroll: (CGFloat, CGPoint, CGSize) -> Void
     
     @State private var dragStart: CGPoint?
-    @GestureState private var dragLocation: CGPoint?
+    @State private var scrollMonitor: Any?
+    @State private var currentGeometry: CGSize = .zero
     
     var body: some View {
         GeometryReader { geometry in
             Image(nsImage: image)
                 .resizable()
-                .scaledToFit() // This is what makes it work correctly!
+                .interpolation(.high)
+                .antialiased(true)
+                .scaledToFit()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.black)
                 .contentShape(Rectangle())
@@ -253,10 +332,7 @@ struct InteractiveImageView: View {
                             let end = value.location
                             let distance = hypot(end.x - start.x, end.y - start.y)
                             
-                            // Calculate image rect
-                            let imageSize = image.size
-                            let viewSize = geometry.size
-                            let imageRect = calculateImageRect(imageSize: imageSize, viewSize: viewSize)
+                            let imageRect = calculateImageRect(imageSize: image.size, viewSize: geometry.size)
                             
                             if distance < 5 {
                                 // It's a tap
@@ -281,39 +357,66 @@ struct InteractiveImageView: View {
                             dragStart = nil
                         }
                 )
+                .onChange(of: geometry.size) { _, newSize in
+                    currentGeometry = newSize
+                }
                 .onAppear {
-                    // Enable scroll events
-                    NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
-                        let location = NSEvent.mouseLocation
-                        // Convert to view coordinates
-                        if let window = NSApp.keyWindow {
-                            let windowPoint = window.convertPoint(fromScreen: location)
-                            let imageSize = image.size
-                            let viewSize = geometry.size
-                            let imageRect = calculateImageRect(imageSize: imageSize, viewSize: viewSize)
-                            
-                            let relativePoint = CGPoint(
-                                x: windowPoint.x - imageRect.origin.x,
-                                y: windowPoint.y - imageRect.origin.y
-                            )
-                            onScroll(event.scrollingDeltaY, relativePoint, imageRect.size)
-                        }
-                        return event
-                    }
+                    currentGeometry = geometry.size
+                    setupScrollMonitor()
+                }
+                .onDisappear {
+                    removeScrollMonitor()
                 }
         }
     }
     
+    private func setupScrollMonitor() {
+        // Remove existing monitor first
+        removeScrollMonitor()
+        
+        // Capture values needed for scroll handling
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [self] event in
+            // Use stored geometry to avoid capturing stale values
+            guard currentGeometry.width > 0, currentGeometry.height > 0 else { return event }
+            
+            let location = NSEvent.mouseLocation
+            if let window = NSApp.keyWindow {
+                let windowPoint = window.convertPoint(fromScreen: location)
+                let imageRect = calculateImageRect(imageSize: image.size, viewSize: currentGeometry)
+                
+                // Only handle scroll if within image bounds
+                if imageRect.contains(windowPoint) {
+                    let relativePoint = CGPoint(
+                        x: windowPoint.x - imageRect.origin.x,
+                        y: windowPoint.y - imageRect.origin.y
+                    )
+                    onScroll(event.scrollingDeltaY, relativePoint, imageRect.size)
+                }
+            }
+            return event
+        }
+    }
+    
+    private func removeScrollMonitor() {
+        if let monitor = scrollMonitor {
+            NSEvent.removeMonitor(monitor)
+            scrollMonitor = nil
+        }
+    }
+    
     private func calculateImageRect(imageSize: CGSize, viewSize: CGSize) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0,
+              viewSize.width > 0, viewSize.height > 0 else {
+            return .zero
+        }
+        
         let imageAspect = imageSize.width / imageSize.height
         let viewAspect = viewSize.width / viewSize.height
-        
-        var rect = CGRect.zero
         
         if imageAspect > viewAspect {
             // Image is wider - fit to width
             let height = viewSize.width / imageAspect
-            rect = CGRect(
+            return CGRect(
                 x: 0,
                 y: (viewSize.height - height) / 2,
                 width: viewSize.width,
@@ -322,15 +425,13 @@ struct InteractiveImageView: View {
         } else {
             // Image is taller - fit to height
             let width = viewSize.height * imageAspect
-            rect = CGRect(
+            return CGRect(
                 x: (viewSize.width - width) / 2,
                 y: 0,
                 width: width,
                 height: viewSize.height
             )
         }
-        
-        return rect
     }
 }
 #endif
