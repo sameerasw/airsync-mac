@@ -2198,9 +2198,55 @@ class WebSocketServer: ObservableObject {
         }
         """
         sendToFirstAvailable(message: message)
+        
+        // Also try via ADB if connected (more reliable)
+        if AppState.shared.adbConnected {
+            sendTextViaADB(text: text)
+        }
+    }
+    
+    /// Send text input via ADB shell command
+    private func sendTextViaADB(text: String) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let adbPath = ADBConnector.findExecutable(named: "adb", fallbackPaths: ADBConnector.possibleADBPaths) else {
+                return
+            }
+            
+            let adbIP = AppState.shared.adbConnectedIP.isEmpty ? AppState.shared.device?.ipAddress ?? "" : AppState.shared.adbConnectedIP
+            guard !adbIP.isEmpty else { return }
+            
+            let adbPort = AppState.shared.adbPort
+            let fullAddress = "\(adbIP):\(adbPort)"
+            
+            // Escape special characters for shell
+            let escapedText = text
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "'", with: "\\'")
+                .replacingOccurrences(of: " ", with: "%s") // ADB uses %s for space
+                .replacingOccurrences(of: "&", with: "\\&")
+                .replacingOccurrences(of: "|", with: "\\|")
+                .replacingOccurrences(of: ";", with: "\\;")
+                .replacingOccurrences(of: "(", with: "\\(")
+                .replacingOccurrences(of: ")", with: "\\)")
+                .replacingOccurrences(of: "<", with: "\\<")
+                .replacingOccurrences(of: ">", with: "\\>")
+            
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: adbPath)
+            process.arguments = ["-s", fullAddress, "shell", "input", "text", escapedText]
+            
+            do {
+                try process.run()
+                // Don't wait - fire and forget for responsiveness
+            } catch {
+                print("[mirror] ADB text input failed: \(error.localizedDescription)")
+            }
+        }
     }
     
     func sendKeyEvent(keyCode: Int, text: String) {
+        // First try via WebSocket to Android accessibility service
         let escapedText = text.replacingOccurrences(of: "\"", with: "\\\"")
         let message = """
         {
@@ -2213,6 +2259,37 @@ class WebSocketServer: ObservableObject {
         }
         """
         sendToFirstAvailable(message: message)
+        
+        // Also try via ADB if connected (more reliable for key events)
+        if AppState.shared.adbConnected {
+            sendKeyEventViaADB(keyCode: keyCode)
+        }
+    }
+    
+    /// Send key event via ADB shell command
+    private func sendKeyEventViaADB(keyCode: Int) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let adbPath = ADBConnector.findExecutable(named: "adb", fallbackPaths: ADBConnector.possibleADBPaths) else {
+                return
+            }
+            
+            let adbIP = AppState.shared.adbConnectedIP.isEmpty ? AppState.shared.device?.ipAddress ?? "" : AppState.shared.adbConnectedIP
+            guard !adbIP.isEmpty else { return }
+            
+            let adbPort = AppState.shared.adbPort
+            let fullAddress = "\(adbIP):\(adbPort)"
+            
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: adbPath)
+            process.arguments = ["-s", fullAddress, "shell", "input", "keyevent", String(keyCode)]
+            
+            do {
+                try process.run()
+                // Don't wait - fire and forget for responsiveness
+            } catch {
+                print("[mirror] ADB key event failed: \(error.localizedDescription)")
+            }
+        }
     }
     
     func setAndroidScreenState(screenOff: Bool) {
