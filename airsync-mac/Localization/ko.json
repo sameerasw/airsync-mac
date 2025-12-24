@@ -9,6 +9,7 @@
   "onboarding.title": "AirSync 시작하기",
   "notifications.empty.title": "모두 확인했습니다!",
   "notifications.empty.emoji": "└(=^‥^=)┐",
+  "notifications.calls": "Calls",
   "notifications.actions.hide": "숨기기",
   "notifications.actions.dismiss": "무시",
   "notifications.tab": "알림",
