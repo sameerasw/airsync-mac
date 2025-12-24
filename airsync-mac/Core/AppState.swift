@@ -801,9 +801,8 @@ class AppState: ObservableObject {
         pasteboard.setString(text, forType: .string)
         self.lastClipboardValue = text
 
-        // Only handle URLs specially if the whole text is a valid http/https URL
-        // AND the user has AirSync+ (isPlus). Otherwise show a regular clipboard update.
-        if let url = exactURL(from: text), self.isPlus {
+        // Only handle URLs specially if the whole text is a valid http/https URL.
+        if let url = exactURL(from: text) {
             if self.autoOpenLinks {
                 // Auto-open the URL without showing a notification
                 NSWorkspace.shared.open(url)

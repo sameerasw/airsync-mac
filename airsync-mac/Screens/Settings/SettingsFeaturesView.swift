@@ -280,9 +280,9 @@ struct SettingsFeaturesView: View {
                 Spacer()
                 Toggle("", isOn: $appState.autoOpenLinks)
                     .toggleStyle(.switch)
-                    .disabled(!appState.isClipboardSyncEnabled || !appState.isPlus)
+                    .disabled(!appState.isClipboardSyncEnabled)
             }
-            .opacity(appState.isClipboardSyncEnabled && appState.isPlus ? 1.0 : 0.5)
+            .opacity(appState.isClipboardSyncEnabled ? 1.0 : 0.5)
         }
         .padding()
 
