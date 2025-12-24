@@ -16,22 +16,28 @@ final class UnifiedFrameDecoder: NSObject {
     private let h264Decoder = H264Decoder.shared
     private let decodeQueue = DispatchQueue(label: "unified.decode.queue", qos: .userInteractive)
     
-    // Frame throttling to prevent overwhelming the UI
+    // Frame throttling - adaptive based on decode performance
     private var lastFrameDisplayTime = Date.distantPast
-    private let minFrameInterval: TimeInterval = 1.0 / 60.0 // Max 60 FPS on display (smooth)
+    private var targetFrameInterval: TimeInterval = 1.0 / 60.0 // Target 60 FPS
+    private let minFrameInterval: TimeInterval = 1.0 / 120.0 // Allow up to 120 FPS bursts
+    
+    // Double buffering for smoother display
+    private var pendingFrame: NSImage?
+    private let frameLock = NSLock()
     
     // Performance tracking
     private var frameCount: Int = 0
     private var droppedFrames: Int = 0
     private var lastLogTime = Date()
     private var totalBytes: Int64 = 0
+    private var decodeTimeSum: TimeInterval = 0
     
     override init() {
         super.init()
         
         // Set up H.264 decoder callback
         h264Decoder.onDecodedFrame = { [weak self] nsImage in
-            self?.onDecodedFrame?(nsImage)
+            self?.deliverFrame(nsImage)
         }
         
         print("[UnifiedDecoder] ⚡ Initialized with JPEG (primary) and H.264 (fallback) support")
@@ -41,6 +47,8 @@ final class UnifiedFrameDecoder: NSObject {
     func decode(frameData: Data, format: String? = nil, isConfig: Bool = false) {
         decodeQueue.async { [weak self] in
             guard let self = self else { return }
+            
+            let decodeStart = Date()
             
             // Track data
             self.totalBytes += Int64(frameData.count)
@@ -65,6 +73,9 @@ final class UnifiedFrameDecoder: NSObject {
                 }
             }
             
+            // Track decode time for adaptive throttling
+            self.decodeTimeSum += Date().timeIntervalSince(decodeStart)
+            
             // Track performance
             self.frameCount += 1
             let now = Date()
@@ -72,16 +83,27 @@ final class UnifiedFrameDecoder: NSObject {
                 let elapsed = now.timeIntervalSince(self.lastLogTime)
                 let fps = Double(self.frameCount) / elapsed
                 let kbps = (Double(self.totalBytes) * 8 / 1024) / elapsed
-                let avgSizeKB = Double(self.totalBytes) / Double(self.frameCount) / 1024
+                let avgSizeKB = Double(self.totalBytes) / Double(max(1, self.frameCount)) / 1024
+                let avgDecodeMs = (self.decodeTimeSum / Double(max(1, self.frameCount))) * 1000
+                
                 if self.droppedFrames > 0 {
                     let dropRate = Double(self.droppedFrames) / Double(self.frameCount + self.droppedFrames) * 100
-                    print("[UnifiedDecoder] 📊 Performance: \(String(format: "%.1f", fps)) FPS, \(String(format: "%.0f", kbps)) kbps, avg: \(String(format: "%.0f", avgSizeKB))KB, dropped: \(String(format: "%.1f", dropRate))%")
+                    print("[UnifiedDecoder] 📊 Performance: \(String(format: "%.1f", fps)) FPS, \(String(format: "%.0f", kbps)) kbps, avg: \(String(format: "%.0f", avgSizeKB))KB, decode: \(String(format: "%.1f", avgDecodeMs))ms, dropped: \(String(format: "%.1f", dropRate))%")
                 } else {
-                    print("[UnifiedDecoder] 📊 Performance: \(String(format: "%.1f", fps)) FPS, \(String(format: "%.0f", kbps)) kbps, avg: \(String(format: "%.0f", avgSizeKB))KB")
+                    print("[UnifiedDecoder] 📊 Performance: \(String(format: "%.1f", fps)) FPS, \(String(format: "%.0f", kbps)) kbps, avg: \(String(format: "%.0f", avgSizeKB))KB, decode: \(String(format: "%.1f", avgDecodeMs))ms")
                 }
+                
+                // Adaptive frame interval based on actual performance
+                if fps > 55 {
+                    self.targetFrameInterval = 1.0 / 60.0
+                } else if fps > 25 {
+                    self.targetFrameInterval = 1.0 / 30.0
+                }
+                
                 self.frameCount = 0
                 self.droppedFrames = 0
                 self.totalBytes = 0
+                self.decodeTimeSum = 0
                 self.lastLogTime = now
             }
         }
@@ -89,31 +111,45 @@ final class UnifiedFrameDecoder: NSObject {
     
     /// Decode JPEG frame - optimized for performance with smart throttling
     private func decodeJPEG(_ data: Data) {
-        // Use CGImageSource for faster decoding
-        guard let imageSource = CGImageSourceCreateWithData(data as CFData, nil),
-              let cgImage = CGImageSourceCreateImageAtIndex(imageSource, 0, nil) else {
+        // Use CGImageSource for faster decoding with optimized options
+        let options: [CFString: Any] = [
+            kCGImageSourceShouldCache: false,
+            kCGImageSourceShouldAllowFloat: false
+        ]
+        
+        guard let imageSource = CGImageSourceCreateWithData(data as CFData, options as CFDictionary),
+              let cgImage = CGImageSourceCreateImageAtIndex(imageSource, 0, options as CFDictionary) else {
             print("[UnifiedDecoder] ❌ Failed to decode JPEG frame")
             return
         }
         
-        // Check if we should throttle (but always decode to avoid stuck frames)
+        let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+        deliverFrame(nsImage)
+    }
+    
+    /// Deliver frame with smart throttling
+    private func deliverFrame(_ image: NSImage) {
         let now = Date()
         let timeSinceLastFrame = now.timeIntervalSince(lastFrameDisplayTime)
         
+        // Smart throttling: allow frames through if enough time has passed
+        // or if we haven't shown a frame recently (prevent stuck frames)
         if timeSinceLastFrame < minFrameInterval {
+            // Too fast, drop this frame
             droppedFrames += 1
-            // Still update occasionally to prevent stuck frames
-            if droppedFrames % 3 != 0 {
-                return
-            }
+            
+            // But store it as pending in case we need it
+            frameLock.lock()
+            pendingFrame = image
+            frameLock.unlock()
+            return
         }
         
-        let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
         lastFrameDisplayTime = now
         
-        // Update UI on main thread without blocking
+        // Deliver on main thread without blocking decode queue
         DispatchQueue.main.async { [weak self] in
-            self?.onDecodedFrame?(nsImage)
+            self?.onDecodedFrame?(image)
         }
     }
     
@@ -150,10 +186,17 @@ final class UnifiedFrameDecoder: NSObject {
     /// Reset decoder state
     func reset() {
         decodeQueue.async { [weak self] in
-            self?.h264Decoder.reset()
-            self?.frameCount = 0
-            self?.totalBytes = 0
-            self?.lastLogTime = Date()
+            guard let self = self else { return }
+            self.h264Decoder.reset()
+            self.frameCount = 0
+            self.droppedFrames = 0
+            self.totalBytes = 0
+            self.decodeTimeSum = 0
+            self.lastLogTime = Date()
+            self.lastFrameDisplayTime = Date.distantPast
+            self.frameLock.lock()
+            self.pendingFrame = nil
+            self.frameLock.unlock()
             print("[UnifiedDecoder] 🔄 Reset decoder state")
         }
     }
@@ -161,7 +204,21 @@ final class UnifiedFrameDecoder: NSObject {
     /// Flush pending frames
     func flush() {
         decodeQueue.async { [weak self] in
-            self?.h264Decoder.flush()
+            guard let self = self else { return }
+            
+            // Deliver any pending frame
+            self.frameLock.lock()
+            let pending = self.pendingFrame
+            self.pendingFrame = nil
+            self.frameLock.unlock()
+            
+            if let frame = pending {
+                DispatchQueue.main.async { [weak self] in
+                    self?.onDecodedFrame?(frame)
+                }
+            }
+            
+            self.h264Decoder.flush()
             print("[UnifiedDecoder] ✅ Flushed decoder")
         }
     }
