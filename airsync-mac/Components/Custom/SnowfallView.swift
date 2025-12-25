@@ -1,70 +1,62 @@
-//
-//  SnowfallView.swift
-//  airsync-mac
-//
-//  Created by Antigravity on 2025-12-24.
-//
-
 import SwiftUI
+import AppKit
+import QuartzCore
 
-struct Snowflake: Identifiable {
-    let id = UUID()
-    var x: Double
-    var y: Double
-    var size: Double
-    var speed: Double
-    var opacity: Double
-    var swing: Double
-    var swingOffset: Double
-}
+struct SnowfallView: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        view.wantsLayer = true
 
-struct SnowfallView: View {
-    @State private var flakes: [Snowflake] = []
-    private let flakeCount = 20
-    
-    var body: some View {
-        TimelineView(.animation) { timeline in
-            Canvas { context, size in
-                let now = timeline.date.timeIntervalSinceReferenceDate
-                
-                for flake in flakes {
-                    let xOffset = sin(now * flake.swing + flake.swingOffset) * 10
-                    let currentX = flake.x * size.width + xOffset
-                    let currentY = (flake.y * size.height + now * flake.speed * 50).truncatingRemainder(dividingBy: size.height + 20) - 10
-                    
-                    let rect = CGRect(x: currentX, y: currentY, width: flake.size, height: flake.size)
-                    context.opacity = flake.opacity
-                    context.fill(Path(ellipseIn: rect), with: .color(.white))
-                }
-            }
-        }
-        .onAppear {
-            generateFlakes()
-        }
-        .allowsHitTesting(false)
+        let emitterLayer = CAEmitterLayer()
+
+        emitterLayer.emitterPosition = CGPoint(x: 110, y: 470)
+        emitterLayer.emitterSize = CGSize(width: 400, height: 1) // Wider than the view
+        emitterLayer.emitterShape = .line
+
+        let cell = CAEmitterCell()
+        cell.contents = createSnowflakeImage()
+        cell.birthRate = 4
+        cell.lifetime = 20.0
+
+        cell.velocity = 5
+        cell.velocityRange = 15
+        cell.yAcceleration = -5
+
+        cell.emissionLongitude = -.pi / 2
+        cell.emissionRange = 20
+
+        cell.scale = 0.05
+        cell.scaleRange = 0.03
+        cell.alphaRange = 0.5
+        cell.alphaSpeed = -0.04
+
+        emitterLayer.emitterCells = [cell]
+
+        emitterLayer.frame = CGRect(x: 0, y: 0, width: 220, height: 460)
+        view.layer?.addSublayer(emitterLayer)
+
+        return view
     }
-    
-    private func generateFlakes() {
-        var newFlakes: [Snowflake] = []
-        for _ in 0..<flakeCount {
-            newFlakes.append(Snowflake(
-                x: Double.random(in: 0...1),
-                y: Double.random(in: 0...1),
-                size: Double.random(in: 1...3),
-                speed: Double.random(in: 0.5...1.5),
-                opacity: Double.random(in: 0.2...0.6),
-                swing: Double.random(in: 0.5...1.5),
-                swingOffset: Double.random(in: 0...Double.pi * 2)
-            ))
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private func createSnowflakeImage() -> CGImage? {
+        let size = CGSize(width: 20, height: 20)
+        let image = NSImage(size: size, flipped: false) { rect in
+            NSColor.white.set()
+            NSBezierPath(ovalIn: rect).fill()
+            return true
         }
-        flakes = newFlakes
+        return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
     }
 }
 
 #Preview {
     ZStack {
-        Color.black
+        Color.black.ignoresSafeArea()
         SnowfallView()
+            .frame(width: 220, height: 460)
+//            .border(Color.gray, width: 1)
+            .clipped()
     }
-    .frame(width: 200, height: 400)
 }

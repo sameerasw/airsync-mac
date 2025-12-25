@@ -36,13 +36,15 @@ struct PhoneView: View {
                 .animation(.easeOut(duration: 0.22), value: tiltY)
                 .animation(.easeOut(duration: 0.25), value: isInteracting)
 
+
+                // Seasonal Snowfall Overlay
+                SnowfallView()
+
                 // Foreground content
                 ScreenView()
                     .padding(.horizontal, 4)
                     .transition(.blurReplace)
                 
-                // Seasonal Snowfall Overlay
-                SnowfallView()
             }
             .frame(width: cardWidth, height: cardHeight)
             .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
