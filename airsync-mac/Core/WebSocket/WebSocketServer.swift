@@ -3026,7 +3026,6 @@ class WebSocketServer: ObservableObject {
         sendToFirstAvailable(message: initMessage)
 
         // Send chunks using a simple sliding window to allow multiple in-flight chunks
-        let windowSize = 8
         let totalChunks = (totalSize + chunkSize - 1) / chunkSize
         outgoingAcksLock.lock()
         outgoingAcks[transferId] = []
@@ -3074,8 +3073,9 @@ class WebSocketServer: ObservableObject {
         }
 
         // Main Send Loop
-        let ackWaitMs = 10000 // 10s wait for ack before retry
+        let ackWaitMs = 30000 // 30s wait for ack before retry (increased for stability)
         let maxChunkRetries = 5
+        let windowSize = 12 // Increased slightly from 8 to improve throughput
         
         while true {
             // Check if connection is still alive
