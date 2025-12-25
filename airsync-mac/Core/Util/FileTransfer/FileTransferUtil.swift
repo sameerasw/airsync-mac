@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+internal import Combine
 
 extension AppState {
     enum TransferDirection: String, Codable { case outgoing, incoming }
@@ -34,6 +35,7 @@ extension AppState {
 
     func startOutgoingTransfer(id: String, name: String, size: Int, mime: String, chunkSize: Int) {
         DispatchQueue.main.async {
+            self.objectWillChange.send()
             self.transfers[id] = FileTransferSession(
                 id: id,
                 name: name,
@@ -50,6 +52,7 @@ extension AppState {
 
     func startIncomingTransfer(id: String, name: String, size: Int, mime: String) {
         DispatchQueue.main.async {
+            self.objectWillChange.send()
             self.transfers[id] = FileTransferSession(
                 id: id,
                 name: name,
@@ -68,6 +71,7 @@ extension AppState {
         DispatchQueue.main.async {
             guard var s = self.transfers[id] else { return }
             s.bytesTransferred = min(bytesTransferred, s.size)
+            self.objectWillChange.send()
             self.transfers[id] = s
         }
     }
@@ -76,6 +80,7 @@ extension AppState {
         DispatchQueue.main.async {
             guard var s = self.transfers[id] else { return }
             s.bytesTransferred = min(receivedBytes, s.size)
+            self.objectWillChange.send()
             self.transfers[id] = s
         }
     }

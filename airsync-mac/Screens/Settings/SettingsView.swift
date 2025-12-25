@@ -1,14 +1,17 @@
 import SwiftUI
+import Foundation
 
 struct SettingsView: View {
     @ObservedObject var appState = AppState.shared
-    @AppStorage("SUEnableAutomaticChecks") private var automaticallyChecksForUpdates = true
-    @AppStorage("SUAutomaticallyUpdate") private var automaticallyDownloadsUpdates = false
+    @State private var showMirror: Bool = false
 
     @State private var deviceName: String = ""
     @State private var port: String = "6996"
     @State private var availableAdapters: [(name: String, address: String)] = []
     @State private var currentIPAddress: String = "N/A"
+    
+    @AppStorage("automaticallyChecksForUpdates") private var automaticallyChecksForUpdates: Bool = true
+    @AppStorage("automaticallyDownloadsUpdates") private var automaticallyDownloadsUpdates: Bool = false
 
 
     var body: some View {
@@ -37,7 +40,7 @@ struct SettingsView: View {
                             .pickerStyle(MenuPickerStyle())
                         }
                         .onAppear {
-                            availableAdapters = WebSocketServer.shared.getAvailableNetworkAdapters()
+                            availableAdapters = WebSocketServer.shared.getAvailableNetworkAdapters() 
                             currentIPAddress = WebSocketServer.shared.getLocalIPAddress(adapterName: appState.selectedNetworkAdapterName) ?? "N/A"
                         }
                         .onChange(of: appState.selectedNetworkAdapterName) { _, _ in
@@ -53,6 +56,34 @@ struct SettingsView: View {
                             // Refresh QR code since IP address may have changed
                             appState.shouldRefreshQR = true
                         }
+
+                        Divider()
+
+                        // MARK: - Mirror Settings (Hidden)
+                        // Commented out - Mirror settings moved to separate view
+                        /*
+                        // Mirror method picker directly under Network
+                        HStack {
+                            Label("Mirror method", systemImage: "display")
+                            Spacer()
+                            Picker("", selection: Binding(
+                                get: { UserDefaults.standard.string(forKey: "connection.mode") ?? "remote" },
+                                set: { UserDefaults.standard.set($0, forKey: "connection.mode") }
+                            )) {
+                                Text("Remote Connect").tag("remote")
+                                Text("ADB Connect").tag("adb")
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(maxWidth: 260)
+                        }
+
+                        // Inline remote settings when Remote is chosen
+                        if (UserDefaults.standard.string(forKey: "connection.mode") ?? "remote") == "remote" {
+                            // Reuse MirrorSettingsView content without its own mode picker
+                            MirrorSettingsView(showModePicker: false)
+                                .padding(.top, 8)
+                        }
+                        */
 
                         ConnectionInfoText(
                             label: "IP Address",
@@ -105,6 +136,11 @@ struct SettingsView: View {
                         .cornerRadius(12.0)
 
                     Spacer(minLength: 32)
+                    
+                    // Bluetooth Pairing
+                    BluetoothPairingView()
+
+                    Spacer(minLength: 32)
 
                     // App icons
                     AppIconView()
@@ -127,6 +163,21 @@ struct SettingsView: View {
                             Spacer()
                             Toggle("", isOn: $appState.hideDockIcon)
                                 .toggleStyle(.switch)
+                        }
+
+                        HStack{
+                            Label("Dock Size", systemImage: "rectangle.dock")
+                            Spacer()
+                            Slider(
+                                value: $appState.dockSize,
+                                in: 32...64,
+                                step: 4
+                            )
+                            .frame(width: 200)
+                            
+                            Text("\(Int(appState.dockSize))px")
+                                .font(.caption)
+                                .frame(width: 40, alignment: .trailing)
                         }
 
                         HStack{
@@ -205,8 +256,16 @@ struct SettingsView: View {
                 }
                 .padding()
 
+                Spacer(minLength: 100 + (appState.dockSize - 48))
             }
         .frame(minWidth: 300)
+        .onReceive(Foundation.NotificationCenter.default.publisher(for: Foundation.Notification.Name.mirrorShouldOpen)) { _ in
+            showMirror = true
+        }
+        .sheet(isPresented: $showMirror) {
+            // Replace MirrorView() with your actual mirror rendering view if different
+            MirrorView()
+        }
         .onAppear {
             if let device = appState.myDevice {
                 deviceName = device.name
@@ -220,4 +279,35 @@ struct SettingsView: View {
         }
     }
 
+}
+
+extension Foundation.Notification.Name {
+    static let mirrorShouldOpen = Foundation.Notification.Name("MirrorShouldOpen")
+}
+
+extension WebSocketServer {
+    /// Handles a mirror frame. If the format is 'h264', logs and skips. Otherwise logs the data for now.
+    public func handleMirrorFrame(base64: String, format: String?) {
+        // As soon as a frame is received, notify UI to present the mirror view
+        DispatchQueue.main.async {
+            Foundation.NotificationCenter.default.post(name: Foundation.Notification.Name.mirrorShouldOpen, object: nil)
+        }
+
+        let fmt = format?.lowercased()
+
+        guard let data = Data(base64Encoded: base64) else {
+            print("[websocket] mirrorFrame base64 decode failed, format=\(fmt ?? "unknown")")
+            return
+        }
+
+        if fmt == "h264" || fmt == "video/avc" || fmt == "avc" {
+            // Assume Annex B NAL stream. Feed to decoder.
+            H264Decoder.shared.feedAnnexB(data)
+            return
+        }
+
+        // For demonstration: just log that a frame was received with the given format
+        print("[websocket] mirrorFrame received frame. format=\(fmt ?? "unknown"), bytes=\(data.count)")
+        // In a full implementation, decode (e.g. jpeg/png) and display in the Mirror UI
+    }
 }

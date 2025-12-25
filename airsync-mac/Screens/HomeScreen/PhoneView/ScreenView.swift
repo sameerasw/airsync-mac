@@ -48,26 +48,32 @@ struct ScreenView: View {
                         modifiers: .command
                     )
 
-
-                    if appState.adbConnected{
-                        GlassButtonView(
-                            label: "Mirror",
-                            systemImage: "apps.iphone",
-                            action: {
+                    // Mirror button - uses scrcpy when ADB connected, WebSocket mirror otherwise
+                    GlassButtonView(
+                        label: "Mirror",
+                        systemImage: "apps.iphone",
+                        action: {
+                            if appState.adbConnected {
+                                // Use scrcpy when ADB is connected
                                 ADBConnector
                                     .startScrcpy(
                                         ip: appState.device?.ipAddress ?? "",
                                         port: appState.adbPort,
                                         deviceName: appState.device?.name ?? "My Phone"
                                     )
+                            } else {
+                                // Use WebSocket mirror when ADB is not connected
+                                WebSocketServer.shared.startMirrorAndPresentUI()
                             }
-                        )
-                        .transition(.identity)
-                        .keyboardShortcut(
-                            "p",
-                            modifiers: .command
-                        )
-                        .contextMenu {
+                        }
+                    )
+                    .transition(.identity)
+                    .keyboardShortcut(
+                        "p",
+                        modifiers: .command
+                    )
+                    .contextMenu {
+                        if appState.adbConnected {
                             Button("Desktop Mode") {
                                 ADBConnector.startScrcpy(
                                     ip: appState.device?.ipAddress ?? "",
@@ -77,10 +83,6 @@ struct ScreenView: View {
                                 )
                             }
                         }
-                        .keyboardShortcut(
-                            "p",
-                            modifiers: [.command, .shift]
-                        )
                     }
                 }
             }

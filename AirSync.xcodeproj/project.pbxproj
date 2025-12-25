@@ -7,6 +7,15 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		9AF199F92EAD0C7200599860 /* CoreMediaIO.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9AF199F72EAD0C6E00599860 /* CoreMediaIO.framework */; };
+		9AF199FA2EAD0C7200599860 /* CoreMediaIO.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 9AF199F72EAD0C6E00599860 /* CoreMediaIO.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		9AF199FF2EAD0D1200599860 /* VideoToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9AF199FB2EAD0D0700599860 /* VideoToolbox.framework */; };
+		9AF19A002EAD0D1200599860 /* VideoToolbox.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 9AF199FB2EAD0D0700599860 /* VideoToolbox.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		9AF19A012EAD0D1400599860 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9AF199FD2EAD0D0F00599860 /* AVFoundation.framework */; };
+		9AF19A022EAD0D1400599860 /* AVFoundation.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 9AF199FD2EAD0D0F00599860 /* AVFoundation.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		9AF19A042EAD0D1E00599860 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9AF19A032EAD0D1E00599860 /* AppKit.framework */; };
+		9AFC81BC2EAD0BDB005FAE5B /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9AFC81BA2EAD0B91005FAE5B /* CoreMedia.framework */; };
+		9AFC81BD2EAD0BDB005FAE5B /* CoreMedia.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 9AFC81BA2EAD0B91005FAE5B /* CoreMedia.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		B995A3332E4D2B3F00FA7A41 /* AppIcon-uni.icon in Resources */ = {isa = PBXBuildFile; fileRef = B995A3322E4D2B3F00FA7A41 /* AppIcon-uni.icon */; };
 		B9AEBC0A2E6235D3006BA027 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B9AEBC092E6235D3006BA027 /* Sparkle */; };
 		B9B1C00D2E94E15D0005F6CB /* LottieUI in Frameworks */ = {isa = PBXBuildFile; productRef = B9B1C00C2E94E15D0005F6CB /* LottieUI */; };
@@ -14,7 +23,29 @@
 		B9D742FC2E39CF850053128A /* Swifter in Frameworks */ = {isa = PBXBuildFile; productRef = B9D742FB2E39CF850053128A /* Swifter */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		9AFC81BE2EAD0BDB005FAE5B /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 8;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				9AF19A022EAD0D1400599860 /* AVFoundation.framework in Embed Frameworks */,
+				9AF199FA2EAD0C7200599860 /* CoreMediaIO.framework in Embed Frameworks */,
+				9AFC81BD2EAD0BDB005FAE5B /* CoreMedia.framework in Embed Frameworks */,
+				9AF19A002EAD0D1200599860 /* VideoToolbox.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		9AF199F72EAD0C6E00599860 /* CoreMediaIO.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMediaIO.framework; path = System/Library/Frameworks/CoreMediaIO.framework; sourceTree = SDKROOT; };
+		9AF199FB2EAD0D0700599860 /* VideoToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = VideoToolbox.framework; path = System/Library/Frameworks/VideoToolbox.framework; sourceTree = SDKROOT; };
+		9AF199FD2EAD0D0F00599860 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
+		9AF19A032EAD0D1E00599860 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
+		9AFC81BA2EAD0B91005FAE5B /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
 		B9673B572E35A2A1006D284A /* AirSync.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AirSync.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B995A3322E4D2B3F00FA7A41 /* AppIcon-uni.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = "AppIcon-uni.icon"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -23,10 +54,7 @@
 		B933ED362E3BEC21007393CB /* Exceptions for "airsync-mac" folder in "AirSync" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Configs/Secrets.example.xcconfig,
-				Configs/Secrets.xcconfig,
-				Configs/SelfCompiled.xcconfig,
-				Configs/Shared.xcconfig,
+				Core/RemoteViewerClient.swift,
 				Info.plist,
 			);
 			target = B9673B562E35A2A1006D284A /* AirSync */;
@@ -49,21 +77,39 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9AF19A012EAD0D1400599860 /* AVFoundation.framework in Frameworks */,
+				9AF199FF2EAD0D1200599860 /* VideoToolbox.framework in Frameworks */,
 				B9AEBC0A2E6235D3006BA027 /* Sparkle in Frameworks */,
 				B9D742FC2E39CF850053128A /* Swifter in Frameworks */,
 				B9C3181E2E37AA1D00367F16 /* QRCode in Frameworks */,
 				B9B1C00D2E94E15D0005F6CB /* LottieUI in Frameworks */,
+				9AF19A042EAD0D1E00599860 /* AppKit.framework in Frameworks */,
+				9AF199F92EAD0C7200599860 /* CoreMediaIO.framework in Frameworks */,
+				9AFC81BC2EAD0BDB005FAE5B /* CoreMedia.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		9AFC81B92EAD0B91005FAE5B /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				9AF19A032EAD0D1E00599860 /* AppKit.framework */,
+				9AF199FD2EAD0D0F00599860 /* AVFoundation.framework */,
+				9AF199FB2EAD0D0700599860 /* VideoToolbox.framework */,
+				9AF199F72EAD0C6E00599860 /* CoreMediaIO.framework */,
+				9AFC81BA2EAD0B91005FAE5B /* CoreMedia.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		B9673B4E2E35A2A1006D284A = {
 			isa = PBXGroup;
 			children = (
 				B995A3322E4D2B3F00FA7A41 /* AppIcon-uni.icon */,
 				B9673B592E35A2A1006D284A /* airsync-mac */,
+				9AFC81B92EAD0B91005FAE5B /* Frameworks */,
 				B9673B582E35A2A1006D284A /* Products */,
 			);
 			sourceTree = "<group>";
@@ -86,6 +132,7 @@
 				B9673B532E35A2A1006D284A /* Sources */,
 				B9673B542E35A2A1006D284A /* Frameworks */,
 				B9673B552E35A2A1006D284A /* Resources */,
+				9AFC81BE2EAD0BDB005FAE5B /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -237,18 +284,25 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
-				AUTOMATION_APPLE_EVENTS = NO;
+				AUTOMATION_APPLE_EVENTS = YES;
 				CODE_SIGN_ENTITLEMENTS = "";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 17;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = WCB4HTANA6;
+				DEVELOPMENT_TEAM = TD49A7CHD2;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = YES;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = YES;
+				ENABLE_RESOURCE_ACCESS_LOCATION = YES;
 				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "";
 				INFOPLIST_FILE = "airsync-mac/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = AirSync;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -258,8 +312,10 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = "";
 				MACOSX_DEPLOYMENT_TARGET = 14.5;
-				MARKETING_VERSION = 2.2.0;
+				MARKETING_VERSION = 2.1.3;
+				OTHER_LDFLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = "sameerasw.airsync-mac";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -272,6 +328,8 @@
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_ENABLE_EXPLICIT_MODULES = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -413,18 +471,25 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
-				AUTOMATION_APPLE_EVENTS = NO;
+				AUTOMATION_APPLE_EVENTS = YES;
 				CODE_SIGN_ENTITLEMENTS = "";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 17;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = WCB4HTANA6;
+				DEVELOPMENT_TEAM = TD49A7CHD2;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = YES;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = YES;
+				ENABLE_RESOURCE_ACCESS_LOCATION = YES;
 				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "";
 				INFOPLIST_FILE = "airsync-mac/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = AirSync;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -434,8 +499,10 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = "";
 				MACOSX_DEPLOYMENT_TARGET = 14.5;
-				MARKETING_VERSION = 2.2.0;
+				MARKETING_VERSION = 2.1.3;
+				OTHER_LDFLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = "sameerasw.airsync-mac";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -448,6 +515,8 @@
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_ENABLE_EXPLICIT_MODULES = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -461,18 +530,25 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
-				AUTOMATION_APPLE_EVENTS = NO;
+				AUTOMATION_APPLE_EVENTS = YES;
 				CODE_SIGN_ENTITLEMENTS = "";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 17;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = WCB4HTANA6;
+				DEVELOPMENT_TEAM = TD49A7CHD2;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = YES;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = YES;
+				ENABLE_RESOURCE_ACCESS_LOCATION = YES;
 				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "";
 				INFOPLIST_FILE = "airsync-mac/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = AirSync;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -482,20 +558,24 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = "";
 				MACOSX_DEPLOYMENT_TARGET = 14.5;
-				MARKETING_VERSION = 2.2.0;
+				MARKETING_VERSION = 2.1.3;
+				OTHER_LDFLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = "sameerasw.airsync-mac";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
 				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
-				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = YES;
 				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
 				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
 				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_ENABLE_EXPLICIT_MODULES = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 			};

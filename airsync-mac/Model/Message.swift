@@ -15,9 +15,12 @@ enum MessageType: String, Codable {
     case notificationUpdate
     case status
     case dismissalResponse
+    case mediaControlRequest
     case mediaControlResponse
     case macMediaControl
     case macMediaControlResponse
+    case mirrorRequest
+    case mirrorResponse
     case appIcons
     case clipboardUpdate
     case callEvent = "call_event"
@@ -31,9 +34,59 @@ enum MessageType: String, Codable {
     case transferVerified
     // wake up / quick connect
     case wakeUpRequest
+    case wallpaperResponse
+    // ADB-less mirroring
+    case mirrorStart
+    case mirrorStop
+    case mirrorFrame
+    case mirrorStatus
+    // remote connect event exchange
+    case remoteConnectRequest
+    case remoteConnectResponse
+    case inputEvent
+    case navAction
+    case launchApp
+    case screenshotRequest
+    case screenshotResponse
+    // SMS/Messaging
+    case requestSmsThreads
+    case smsThreads
+    case requestSmsMessages
+    case smsMessages
+    case sendSms
+    case smsSendResponse
+    case smsReceived
+    case markSmsRead
+    // Call Logs
+    case requestCallLogs
+    case callLogs
+    case markCallLogRead
+    // Live Call Notifications
+    case callNotification
+    case callAction
+    case callActionResponse
+    case initiateCall
+    case initiateCallResponse
+    // Health Data
+    case requestHealthSummary
+    case healthSummary
+    case requestHealthData
+    case healthData
+    // Audio Mirroring
+    case audioStart
+    case audioStop
+    case audioFrame
+    case callMicAudio
+    case callAudioControl
 }
 
 struct Message: Codable {
     let type: MessageType
     let data: CodableValue
+}
+
+// Flexible message structure for JSONSerialization parsing
+struct FlexibleMessage {
+    let type: MessageType
+    let data: [String: Any]
 }

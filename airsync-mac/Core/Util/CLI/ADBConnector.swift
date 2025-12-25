@@ -65,6 +65,7 @@ struct ADBConnector {
         let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return output
     }
+    
     // Check if binary is available in PATH
     static func isExecutableAvailable(_ name: String) -> Bool {
         let data = getExecutablePath(name)
@@ -152,27 +153,40 @@ struct ADBConnector {
         proceedWithConnection(adbPath: adbPath, ip: ip, portsToTry: portsToTry)
     }
 
+    // Discover ADB ports via mDNS
     private static func discoverADBPorts(adbPath: String, ip: String, completion: @escaping ([UInt16]) -> Void) {
+        logBinaryDetection("Running mDNS discovery: \(adbPath) mdns services")
+        
         runADBCommand(adbPath: adbPath, arguments: ["mdns", "services"]) { output in
-            let lines = output.components(separatedBy: .newlines)
+            let trimmedMDNSOutput = output.trimmingCharacters(in: .whitespacesAndNewlines)
             var ports: [UInt16] = []
             
+            let lines = trimmedMDNSOutput.components(separatedBy: .newlines)
+            var tlsPort: UInt16?
+            var normalPort: UInt16?
+
             for line in lines {
-                // Typical line: _adb-tls-connect._tcp.   192.168.1.100:34567
-                if line.contains(ip) {
-                    let parts = line.split(separator: ":")
-                    if parts.count >= 2 {
-                        let portPart = parts.last?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                        // Extract only the numeric part if there's trailing junk
-                        let numericPort = portPart.filter { "0123456789".contains($0) }
-                        if let port = UInt16(numericPort) {
-                            if !ports.contains(port) {
-                                ports.append(port)
-                            }
-                        }
+                guard let range = line.range(of: "\(ip):") else { continue }
+
+                let remaining = line[range.upperBound...]
+                if let portStr = remaining.split(separator: " ").first,
+                   let port = UInt16(portStr) {
+                    if line.contains("_adb-tls-connect._tcp"), tlsPort == nil {
+                        tlsPort = port
+                    } else if line.contains("_adb._tcp"), normalPort == nil {
+                        normalPort = port
                     }
                 }
             }
+            
+            // Prefer TLS port, then normal port
+            if let tls = tlsPort {
+                ports.append(tls)
+            }
+            if let normal = normalPort {
+                ports.append(normal)
+            }
+            
             completion(ports)
         }
     }
@@ -216,7 +230,9 @@ struct ADBConnector {
                     AppState.shared.adbConnectionResult = trimmedOutput
                     logBinaryDetection("(/^▽^)/ ADB connection successful to \(fullAddress)")
                     AppState.shared.adbConnecting = false
+                    connectionLock.lock()
                     clearConnectionFlag()
+                    connectionLock.unlock()
                 } else {
                     // Connection failed - show error popup only on final failure
                     AppState.shared.adbConnected = false
@@ -234,7 +250,9 @@ Possible fixes:
 - Disable custom port and use automatic discovery
 """
                     AppState.shared.adbConnecting = false
+                    connectionLock.lock()
                     clearConnectionFlag()
+                    connectionLock.unlock()
                     
                     // Show alert popup for custom port failure (unless suppressed)
                     if !AppState.shared.suppressAdbFailureAlerts {
@@ -322,7 +340,9 @@ Please see the ADB console for more details.
                     }
                 }
             }
+            connectionLock.lock()
             clearConnectionFlag()
+            connectionLock.unlock()
             return
         }
 
@@ -347,7 +367,9 @@ Please see the ADB console for more details.
                     AppState.shared.adbConnectionResult = trimmedOutput
                     logBinaryDetection("(/^▽^)/ ADB connection successful to \(fullAddress)")
                     AppState.shared.adbConnecting = false
+                    connectionLock.lock()
                     clearConnectionFlag()
+                    connectionLock.unlock()
                 }
                 else if trimmedOutput.contains("protocol fault") || trimmedOutput.contains("connection reset by peer") {
                     // Connection exists elsewhere, show error and try next port
@@ -565,11 +587,9 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
             }
         }
     }
-}
-
-// MARK: - Alert Helper
-private extension ADBConnector {
-    static func presentScrcpyAlert(title: String, informative: String) {
+    
+    // MARK: - Alert Helper
+    private static func presentScrcpyAlert(title: String, informative: String) {
         // Present immediately on main thread (caller ensures main queue)
         let alert = NSAlert()
         alert.alertStyle = .warning

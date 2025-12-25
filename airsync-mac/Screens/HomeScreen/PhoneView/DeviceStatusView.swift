@@ -50,7 +50,7 @@ struct DeviceStatusView: View {
                     iconOnly: true,
                     primary: false,
                     action: {
-                        if AppState.shared.isPlus && AppState.shared.licenseCheck {
+                        if AppState.shared.isPlus || !AppState.shared.licenseCheck {
                             if let currentVolume = appState.status?.music.volume {
                                 tempVolume = Double(currentVolume)
                             }
@@ -184,3 +184,4 @@ struct DeviceStatusView: View {
 #Preview {
     DeviceStatusView()
 }
+

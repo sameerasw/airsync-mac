@@ -65,6 +65,23 @@ struct CallWindowView: View {
         // Call is accepted when it's offhook for an incoming call
         callEvent.state == .offhook && callEvent.direction == .incoming
     }
+    
+    var displayName: String {
+        // If contact name exists, use it
+        if !callEvent.contactName.isEmpty {
+            return callEvent.contactName
+        }
+        // Prefer original number over normalized if available
+        if !callEvent.number.isEmpty {
+            return callEvent.number
+        }
+        return callEvent.normalizedNumber
+    }
+    
+    var displayNumber: String {
+        // Show original number for display (more recognizable to user)
+        callEvent.number.isEmpty ? callEvent.normalizedNumber : callEvent.number
+    }
 
     var body: some View {
         ZStack {
@@ -99,28 +116,92 @@ struct CallWindowView: View {
                             .foregroundColor(.blue)
                     }
 
-                    Text(callEvent.contactName)
+                    Text(displayName)
                         .font(.largeTitle)
 
-                    if !callEvent.normalizedNumber.isEmpty {
-                        Text(callEvent.normalizedNumber)
+                    if !displayNumber.isEmpty {
+                        Text(displayNumber)
                             .font(.caption)
                             .foregroundColor(.secondary)
                             .lineLimit(2)
                             .truncationMode(.middle)
                             .onAppear {
-                                print("[CallWindow] Displaying normalizedNumber: '\(self.callEvent.normalizedNumber)' (length: \(self.callEvent.normalizedNumber.count))")
+                                print("[CallWindow] Displaying number: '\(self.displayNumber)'")
                             }
                     }
                 }
 
-                // Action buttons (only show when ringing/offhook AND ADB is connected)
-                if showActionButtons && appState.adbConnected {
-                    HStack(spacing: 16) {
+                // Action buttons (show when ringing/offhook - works via WebSocket or ADB)
+                if showActionButtons {
+                    VStack(spacing: 12) {
+                        HStack(spacing: 16) {
 
-                        if callEvent.direction == .incoming {
-                            if isCallAccepted {
-                                // Call is accepted - show only End button
+                            if callEvent.direction == .incoming {
+                                if isCallAccepted {
+                                    // Call is accepted - show End button and audio controls
+                                    
+                                    // Mic toggle
+                                    GlassButtonView(
+                                        label: CallAudioManager.shared.isMicEnabled ? "Mute" : "Mic",
+                                        systemImage: CallAudioManager.shared.isMicEnabled ? "mic.fill" : "mic.slash.fill",
+                                        size: .large,
+                                        action: {
+                                            CallAudioManager.shared.toggleMic()
+                                        }
+                                    )
+                                    .foregroundStyle(CallAudioManager.shared.isMicEnabled ? .blue : .secondary)
+                                    .transition(.identity)
+                                    
+                                    GlassButtonView(
+                                        label: "End",
+                                        systemImage: "phone.down.fill",
+                                        size: .extraLarge,
+                                        action: {
+                                            appState.sendCallAction(callEvent.eventId, action: "end")
+                                        }
+                                    )
+                                    .foregroundStyle(.red)
+                                    .transition(.identity)
+                                } else {
+                                    // Call is ringing - show Accept and Decline buttons
+                                    GlassButtonView(
+                                        label: "Accept",
+                                        systemImage: "phone.fill",
+                                        size: .extraLarge,
+                                        action: {
+                                            appState.sendCallAction(callEvent.eventId, action: "accept")
+                                        }
+                                    )
+                                    .foregroundStyle(.green)
+                                    .transition(.identity)
+
+
+                                    GlassButtonView(
+                                        label: "Decline",
+                                        systemImage: "phone.down.fill",
+                                        size: .extraLarge,
+                                        action: {
+                                            appState.sendCallAction(callEvent.eventId, action: "decline")
+                                        }
+                                    )
+                                    .foregroundStyle(.red)
+                                    .transition(.identity)
+                                }
+
+                            } else if callEvent.direction == .outgoing {
+                                
+                                // Mic toggle for outgoing calls
+                                GlassButtonView(
+                                    label: CallAudioManager.shared.isMicEnabled ? "Mute" : "Mic",
+                                    systemImage: CallAudioManager.shared.isMicEnabled ? "mic.fill" : "mic.slash.fill",
+                                    size: .large,
+                                    action: {
+                                        CallAudioManager.shared.toggleMic()
+                                    }
+                                )
+                                .foregroundStyle(CallAudioManager.shared.isMicEnabled ? .blue : .secondary)
+                                .transition(.identity)
+
                                 GlassButtonView(
                                     label: "End",
                                     systemImage: "phone.down.fill",
@@ -131,44 +212,14 @@ struct CallWindowView: View {
                                 )
                                 .foregroundStyle(.red)
                                 .transition(.identity)
-                            } else {
-                                // Call is ringing - show Accept and Decline buttons
-                                GlassButtonView(
-                                    label: "Accept",
-                                    systemImage: "phone.fill",
-                                    size: .extraLarge,
-                                    action: {
-                                        appState.sendCallAction(callEvent.eventId, action: "accept")
-                                    }
-                                )
-                                .foregroundStyle(.green)
-                                .transition(.identity)
-
-
-                                GlassButtonView(
-                                    label: "Decline",
-                                    systemImage: "phone.down.fill",
-                                    size: .extraLarge,
-                                    action: {
-                                        appState.sendCallAction(callEvent.eventId, action: "decline")
-                                    }
-                                )
-                                .foregroundStyle(.red)
-                                .transition(.identity)
                             }
-
-                        } else if callEvent.direction == .outgoing {
-
-                            GlassButtonView(
-                                label: "End",
-                                systemImage: "phone.down.fill",
-                                size: .extraLarge,
-                                action: {
-                                    appState.sendCallAction(callEvent.eventId, action: "end")
-                                }
-                            )
-                            .foregroundStyle(.red)
-                            .transition(.identity)
+                        }
+                        
+                        // Note about call audio feature
+                        if isCallAccepted || callEvent.direction == .outgoing {
+                            Text("Tap mic to use Mac audio for call")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
                         }
                     }
                     .padding(.top, 8)
@@ -180,6 +231,22 @@ struct CallWindowView: View {
         .frame(minWidth: 320, minHeight: 320)
         .onAppear {
             NSWindow.allowsAutomaticWindowTabbing = false
+            
+            // Make call window float above all apps
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "callWindow" || $0.title == "Call" }) {
+                    window.level = .floating
+                    window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+                    window.isMovableByWindowBackground = true
+                    window.backgroundColor = NSColor.clear
+                    window.titlebarAppearsTransparent = true
+                    window.titleVisibility = .hidden
+                    window.styleMask.insert(.fullSizeContentView)
+                    window.makeKeyAndOrderFront(nil)
+                    NSApp.activate(ignoringOtherApps: true)
+                    print("[CallWindow] Set window level to floating, visible on all spaces")
+                }
+            }
         }
     }
 }

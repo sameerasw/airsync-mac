@@ -28,6 +28,10 @@
 	<string>003</string>
 	<key>NSAppleScriptEnabled</key>
 	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>AirSync needs permission to control Music playback from your Android device.</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>AirSync needs permission to control Music playback from your Android device.</string>
 	<key>OSAScriptingDefinition</key>
 	<string>AirSync.sdef</string>
 	<key>SUEnableDownloaderService</key>
