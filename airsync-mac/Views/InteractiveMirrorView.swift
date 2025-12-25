@@ -15,6 +15,7 @@ struct InteractiveMirrorView: View {
     @State private var showControls: Bool = true
     @State private var dimAndroidScreen: Bool = false
     @State private var keyboardMonitor: Any? = nil
+    @State private var localKeyboardMonitor: Any? = nil
     
     var body: some View {
         GeometryReader { geometry in
@@ -94,6 +95,27 @@ struct InteractiveMirrorView: View {
         .onHover { hovering in
             showControls = hovering
         }
+        // SwiftUI native key handling for arrow keys (SwiftUI intercepts these for focus navigation)
+        .onKeyPress(.leftArrow) {
+            WebSocketServer.shared.sendKeyEvent(keyCode: 21, text: "") // KEYCODE_DPAD_LEFT
+            print("[mirror] ⌨️ SwiftUI LEFT ARROW")
+            return .handled
+        }
+        .onKeyPress(.rightArrow) {
+            WebSocketServer.shared.sendKeyEvent(keyCode: 22, text: "") // KEYCODE_DPAD_RIGHT
+            print("[mirror] ⌨️ SwiftUI RIGHT ARROW")
+            return .handled
+        }
+        .onKeyPress(.upArrow) {
+            WebSocketServer.shared.sendKeyEvent(keyCode: 19, text: "") // KEYCODE_DPAD_UP
+            print("[mirror] ⌨️ SwiftUI UP ARROW")
+            return .handled
+        }
+        .onKeyPress(.downArrow) {
+            WebSocketServer.shared.sendKeyEvent(keyCode: 20, text: "") // KEYCODE_DPAD_DOWN
+            print("[mirror] ⌨️ SwiftUI DOWN ARROW")
+            return .handled
+        }
         // Keyboard shortcuts and text input
         .focusable()
         .onAppear {
@@ -109,73 +131,171 @@ struct InteractiveMirrorView: View {
         // Remove existing monitor if any
         removeKeyboardMonitor()
         
-        // Add local event monitor for keyboard
-        keyboardMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
-            // Only handle if mirror view is active
-            guard appState.latestMirrorFrame != nil else { return event }
-            
-            if event.type == .keyDown {
-                return self.handleKeyPress(event)
+        // Use GLOBAL event monitor to catch all keyboard events including arrow keys
+        // Local monitors don't receive arrow keys as they're consumed by system navigation
+        keyboardMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { event in
+            // Only handle if mirror window is focused
+            guard NSApp.keyWindow?.identifier?.rawValue == "mirror-window" || 
+                  NSApp.keyWindow?.title.contains("Mirror") == true else {
+                return
             }
-            return event
+            
+            // Only handle if mirror view is active
+            guard self.appState.latestMirrorFrame != nil else { 
+                print("[mirror] ⌨️ Key ignored - no mirror frame active")
+                return  
+            }
+            
+            print("[mirror] ⌨️ Global KeyDown: keyCode=\(event.keyCode), chars='\(event.characters ?? "nil")'")
+            _ = self.handleKeyPress(event)
         }
         
-        print("[mirror] ⌨️ Keyboard monitor installed")
+        // Also add local monitor for keys when window is active
+        localKeyboardMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
+            guard self.appState.latestMirrorFrame != nil else { return event }
+            
+            print("[mirror] ⌨️ Local KeyDown: keyCode=\(event.keyCode)")
+            return self.handleKeyPress(event)
+        }
+        
+        print("[mirror] ⌨️ Keyboard monitors installed (global + local)")
     }
     
     private func removeKeyboardMonitor() {
         if let monitor = keyboardMonitor {
             NSEvent.removeMonitor(monitor)
             keyboardMonitor = nil
-            print("[mirror] ⌨️ Keyboard monitor removed")
         }
+        if let monitor = localKeyboardMonitor {
+            NSEvent.removeMonitor(monitor)
+            localKeyboardMonitor = nil
+        }
+        print("[mirror] ⌨️ Keyboard monitors removed")
     }
     
     private func handleKeyPress(_ event: NSEvent) -> NSEvent? {
         // Check for modifier keys (Cmd, Ctrl, Alt)
-        let hasModifier = event.modifierFlags.contains(.command) || 
-                          event.modifierFlags.contains(.control) ||
-                          event.modifierFlags.contains(.option)
+        let hasCommand = event.modifierFlags.contains(.command)
+        let hasControl = event.modifierFlags.contains(.control)
+        let hasOption = event.modifierFlags.contains(.option)
         
-        // Pass through system shortcuts (Cmd+C, Cmd+V, etc.)
-        if hasModifier {
+        // Handle common keyboard shortcuts - send to Android
+        if hasCommand {
+            switch event.charactersIgnoringModifiers?.lowercased() {
+            case "c": // Cmd+C -> Copy (KEYCODE_C with META_CTRL)
+                print("[mirror] ⌨️ Sending Cmd+C (Copy) to Android")
+                WebSocketServer.shared.sendKeyEventWithMeta(keyCode: 31, metaState: 0x1000) // KEYCODE_C + META_CTRL_ON
+                return nil
+            case "v": // Cmd+V -> Paste
+                print("[mirror] ⌨️ Sending Cmd+V (Paste) to Android")
+                WebSocketServer.shared.sendKeyEventWithMeta(keyCode: 50, metaState: 0x1000) // KEYCODE_V + META_CTRL_ON
+                return nil
+            case "x": // Cmd+X -> Cut
+                print("[mirror] ⌨️ Sending Cmd+X (Cut) to Android")
+                WebSocketServer.shared.sendKeyEventWithMeta(keyCode: 52, metaState: 0x1000) // KEYCODE_X + META_CTRL_ON
+                return nil
+            case "a": // Cmd+A -> Select All
+                print("[mirror] ⌨️ Sending Cmd+A (Select All) to Android")
+                WebSocketServer.shared.sendKeyEventWithMeta(keyCode: 29, metaState: 0x1000) // KEYCODE_A + META_CTRL_ON
+                return nil
+            case "z": // Cmd+Z -> Undo
+                print("[mirror] ⌨️ Sending Cmd+Z (Undo) to Android")
+                WebSocketServer.shared.sendKeyEventWithMeta(keyCode: 54, metaState: 0x1000) // KEYCODE_Z + META_CTRL_ON
+                return nil
+            default:
+                // Let other Cmd shortcuts pass through to macOS
+                return event
+            }
+        }
+        
+        // Pass through Ctrl/Option shortcuts to macOS (window management, etc.)
+        if hasControl || hasOption {
             return event
         }
         
-        // Handle special keys
+        print("[mirror] ⌨️ Key pressed: keyCode=\(event.keyCode), chars='\(event.characters ?? "")'")
+        
+        // Handle special keys - always consume (return nil) to prevent system beep
         switch event.keyCode {
         case 51: // Delete/Backspace
             WebSocketServer.shared.sendKeyEvent(keyCode: 67, text: "") // KEYCODE_DEL
+            print("[mirror] ⌨️ Sent BACKSPACE")
             return nil
         case 53: // Escape - send BACK
             WebSocketServer.shared.sendNavAction("back")
+            print("[mirror] ⌨️ Sent BACK (Escape)")
             return nil
         case 36: // Return/Enter
             WebSocketServer.shared.sendKeyEvent(keyCode: 66, text: "\n") // KEYCODE_ENTER
+            print("[mirror] ⌨️ Sent ENTER")
             return nil
         case 48: // Tab
             WebSocketServer.shared.sendKeyEvent(keyCode: 61, text: "\t") // KEYCODE_TAB
+            print("[mirror] ⌨️ Sent TAB")
             return nil
         case 49: // Space
             WebSocketServer.shared.sendKeyEvent(keyCode: 62, text: " ") // KEYCODE_SPACE
+            print("[mirror] ⌨️ Sent SPACE")
             return nil
         case 123: // Left arrow
             WebSocketServer.shared.sendKeyEvent(keyCode: 21, text: "") // KEYCODE_DPAD_LEFT
+            print("[mirror] ⌨️ Sent LEFT ARROW")
             return nil
         case 124: // Right arrow
             WebSocketServer.shared.sendKeyEvent(keyCode: 22, text: "") // KEYCODE_DPAD_RIGHT
+            print("[mirror] ⌨️ Sent RIGHT ARROW")
             return nil
         case 125: // Down arrow
             WebSocketServer.shared.sendKeyEvent(keyCode: 20, text: "") // KEYCODE_DPAD_DOWN
+            print("[mirror] ⌨️ Sent DOWN ARROW")
             return nil
         case 126: // Up arrow
             WebSocketServer.shared.sendKeyEvent(keyCode: 19, text: "") // KEYCODE_DPAD_UP
+            print("[mirror] ⌨️ Sent UP ARROW")
+            return nil
+        case 117: // Forward Delete
+            WebSocketServer.shared.sendKeyEvent(keyCode: 112, text: "") // KEYCODE_FORWARD_DEL
+            print("[mirror] ⌨️ Sent FORWARD DELETE")
+            return nil
+        case 115: // Home
+            WebSocketServer.shared.sendKeyEvent(keyCode: 122, text: "") // KEYCODE_MOVE_HOME
+            print("[mirror] ⌨️ Sent HOME")
+            return nil
+        case 119: // End
+            WebSocketServer.shared.sendKeyEvent(keyCode: 123, text: "") // KEYCODE_MOVE_END
+            print("[mirror] ⌨️ Sent END")
+            return nil
+        case 116: // Page Up
+            WebSocketServer.shared.sendKeyEvent(keyCode: 92, text: "") // KEYCODE_PAGE_UP
+            print("[mirror] ⌨️ Sent PAGE UP")
+            return nil
+        case 121: // Page Down
+            WebSocketServer.shared.sendKeyEvent(keyCode: 93, text: "") // KEYCODE_PAGE_DOWN
+            print("[mirror] ⌨️ Sent PAGE DOWN")
             return nil
         default:
-            // Handle regular text input
+            // Filter out function keys (F1-F12 are keyCodes 122-135)
+            if event.keyCode >= 122 && event.keyCode <= 135 {
+                print("[mirror] ⌨️ Ignoring function key: F\(event.keyCode - 121)")
+                return event // Let system handle function keys
+            }
+            
+            // Handle regular text input - only printable ASCII characters
             if let characters = event.characters, !characters.isEmpty {
-                WebSocketServer.shared.sendTextInput(text: characters)
-                return nil
+                // Filter out non-printable characters and control characters
+                let printableChars = characters.filter { char in
+                    let scalar = char.unicodeScalars.first?.value ?? 0
+                    // Only allow printable ASCII (32-126) and some extended chars
+                    return (scalar >= 32 && scalar <= 126) || scalar >= 160
+                }
+                
+                if !printableChars.isEmpty {
+                    print("[mirror] ⌨️ Sending text: '\(printableChars)'")
+                    WebSocketServer.shared.sendTextInput(text: printableChars)
+                    return nil
+                } else {
+                    print("[mirror] ⌨️ Ignoring non-printable: '\(characters)'")
+                }
             }
         }
         return event

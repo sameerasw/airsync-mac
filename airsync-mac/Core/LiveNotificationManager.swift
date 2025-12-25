@@ -167,7 +167,8 @@ class LiveNotificationManager: ObservableObject {
             case .ringing:
                 if call.isIncoming {
                     self.showIncomingCallNotification(call)
-                    self.showCallWindow(call)
+                    // Note: The call window is handled by airsync_macApp via activeCall change
+                    // Don't create another window here to avoid duplicates
                 }
             case .accepted, .offhook:
                 self.updateCallNotification(call)

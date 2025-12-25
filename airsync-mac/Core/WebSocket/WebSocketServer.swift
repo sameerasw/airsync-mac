@@ -102,6 +102,7 @@ class WebSocketServer: ObservableObject {
     private let fileOperationQueue = DispatchQueue(label: "com.airsync.fileoperations", qos: .userInitiated)
     // Outgoing transfer ack tracking
     private var outgoingAcks: [String: Set<Int>] = [:]
+    private let outgoingAcksLock = NSLock()
 
     private let maxChunkRetries = 10  // Increased from 3 for better reliability
     private let ackWaitMs: UInt16 = 3000 // 3s (increased from 2s)
@@ -273,7 +274,11 @@ class WebSocketServer: ObservableObject {
                 autoreleasepool {
                     guard let self = self else { return }
 
-                    print("[websocket] [raw] incoming text length=\(text.count)")
+                    // Skip verbose logging for mirror frames (check raw text before decryption)
+                    let isMirrorFrameRaw = text.contains("mirrorFrame")
+                    if !isMirrorFrameRaw {
+                        print("[websocket] [raw] incoming text length=\(text.count)")
+                    }
                     // Step 1: Decrypt the message
                     let decryptedText: String
                     if let key = self.symmetricKey {
@@ -282,12 +287,17 @@ class WebSocketServer: ObservableObject {
                         decryptedText = text
                     }
                     let usedEncryption = (self.symmetricKey != nil)
-                    print("[websocket] [decrypt] used=\(usedEncryption) decryptedLen=\(decryptedText.count)")
-
-                    let truncated = decryptedText.count > 300
-                    ? decryptedText.prefix(300) + "..."
-                    : decryptedText
-                    print("[websocket] [received] \n\(truncated)")
+                    
+                    // Skip verbose logging for mirror frames (too frequent)
+                    let isMirrorFrame = decryptedText.contains("\"type\":\"mirrorFrame\"") || decryptedText.contains("\"type\": \"mirrorFrame\"")
+                    
+                    if !isMirrorFrame {
+                        print("[websocket] [decrypt] used=\(usedEncryption) decryptedLen=\(decryptedText.count)")
+                        let truncated = decryptedText.count > 300
+                        ? decryptedText.prefix(300) + "..."
+                        : decryptedText
+                        print("[websocket] [received] \n\(truncated)")
+                    }
 
 
                     // Step 2: Decode JSON and handle
@@ -307,7 +317,11 @@ class WebSocketServer: ObservableObject {
                             }
                             
                             let messageData = jsonObject["data"] as? [String: Any] ?? [:]
-                            print("[websocket] ✅ Parsed JSON - type: \(typeString), data keys: \(messageData.keys.joined(separator: ", "))")
+                            
+                            // Skip verbose logging for mirror frames
+                            if messageType != .mirrorFrame {
+                                print("[websocket] ✅ Parsed JSON - type: \(typeString), data keys: \(messageData.keys.joined(separator: ", "))")
+                            }
                             
                             // Create message with raw dictionary data
                             let message = FlexibleMessage(type: messageType, data: messageData)
@@ -369,6 +383,10 @@ class WebSocketServer: ObservableObject {
                         // Clear mirror state when last session disconnects
                         AppState.shared.isMirrorActive = false
                         AppState.shared.latestMirrorFrame = nil
+                        
+                        // Close mirror window if open
+                        self.mirrorWindow?.close()
+                        self.mirrorWindow = nil
                     }
                 }
                 print("[websocket] Active sessions: \(self.activeSessions.count)")
@@ -868,10 +886,13 @@ class WebSocketServer: ObservableObject {
             if let dict = message.data.value as? [String: Any],
                let id = dict["id"] as? String,
                let index = dict["index"] as? Int {
+                outgoingAcksLock.lock()
                 var set = outgoingAcks[id] ?? []
                 set.insert(index)
                 outgoingAcks[id] = set
-                print("[websocket] (file-transfer) Received ack for id=\(id) index=\(index) totalAcked=\(set.count)")
+                let count = set.count
+                outgoingAcksLock.unlock()
+                print("[websocket] (file-transfer) Received ack for id=\(id) index=\(index) totalAcked=\(count)")
             }
 
         case .fileTransferComplete:
@@ -888,7 +909,13 @@ class WebSocketServer: ObservableObject {
                     fileOperationQueue.async { [weak self] in
                         guard let self = self else { return }
                         
-                        state.fileHandle?.closeFile()
+                        // Ensure all data is flushed to disk before closing
+                        do {
+                            try state.fileHandle?.synchronize()
+                        } catch {
+                            print("[websocket] (file-transfer) Warning: synchronize failed: \(error)")
+                        }
+                        try? state.fileHandle?.close()
                         print("[websocket] (file-transfer) complete id=\(transferId) temp=\(state.tempUrl.path)")
 
                         // Resolve a name for notifications and final filename. Prefer AppState metadata; fall back to temp filename.
@@ -896,9 +923,28 @@ class WebSocketServer: ObservableObject {
 
                         // Verify checksum if present
                         if let expected = self.incomingFilesChecksum[transferId] {
-                        if let fileData = try? Data(contentsOf: state.tempUrl) {
-                            // Compute SHA256 checksum
-                            let computed = SHA256.hash(data: fileData).compactMap { String(format: "%02x", $0) }.joined()
+                        // Use streaming SHA256 to avoid loading entire file into memory
+                        if let stream = InputStream(url: state.tempUrl) {
+                            stream.open()
+                            defer { stream.close() }
+                            
+                            var hasher = SHA256()
+                            let bufferSize = 65536 // 64KB chunks
+                            var buffer = [UInt8](repeating: 0, count: bufferSize)
+                            
+                            while stream.hasBytesAvailable {
+                                let bytesRead = stream.read(&buffer, maxLength: bufferSize)
+                                if bytesRead > 0 {
+                                    hasher.update(data: buffer[0..<bytesRead])
+                                } else if bytesRead < 0 {
+                                    print("[websocket] (file-transfer) ❌ Error reading file for checksum")
+                                    break
+                                } else {
+                                    break // EOF
+                                }
+                            }
+                            
+                            let computed = hasher.finalize().compactMap { String(format: "%02x", $0) }.joined()
                             print("[websocket] (file-transfer) Checksum verification: expected=\(expected.prefix(16))... computed=\(computed.prefix(16))...")
                             print("[websocket] (file-transfer) Expected length: \(expected.count), Computed length: \(computed.count)")
                             
@@ -1436,6 +1482,14 @@ class WebSocketServer: ObservableObject {
                let success = dict["success"] as? Bool {
                 let msg = dict["message"] as? String ?? ""
                 print("[websocket] SMS send \(success ? "succeeded" : "failed"): \(msg)")
+                
+                // If SMS was sent successfully, request updated threads after a short delay
+                if success {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        print("[websocket] 📱 Requesting SMS threads refresh after successful send")
+                        self.requestSmsThreads()
+                    }
+                }
             }
             
         case .smsReceived:
@@ -1658,6 +1712,12 @@ class WebSocketServer: ObservableObject {
                 let frameIndex = dict["index"] as? Int64 ?? 0
                 AudioStreamPlayer.shared.receiveFrame(base64Frame, frameIndex: frameIndex)
             }
+
+        case .callMicAudio:
+            if let dict = message.data.value as? [String: Any],
+               let audioBase64 = dict["audio"] as? String {
+                CallAudioManager.shared.handleCallAudio(base64Data: audioBase64)
+            }
             
         // Ignore requests sent from Android (shouldn't happen)
         case .requestSmsThreads, .requestSmsMessages, .sendSms, .markSmsRead,
@@ -1667,6 +1727,29 @@ class WebSocketServer: ObservableObject {
             
         case .callControl:
             print("[websocket] Received callControl from Android (ignored on Mac)")
+            
+        case .initiateCall:
+            // Mac sends this to Android, shouldn't receive it
+            print("[websocket] Warning: received 'initiateCall' from remote (ignored).")
+            
+        case .initiateCallResponse:
+            if let dict = message.data.value as? [String: Any],
+               let success = dict["success"] as? Bool {
+                let msg = dict["message"] as? String ?? ""
+                let number = dict["number"] as? String ?? ""
+                print("[websocket] 📞 Initiate call response: success=\(success) number=\(number) message=\(msg)")
+            }
+            
+        case .callControlResponse:
+            if let dict = message.data.value as? [String: Any],
+               let action = dict["action"] as? String,
+               let success = dict["success"] as? Bool {
+                let msg = dict["message"] as? String ?? ""
+                print("[websocket] 📞 Call control '\(action)' \(success ? "succeeded" : "failed"): \(msg)")
+            }
+            
+        case .callAudioControl:
+            print("[websocket] Received callAudioControl from Android (ignored on Mac)")
             
         @unknown default:
             print("[websocket] Warning: unhandled message type: \(message.type)")
@@ -2060,7 +2143,7 @@ class WebSocketServer: ObservableObject {
         activeSessions.forEach { $0.writeText(message) }
     }
 
-    private func sendToFirstAvailable(message: String) {
+    func sendToFirstAvailable(message: String) {
         guard !activeSessions.isEmpty else {
             let preview = message.prefix(60)
             print("[websocket] [send] No active sessions; dropping message preview=\(preview)")
@@ -2266,6 +2349,22 @@ class WebSocketServer: ObservableObject {
         }
     }
     
+    /// Send key event with meta state (for shortcuts like Ctrl+C, Ctrl+V)
+    func sendKeyEventWithMeta(keyCode: Int, metaState: Int) {
+        let message = """
+        {
+            "type": "inputEvent",
+            "data": {
+                "action": "keyWithMeta",
+                "keyCode": \(keyCode),
+                "metaState": \(metaState)
+            }
+        }
+        """
+        sendToFirstAvailable(message: message)
+        print("[websocket] Sent key with meta: keyCode=\(keyCode), meta=\(metaState)")
+    }
+    
     /// Send key event via ADB shell command
     private func sendKeyEventViaADB(keyCode: Int) {
         DispatchQueue.global(qos: .userInitiated).async {
@@ -2385,9 +2484,12 @@ class WebSocketServer: ObservableObject {
         // Ensure transport is websocket so Android connects back to us via WebSocket
         if combinedOptions["transport"] == nil { combinedOptions["transport"] = "websocket" }
 
-        // Provide sensible defaults if missing
-        if combinedOptions["fps"] == nil { combinedOptions["fps"] = 30 }
-        if combinedOptions["maxWidth"] == nil { combinedOptions["maxWidth"] = 1280 }
+        // Provide sensible defaults for performance - if missing
+        // Reduced defaults for better stability and lower latency
+        if combinedOptions["fps"] == nil { combinedOptions["fps"] = 25 }  // 25 FPS for stability
+        if combinedOptions["maxWidth"] == nil { combinedOptions["maxWidth"] = 720 }  // Lower resolution for speed
+        if combinedOptions["quality"] == nil { combinedOptions["quality"] = 0.7 }  // Good balance
+        if combinedOptions["bitrateKbps"] == nil { combinedOptions["bitrateKbps"] = 3000 }  // 3 Mbps default
         
         // Enable auto-approve by default for seamless mirroring
         if combinedOptions["autoApprove"] == nil { combinedOptions["autoApprove"] = true }
@@ -2396,7 +2498,7 @@ class WebSocketServer: ObservableObject {
         if combinedOptions["enableAudio"] == nil { combinedOptions["enableAudio"] = true }
 
         // Prefer bitrateKbps if caller set a general bitrate
-        if combinedOptions["bitrateKbps"] == nil, let bitrate = combinedOptions["bitrate"] as? Int, bitrate > 0 {
+        if let bitrate = combinedOptions["bitrate"] as? Int, bitrate > 0, combinedOptions["bitrateKbps"] == nil {
             combinedOptions["bitrateKbps"] = bitrate
         }
 
@@ -2467,13 +2569,17 @@ class WebSocketServer: ObservableObject {
         }
         
         // Safely check if window exists and is visible
+        // Use weak reference to avoid crashes on deallocated windows
         if let win = mirrorWindow {
-            // Check if window is still valid before accessing isVisible
-            if win.contentView == nil {
+            // Try to safely check window validity using windowNumber
+            // A valid window has a positive windowNumber
+            let isValidWindow = win.windowNumber > 0
+            
+            if !isValidWindow {
                 // Window is invalid, clear reference and create new one
                 mirrorWindow = nil
                 mirrorWindowDelegate = nil
-                print("[mirror] Previous window invalid, creating new one")
+                print("[mirror] Previous window invalid (windowNumber <= 0), creating new one")
             } else if win.isVisible {
                 win.level = .floating
                 win.makeKeyAndOrderFront(nil)
@@ -2545,6 +2651,34 @@ class WebSocketServer: ObservableObject {
            let json = String(data: jsonData, encoding: .utf8) {
             sendToFirstAvailable(message: json)
         }
+    }
+    
+    // MARK: - Call Control via WebSocket (works without ADB)
+    func sendCallActionViaWebSocket(eventId: String, action: String) {
+        // Map action names to what Android expects
+        let androidAction: String
+        switch action.lowercased() {
+        case "accept":
+            androidAction = "answer"
+        case "decline":
+            androidAction = "reject"
+        case "end":
+            androidAction = "hangup"
+        default:
+            androidAction = action
+        }
+        
+        let message = """
+        {
+            "type": "callAction",
+            "data": {
+                "eventId": "\(eventId)",
+                "action": "\(androidAction)"
+            }
+        }
+        """
+        sendToFirstAvailable(message: message)
+        print("[websocket] 📞 Sent call action via WebSocket: \(androidAction) for event: \(eventId)")
     }
 
     func sendCallAction(eventId: String, action: String) {
@@ -2716,6 +2850,20 @@ class WebSocketServer: ObservableObject {
         sendToFirstAvailable(message: msg)
     }
     
+    /// Initiate a phone call on Android
+    func initiateCall(phoneNumber: String) {
+        let msg = """
+        {
+            "type": "initiateCall",
+            "data": {
+                "phoneNumber": "\(phoneNumber)"
+            }
+        }
+        """
+        sendToFirstAvailable(message: msg)
+        print("[websocket] 📞 Initiating call to: \(phoneNumber)")
+    }
+    
     func markSmsAsRead(messageId: String) {
         let message = """
         {
@@ -2844,18 +2992,30 @@ class WebSocketServer: ObservableObject {
         }
     }
 
-    // MARK: - File transfer (Mac -> Android)
+    // MARK: - File transfer (Mac -> Android) - Streaming version to reduce memory usage
     func sendFile(url: URL, chunkSize: Int = 64 * 1024) {
         guard FileManager.default.fileExists(atPath: url.path) else { return }
-        guard let data = try? Data(contentsOf: url) else { return }
-        // Compute checksum over the exact bytes that will be sent
-        let digest = SHA256.hash(data: data)
-        let checksum = digest.compactMap { String(format: "%02x", $0) }.joined()
-        print("[websocket] (file-transfer) sendFile path=\(url.path) size=\(data.count) chunkSize=\(chunkSize)")
+        
+        // Get file size without loading into memory
+        guard let fileAttributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let totalSize = fileAttributes[.size] as? Int else {
+            print("[websocket] (file-transfer) Failed to get file attributes")
+            return
+        }
+        
+        // Open file handle for streaming reads
+        guard let fileHandle = FileHandle(forReadingAtPath: url.path) else {
+            print("[websocket] (file-transfer) Failed to open file for reading")
+            return
+        }
+        defer { try? fileHandle.close() }
+        
+        // Compute checksum using streaming (don't load entire file)
+        let checksum = computeStreamingChecksum(for: url) ?? ""
+        print("[websocket] (file-transfer) sendFile path=\(url.path) size=\(totalSize) chunkSize=\(chunkSize)")
 
         let transferId = UUID().uuidString
         let fileName = url.lastPathComponent
-        let totalSize = data.count
         let mime = mimeType(for: url) ?? "application/octet-stream"
 
         // Track in AppState
@@ -2868,11 +3028,13 @@ class WebSocketServer: ObservableObject {
         // Send chunks using a simple sliding window to allow multiple in-flight chunks
         let windowSize = 8
         let totalChunks = (totalSize + chunkSize - 1) / chunkSize
+        outgoingAcksLock.lock()
         outgoingAcks[transferId] = []
+        outgoingAcksLock.unlock()
         print("[websocket] (file-transfer) id=\(transferId) name=\(fileName) totalChunks=\(totalChunks) checksumPrefix=\(checksum.prefix(8))")
 
-        // Keep a buffer of sent chunks for potential retransmit: index -> (payloadBase64, attempts, lastSent)
-        var sentBuffer: [Int: (payload: String, attempts: Int, lastSent: Date)] = [:]
+        // Track sent chunk info - NO LONGER stores chunk data to save memory
+        var sentBuffer: [Int: (attempts: Int, lastSent: Date)] = [:]
 
         var nextIndexToSend = 0
         let startTime = Date()
@@ -2893,63 +3055,46 @@ class WebSocketServer: ObservableObject {
             }
             return false
         }
-
-        func sendChunkAt(_ idx: Int) -> Bool {
-            // Wait for connection if not available
-            if !hasActiveConnection() {
-                print("[websocket] (file-transfer) No connection, waiting...")
-                if !waitForConnection() {
-                    print("[websocket] (file-transfer) Connection timeout for chunk \(idx)")
-                    return false
+        
+        // Helper to read chunk from file at specific index using shared handle
+        func readChunkAt(_ idx: Int) -> Data? {
+            do {
+                let offset = UInt64(idx * chunkSize)
+                if #available(macOS 10.15.4, *) {
+                    try fileHandle.seek(toOffset: offset)
+                } else {
+                    fileHandle.seek(toFileOffset: offset)
                 }
+                let bytesToRead = min(chunkSize, totalSize - idx * chunkSize)
+                return fileHandle.readData(ofLength: bytesToRead)
+            } catch {
+                print("[websocket] (file-transfer) Error reading chunk \(idx): \(error)")
+                return nil
             }
-            
-            let start = idx * chunkSize
-            let end = min(start + chunkSize, totalSize)
-            let chunk = data.subdata(in: start..<end)
-            let base64 = chunk.base64EncodedString(options: [])
-            let chunkMessage = FileTransferProtocol.buildChunk(id: transferId, index: idx, base64Chunk: base64)
-            sendToFirstAvailable(message: chunkMessage)
-            sentBuffer[idx] = (payload: base64, attempts: 1, lastSent: Date())
-            print("[websocket] (file-transfer) -> send chunk id=\(transferId) index=\(idx) size=\(chunk.count)")
-            return true
         }
 
-        // Prime the window
-        while nextIndexToSend < totalChunks && nextIndexToSend < windowSize {
-            if !sendChunkAt(nextIndexToSend) {
-                print("[websocket] (file-transfer) Failed to send initial chunk \(nextIndexToSend), aborting")
-                AppState.shared.failTransfer(id: transferId, reason: "Connection lost")
-                return
-            }
-            nextIndexToSend += 1
-        }
-
-        // Loop until all chunks are acked
-        var connectionLostRetries = 0
-        let maxConnectionRetries = 5
+        // Main Send Loop
+        let ackWaitMs = 10000 // 10s wait for ack before retry
+        let maxChunkRetries = 5
         
         while true {
-            // Check for connection loss
+            // Check if connection is still alive
             if !hasActiveConnection() {
-                connectionLostRetries += 1
-                if connectionLostRetries > maxConnectionRetries {
-                    print("[websocket] (file-transfer) Connection lost too many times, aborting transfer")
-                    AppState.shared.failTransfer(id: transferId, reason: "Connection lost")
-                    outgoingAcks.removeValue(forKey: transferId)
-                    return
-                }
-                print("[websocket] (file-transfer) Connection lost, waiting for reconnection (attempt \(connectionLostRetries)/\(maxConnectionRetries))...")
+                print("[websocket] (file-transfer) Connection lost, waiting...")
                 if !waitForConnection(timeoutSeconds: 30) {
-                    print("[websocket] (file-transfer) Reconnection timeout, aborting transfer")
-                    AppState.shared.failTransfer(id: transferId, reason: "Connection timeout")
+                    print("[websocket] (file-transfer) Timed out waiting for reconnection")
+                    AppState.shared.failTransfer(id: transferId, reason: "Connection lost")
+                    outgoingAcksLock.lock()
                     outgoingAcks.removeValue(forKey: transferId)
-                    return
+                    outgoingAcksLock.unlock()
+                    break
                 }
                 print("[websocket] (file-transfer) Reconnected, resuming transfer")
             }
             
+            outgoingAcksLock.lock()
             let acked = outgoingAcks[transferId] ?? []
+            outgoingAcksLock.unlock()
 
             // compute baseIndex = lowest unacked index (first missing starting from 0)
             var baseIndex = 0
@@ -2968,60 +3113,88 @@ class WebSocketServer: ObservableObject {
                 break
             }
 
-            // send new chunks while window has space
+            // send new chunks sliding window
             while nextIndexToSend < totalChunks && (nextIndexToSend - baseIndex) < windowSize {
-                if !sendChunkAt(nextIndexToSend) {
-                    print("[websocket] (file-transfer) Failed to send chunk \(nextIndexToSend)")
-                    // Don't abort immediately, let the retry logic handle it
+                if let chunk = readChunkAt(nextIndexToSend) {
+                    let base64 = chunk.base64EncodedString(options: [])
+                    let chunkMessage = FileTransferProtocol.buildChunk(id: transferId, index: nextIndexToSend, base64Chunk: base64)
+                    
+                    print("[websocket] (file-transfer) -> send chunk id=\(transferId) index=\(nextIndexToSend) size=\(chunk.count)")
+                    sendToFirstAvailable(message: chunkMessage)
+                    
+                    sentBuffer[nextIndexToSend] = (attempts: 0, lastSent: Date())
+                    // Rate limit: 2ms sleep between chunks to avoid flooding socket
+                    usleep(2000) 
+                } else {
+                    print("[websocket] (file-transfer) Failed to read chunk \(nextIndexToSend)")
                 }
                 nextIndexToSend += 1
             }
 
-            // Retransmit chunks that haven't been acked and exceeded timeout
+            // Retransmit chunks logic
             let now = Date()
-            for (idx, entry) in sentBuffer {
+            let bufferSnapshot = sentBuffer 
+            for (idx, entry) in bufferSnapshot {
                 if acked.contains(idx) { continue }
                 let elapsedMs = now.timeIntervalSince(entry.lastSent) * 1000.0
                 if elapsedMs > Double(ackWaitMs) {
                     if entry.attempts >= maxChunkRetries {
                         print("[websocket] (file-transfer) Failed to get ack for chunk \(idx) after \(maxChunkRetries) attempts")
                         AppState.shared.failTransfer(id: transferId, reason: "Chunk \(idx) failed after \(maxChunkRetries) retries")
+                        outgoingAcksLock.lock()
                         outgoingAcks.removeValue(forKey: transferId)
+                        outgoingAcksLock.unlock()
                         return
                     }
                     
-                    // Wait for connection before retransmit
-                    if !hasActiveConnection() {
-                        print("[websocket] (file-transfer) No connection for retransmit, waiting...")
-                        if !waitForConnection(timeoutSeconds: 15) {
-                            continue // Skip this retransmit attempt, will try again next loop
-                        }
-                    }
+                    if !hasActiveConnection() { continue }
                     
-                    // retransmit
-                    let start = idx * chunkSize
-                    let end = min(start + chunkSize, totalSize)
-                    let chunk = data.subdata(in: start..<end)
-                    let base64 = chunk.base64EncodedString(options: [])
-                    let chunkMessage = FileTransferProtocol.buildChunk(id: transferId, index: idx, base64Chunk: base64)
-                    print("[websocket] (file-transfer) retransmit id=\(transferId) index=\(idx) attempt=\(entry.attempts + 1)")
-                    sendToFirstAvailable(message: chunkMessage)
-                    sentBuffer[idx] = (payload: base64, attempts: entry.attempts + 1, lastSent: Date())
+                    if let chunk = readChunkAt(idx) {
+                        let base64 = chunk.base64EncodedString(options: [])
+                        let chunkMessage = FileTransferProtocol.buildChunk(id: transferId, index: idx, base64Chunk: base64)
+                        print("[websocket] (file-transfer) retransmit id=\(transferId) index=\(idx) attempt=\(entry.attempts + 1)")
+                        sendToFirstAvailable(message: chunkMessage)
+                        sentBuffer[idx] = (attempts: entry.attempts + 1, lastSent: Date())
+                        usleep(5000) // 5ms sleep on retransmit
+                    }
                 }
             }
 
-            // brief sleep to avoid busy-looping
-            usleep(50_000) // 50ms
+            usleep(20_000) // 20ms
         }
 
-    // Ensure progress shows 100%
-    AppState.shared.updateOutgoingProgress(id: transferId, bytesTransferred: totalSize)
-    let elapsed = Date().timeIntervalSince(startTime)
+        // Ensure progress shows 100%
+        AppState.shared.updateOutgoingProgress(id: transferId, bytesTransferred: totalSize)
+        let elapsed = Date().timeIntervalSince(startTime)
         print("[websocket] (file-transfer) Completed sending \(totalSize) bytes in \(elapsed) s")
 
         // Send complete
-    let completeMessage = FileTransferProtocol.buildComplete(id: transferId, name: fileName, size: totalSize, checksum: checksum)
+        let completeMessage = FileTransferProtocol.buildComplete(id: transferId, name: fileName, size: totalSize, checksum: checksum)
         sendToFirstAvailable(message: completeMessage)
+    }
+    
+    // Helper to compute streaming checksum without loading file into memory
+    private func computeStreamingChecksum(for url: URL) -> String? {
+        guard let stream = InputStream(url: url) else { return nil }
+        stream.open()
+        defer { stream.close() }
+        
+        var hasher = SHA256()
+        let bufferSize = 65536 // 64KB
+        var buffer = [UInt8](repeating: 0, count: bufferSize)
+        
+        while stream.hasBytesAvailable {
+            let bytesRead = stream.read(&buffer, maxLength: bufferSize)
+            if bytesRead > 0 {
+                hasher.update(data: buffer[0..<bytesRead])
+            } else if bytesRead < 0 {
+                return nil
+            } else {
+                break
+            }
+        }
+        
+        return hasher.finalize().compactMap { String(format: "%02x", $0) }.joined()
     }
 
     func toggleNotification(for package: String, to state: Bool) {

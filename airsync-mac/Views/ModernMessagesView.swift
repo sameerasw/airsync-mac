@@ -10,6 +10,7 @@ import SwiftUI
 struct MessagesView: View {
     @ObservedObject private var manager = LiveNotificationManager.shared
     @State private var searchText = ""
+    @State private var showNewMessage = false
     
     var filteredThreads: [SmsThread] {
         if searchText.isEmpty {
@@ -83,6 +84,17 @@ struct MessagesView: View {
                     }
                 }
             }
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: { showNewMessage = true }) {
+                    Image(systemName: "square.and.pencil")
+                }
+                .help("New Message")
+            }
+        }
+        .sheet(isPresented: $showNewMessage) {
+            NewMessageView()
         }
         .onAppear {
             // Use caching - this will return cached data immediately and request fresh data if needed

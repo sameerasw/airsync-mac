@@ -581,6 +581,7 @@ class AppState: ObservableObject {
                 // Don't show anything
                 print("[state] No notification (user preference)")
             }
+            
         } else if callEvent.direction == .incoming && callEvent.state == .offhook {
             // Call has been answered (offhook state for incoming call)
             print("[state] Incoming call answered - stopping ringtone and updating popup")
@@ -588,6 +589,7 @@ class AppState: ObservableObject {
 
             // Update activeCall to show accepted state instead of ringing
             self.activeCall = callEvent
+            
             print("[state] Updated popup for accepted call")
         } else if callEvent.state == .ended || callEvent.state == .rejected || callEvent.state == .missed || callEvent.state == .idle {
             // Remove ALL call notifications when any call ends
@@ -679,7 +681,13 @@ class AppState: ObservableObject {
     }
 
     func sendCallAction(_ eventId: String, action: String) {
-        WebSocketServer.shared.sendCallAction(eventId: eventId, action: action)
+        // Send via WebSocket first (works without ADB)
+        WebSocketServer.shared.sendCallActionViaWebSocket(eventId: eventId, action: action)
+        
+        // Also send via ADB if connected (more reliable)
+        if adbConnected {
+            WebSocketServer.shared.sendCallAction(eventId: eventId, action: action)
+        }
     }
 
     func hideNotification(_ notif: Notification) {

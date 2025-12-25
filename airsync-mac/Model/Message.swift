@@ -65,6 +65,8 @@ enum MessageType: String, Codable {
     case callNotification
     case callAction
     case callActionResponse
+    case initiateCall
+    case initiateCallResponse
     // Health Data
     case requestHealthSummary
     case healthSummary
@@ -74,6 +76,8 @@ enum MessageType: String, Codable {
     case audioStart
     case audioStop
     case audioFrame
+    case callMicAudio
+    case callAudioControl
 }
 
 struct Message: Codable {

@@ -10,6 +10,7 @@ internal import Combine
 
 struct CallsView: View {
     @ObservedObject private var manager = LiveNotificationManager.shared
+    @State private var showDialer = false
     
     var body: some View {
         ScrollView {
@@ -36,6 +37,17 @@ struct CallsView: View {
                 }
             }
             .padding()
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: { showDialer = true }) {
+                    Image(systemName: "phone.badge.plus")
+                }
+                .help("Open Dialer")
+            }
+        }
+        .sheet(isPresented: $showDialer) {
+            DialerView()
         }
         .onAppear {
             // Use caching - this will return cached data immediately and request fresh data if needed

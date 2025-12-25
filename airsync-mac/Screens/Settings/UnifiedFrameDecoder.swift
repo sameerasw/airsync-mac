@@ -14,12 +14,12 @@ final class UnifiedFrameDecoder: NSObject {
     var onDecodedFrame: ((NSImage) -> Void)?
     
     private let h264Decoder = H264Decoder.shared
-    private let decodeQueue = DispatchQueue(label: "unified.decode.queue", qos: .userInteractive)
+    private let decodeQueue = DispatchQueue(label: "unified.decode.queue", qos: .userInteractive, attributes: .concurrent)
     
     // Frame throttling - adaptive based on decode performance
     private var lastFrameDisplayTime = Date.distantPast
     private var targetFrameInterval: TimeInterval = 1.0 / 60.0 // Target 60 FPS
-    private let minFrameInterval: TimeInterval = 1.0 / 120.0 // Allow up to 120 FPS bursts
+    private let minFrameInterval: TimeInterval = 1.0 / 90.0 // Allow up to 90 FPS bursts for smoother scrolling
     
     // Double buffering for smoother display
     private var pendingFrame: NSImage?
@@ -31,6 +31,11 @@ final class UnifiedFrameDecoder: NSObject {
     private var lastLogTime = Date()
     private var totalBytes: Int64 = 0
     private var decodeTimeSum: TimeInterval = 0
+    
+    // Latency tracking
+    private var lastFrameTimestamp: Int64 = 0
+    private var latencySum: TimeInterval = 0
+    private var latencyCount: Int = 0
     
     override init() {
         super.init()
@@ -44,11 +49,19 @@ final class UnifiedFrameDecoder: NSObject {
     }
     
     /// Decode frame data - automatically detects format
-    func decode(frameData: Data, format: String? = nil, isConfig: Bool = false) {
+    func decode(frameData: Data, format: String? = nil, isConfig: Bool = false, timestamp: Int64 = 0) {
         decodeQueue.async { [weak self] in
             guard let self = self else { return }
             
             let decodeStart = Date()
+            
+            // Track latency if timestamp provided
+            if timestamp > 0 {
+                let now = Int64(Date().timeIntervalSince1970 * 1000)
+                let latency = Double(now - timestamp) / 1000.0
+                self.latencySum += latency
+                self.latencyCount += 1
+            }
             
             // Track data
             self.totalBytes += Int64(frameData.count)
@@ -83,14 +96,14 @@ final class UnifiedFrameDecoder: NSObject {
                 let elapsed = now.timeIntervalSince(self.lastLogTime)
                 let fps = Double(self.frameCount) / elapsed
                 let kbps = (Double(self.totalBytes) * 8 / 1024) / elapsed
-                let avgSizeKB = Double(self.totalBytes) / Double(max(1, self.frameCount)) / 1024
                 let avgDecodeMs = (self.decodeTimeSum / Double(max(1, self.frameCount))) * 1000
+                let avgLatencyMs = self.latencyCount > 0 ? (self.latencySum / Double(self.latencyCount)) * 1000 : 0
                 
                 if self.droppedFrames > 0 {
                     let dropRate = Double(self.droppedFrames) / Double(self.frameCount + self.droppedFrames) * 100
-                    print("[UnifiedDecoder] 📊 Performance: \(String(format: "%.1f", fps)) FPS, \(String(format: "%.0f", kbps)) kbps, avg: \(String(format: "%.0f", avgSizeKB))KB, decode: \(String(format: "%.1f", avgDecodeMs))ms, dropped: \(String(format: "%.1f", dropRate))%")
+                    print("[UnifiedDecoder] 📊 Performance: \(String(format: "%.1f", fps)) FPS, \(String(format: "%.0f", kbps)) kbps, decode: \(String(format: "%.1f", avgDecodeMs))ms, latency: \(String(format: "%.0f", avgLatencyMs))ms, dropped: \(String(format: "%.1f", dropRate))%")
                 } else {
-                    print("[UnifiedDecoder] 📊 Performance: \(String(format: "%.1f", fps)) FPS, \(String(format: "%.0f", kbps)) kbps, avg: \(String(format: "%.0f", avgSizeKB))KB, decode: \(String(format: "%.1f", avgDecodeMs))ms")
+                    print("[UnifiedDecoder] 📊 Performance: \(String(format: "%.1f", fps)) FPS, \(String(format: "%.0f", kbps)) kbps, decode: \(String(format: "%.1f", avgDecodeMs))ms, latency: \(String(format: "%.0f", avgLatencyMs))ms")
                 }
                 
                 // Adaptive frame interval based on actual performance
@@ -104,6 +117,8 @@ final class UnifiedFrameDecoder: NSObject {
                 self.droppedFrames = 0
                 self.totalBytes = 0
                 self.decodeTimeSum = 0
+                self.latencySum = 0
+                self.latencyCount = 0
                 self.lastLogTime = now
             }
         }

@@ -136,6 +136,11 @@ struct SettingsView: View {
                         .cornerRadius(12.0)
 
                     Spacer(minLength: 32)
+                    
+                    // Bluetooth Pairing
+                    BluetoothPairingView()
+
+                    Spacer(minLength: 32)
 
                     // App icons
                     AppIconView()
