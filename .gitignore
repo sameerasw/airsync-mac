@@ -68,3 +68,9 @@ updates/
 
 # Local secrets configuration (never commit)
 airsync-mac/Configs/
+openspec/
+AGENTS.md
+.opencode/
+.rambles
+.tend-stack
+docs/plans/
