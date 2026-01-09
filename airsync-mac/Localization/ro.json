@@ -9,6 +9,7 @@
   "onboarding.title": "Welcome to AirSync",
   "notifications.empty.title": "You're all caught up!",
   "notifications.empty.emoji": "└(=^‥^=)┐",
+  "notifications.calls": "Calls",
   "notifications.actions.hide": "Hide",
   "notifications.actions.dismiss": "Dismiss",
   "notifications.tab": "Notifications",
