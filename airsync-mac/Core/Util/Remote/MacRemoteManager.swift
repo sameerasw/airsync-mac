@@ -106,6 +106,7 @@ class MacRemoteManager: ObservableObject {
             case "ctrl", "control": flags.insert(.maskControl)
             case "option", "alt": flags.insert(.maskAlternate)
             case "command", "cmd": flags.insert(.maskCommand)
+            case "fn": flags.insert(.maskSecondaryFn)
             default: break
             }
         }
