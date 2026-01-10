@@ -31,6 +31,11 @@ enum MessageType: String, Codable {
     case transferVerified
     // wake up / quick connect
     case wakeUpRequest
+    // remote control (Mac)
+    case remoteControl
+    case volumeControl // outgoing from Mac (legacy/other direction)
+    case macVolume     // outgoing from Mac
+    case toggleAppNotif // outgoing from Mac
 }
 
 struct Message: Codable {

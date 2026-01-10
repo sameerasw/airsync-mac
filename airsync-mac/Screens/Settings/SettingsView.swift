@@ -9,6 +9,7 @@ struct SettingsView: View {
     @State private var port: String = "6996"
     @State private var availableAdapters: [(name: String, address: String)] = []
     @State private var currentIPAddress: String = "N/A"
+    @State private var showRemoteSheet = false
 
 
     var body: some View {
@@ -108,6 +109,22 @@ struct SettingsView: View {
 
                     // App icons
                     AppIconView()
+
+                    VStack {
+                        HStack {
+                            Label("Remote Control", systemImage: "keyboard.badge.eye")
+                            Spacer()
+                            GlassButtonView(label: "Configure", systemImage: "accessibility"){
+                                showRemoteSheet = true
+                            }
+                        }
+                    }
+                    .padding()
+                    .background(.background.opacity(0.3))
+                    .cornerRadius(12.0)
+                    .sheet(isPresented: $showRemoteSheet) {
+                        RemotePermissionView()
+                    }
 
 
                     VStack {
