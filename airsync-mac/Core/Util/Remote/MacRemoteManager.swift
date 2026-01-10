@@ -16,6 +16,7 @@ class MacRemoteManager: ObservableObject {
     
     @Published var lastVolumeLevel: Int = 0
     private var volumeCheckTimer: Timer?
+    private var cachedScreenHeight: CGFloat = 1080
     
     // Key codes
     enum Key: Int {
@@ -43,6 +44,7 @@ class MacRemoteManager: ObservableObject {
     private init() {
         // Initialize last known volume
         self.lastVolumeLevel = getVolume()
+        self.cachedScreenHeight = NSScreen.main?.frame.height ?? 1080
         startVolumeMonitoring()
     }
     
@@ -66,10 +68,10 @@ class MacRemoteManager: ObservableObject {
     
     func simulateMouseRelativeMove(dx: CGFloat, dy: CGFloat) {
         let mouseLoc = NSEvent.mouseLocation
-        let screenFrame = NSScreen.main?.frame ?? .zero
         
         // Convert Cocoa coordinates (bottom-left) to CoreGraphics (top-left)
-        let currentPos = CGPoint(x: mouseLoc.x, y: screenFrame.height - mouseLoc.y)
+        // Use cached screen height to avoid querying screen frame 100 times/sec
+        let currentPos = CGPoint(x: mouseLoc.x, y: cachedScreenHeight - mouseLoc.y)
         let newPos = CGPoint(x: currentPos.x + dx, y: currentPos.y + dy)
         
         if let event = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: newPos, mouseButton: .left) {
