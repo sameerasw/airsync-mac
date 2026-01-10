@@ -64,6 +64,43 @@ class MacRemoteManager: ObservableObject {
     
     // MARK: - Input Simulation
     
+    func simulateMouseRelativeMove(dx: CGFloat, dy: CGFloat) {
+        let mouseLoc = NSEvent.mouseLocation
+        let screenFrame = NSScreen.main?.frame ?? .zero
+        
+        // Convert Cocoa coordinates (bottom-left) to CoreGraphics (top-left)
+        let currentPos = CGPoint(x: mouseLoc.x, y: screenFrame.height - mouseLoc.y)
+        let newPos = CGPoint(x: currentPos.x + dx, y: currentPos.y + dy)
+        
+        if let event = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: newPos, mouseButton: .left) {
+            event.post(tap: .cghidEventTap)
+        }
+    }
+    
+    func simulateMouseClick(button: CGMouseButton, isDown: Bool) {
+        let mouseLoc = NSEvent.mouseLocation
+        let screenFrame = NSScreen.main?.frame ?? .zero
+        let currentPos = CGPoint(x: mouseLoc.x, y: screenFrame.height - mouseLoc.y)
+        
+        let mouseType: CGEventType
+        switch button {
+        case .left: mouseType = isDown ? .leftMouseDown : .leftMouseUp
+        case .right: mouseType = isDown ? .rightMouseDown : .rightMouseUp
+        case .center: mouseType = isDown ? .otherMouseDown : .otherMouseUp
+        @unknown default: return
+        }
+        
+        if let event = CGEvent(mouseEventSource: nil, mouseType: mouseType, mouseCursorPosition: currentPos, mouseButton: button) {
+            event.post(tap: .cghidEventTap)
+        }
+    }
+
+    func simulateMouseScroll(dx: CGFloat, dy: CGFloat) {
+        // wheel1 is vertical, wheel2 is horizontal
+        let event = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: Int32(dy), wheel2: Int32(dx), wheel3: 0)
+        event?.post(tap: .cghidEventTap)
+    }
+
     func simulateKeyCode(_ code: Int, modifiers: [String] = []) {
         let flags = parseModifiers(modifiers)
         let src: CGEventSource? = nil // Better compatibility for system shortcuts

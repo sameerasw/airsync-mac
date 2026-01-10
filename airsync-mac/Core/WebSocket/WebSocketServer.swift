@@ -14,6 +14,7 @@ import UserNotifications
 import Swifter
 internal import Combine
 import CryptoKit
+import CoreGraphics
 
 enum WebSocketStatus {
     case stopped
@@ -701,58 +702,76 @@ class WebSocketServer: ObservableObject {
                 
                 print("[websocket] Remote control action: \(action)")
                 
-                DispatchQueue.main.async {
-                    switch action {
-                    case "keypress":
-                        let modifiers = dict["modifiers"] as? [String] ?? []
-                        print("[WebSocketServer] keypress: \(dict["keycode"] ?? ""), modifiers: \(modifiers)")
-                        if let code = dict["keycode"] as? Int {
-                            MacRemoteManager.shared.simulateKeyCode(code, modifiers: modifiers)
-                        }
-                    case "type":
-                        let modifiers = dict["modifiers"] as? [String] ?? []
-                        print("[WebSocketServer] type: \(dict["text"] ?? ""), modifiers: \(modifiers)")
-                        if let text = dict["text"] as? String {
-                            MacRemoteManager.shared.simulateText(text, modifiers: modifiers)
-                        }
-                        
-                    case "arrow_up":
-                        MacRemoteManager.shared.simulateKey(.upArrow)
-                    case "arrow_down":
-                        MacRemoteManager.shared.simulateKey(.downArrow)
-                    case "arrow_left":
-                        MacRemoteManager.shared.simulateKey(.leftArrow)
-                    case "arrow_right":
-                        MacRemoteManager.shared.simulateKey(.rightArrow)
-                    case "enter":
-                        MacRemoteManager.shared.simulateKey(.enter)
-                    case "space":
-                        MacRemoteManager.shared.simulateKey(.space)
-                    case "escape":
-                        MacRemoteManager.shared.simulateKey(.escape)
-                        
-                    case "vol_up":
-                        MacRemoteManager.shared.increaseVolume()
-                    case "vol_down":
-                        MacRemoteManager.shared.decreaseVolume()
-                    case "vol_mute":
-                        MacRemoteManager.shared.toggleMute()
-                    case "vol_set":
-                        if let value = dict["value"] as? Int {
-                            MacRemoteManager.shared.setVolume(value)
-                        }
-                        
-                    // Media keys via remote manager (redundant but explicit)
-                    case "media_play_pause":
-                        MacRemoteManager.shared.simulateMediaKey(.playPause)
-                    case "media_next":
-                        MacRemoteManager.shared.simulateMediaKey(.next)
-                    case "media_prev":
-                        MacRemoteManager.shared.simulateMediaKey(.previous)
-                        
-                    default:
-                        print("[websocket] Unknown remote control action: \(action)")
+                switch action {
+                case "keypress":
+                    let modifiers = dict["modifiers"] as? [String] ?? []
+                    print("[WebSocketServer] keypress: \(dict["keycode"] ?? ""), modifiers: \(modifiers)")
+                    if let code = dict["keycode"] as? Int {
+                        MacRemoteManager.shared.simulateKeyCode(code, modifiers: modifiers)
                     }
+                case "type":
+                    let modifiers = dict["modifiers"] as? [String] ?? []
+                    print("[WebSocketServer] type: \(dict["text"] ?? ""), modifiers: \(modifiers)")
+                    if let text = dict["text"] as? String {
+                        MacRemoteManager.shared.simulateText(text, modifiers: modifiers)
+                    }
+                    
+                case "arrow_up":
+                    MacRemoteManager.shared.simulateKey(.upArrow)
+                case "arrow_down":
+                    MacRemoteManager.shared.simulateKey(.downArrow)
+                case "arrow_left":
+                    MacRemoteManager.shared.simulateKey(.leftArrow)
+                case "arrow_right":
+                    MacRemoteManager.shared.simulateKey(.rightArrow)
+                case "enter":
+                    MacRemoteManager.shared.simulateKey(.enter)
+                case "space":
+                    MacRemoteManager.shared.simulateKey(.space)
+                case "escape":
+                    MacRemoteManager.shared.simulateKey(.escape)
+                
+                case "vol_up":
+                    MacRemoteManager.shared.increaseVolume()
+                case "vol_down":
+                    MacRemoteManager.shared.decreaseVolume()
+                case "vol_mute":
+                    MacRemoteManager.shared.toggleMute()
+                case "vol_set":
+                    if let value = dict["value"] as? Int {
+                        MacRemoteManager.shared.setVolume(value)
+                    }
+                
+                // Media keys via remote manager (redundant but explicit)
+                case "media_play_pause":
+                    MacRemoteManager.shared.simulateMediaKey(.playPause)
+                case "media_next":
+                    MacRemoteManager.shared.simulateMediaKey(.next)
+                case "media_prev":
+                    MacRemoteManager.shared.simulateMediaKey(.previous)
+                
+                case "mouse_move":
+                    if let dx = dict["dx"] as? Double, let dy = dict["dy"] as? Double {
+                        MacRemoteManager.shared.simulateMouseRelativeMove(dx: CGFloat(dx), dy: CGFloat(dy))
+                    }
+                case "mouse_click":
+                    if let buttonStr = dict["button"] as? String, let isDown = dict["isDown"] as? Bool {
+                        let button: CGMouseButton
+                        switch buttonStr {
+                        case "right": button = .right
+                        case "center": button = .center
+                        default: button = .left
+                        }
+                        MacRemoteManager.shared.simulateMouseClick(button: button, isDown: isDown)
+                    }
+                
+                case "mouse_scroll":
+                    if let dx = dict["dx"] as? Double, let dy = dict["dy"] as? Double {
+                        MacRemoteManager.shared.simulateMouseScroll(dx: CGFloat(dx), dy: CGFloat(dy))
+                    }
+                
+                default:
+                    print("[websocket] Unknown remote control action: \(action)")
                 }
             }
             
