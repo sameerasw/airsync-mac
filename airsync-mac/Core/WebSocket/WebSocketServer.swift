@@ -704,12 +704,16 @@ class WebSocketServer: ObservableObject {
                 DispatchQueue.main.async {
                     switch action {
                     case "keypress":
+                        let modifiers = dict["modifiers"] as? [String] ?? []
+                        print("[WebSocketServer] keypress: \(dict["keycode"] ?? ""), modifiers: \(modifiers)")
                         if let code = dict["keycode"] as? Int {
-                            MacRemoteManager.shared.simulateKeyCode(code)
+                            MacRemoteManager.shared.simulateKeyCode(code, modifiers: modifiers)
                         }
                     case "type":
+                        let modifiers = dict["modifiers"] as? [String] ?? []
+                        print("[WebSocketServer] type: \(dict["text"] ?? ""), modifiers: \(modifiers)")
                         if let text = dict["text"] as? String {
-                            MacRemoteManager.shared.simulateText(text)
+                            MacRemoteManager.shared.simulateText(text, modifiers: modifiers)
                         }
                         
                     case "arrow_up":
@@ -1027,6 +1031,22 @@ class WebSocketServer: ObservableObject {
         }
         """
         sendToFirstAvailable(message: message)
+    }
+
+    func sendModifierStatus(status: [String: [String: Any]]) {
+        let messageDict: [String: Any] = [
+            "type": "modifierStatus",
+            "data": status
+        ]
+        
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                sendToFirstAvailable(message: jsonString)
+            }
+        } catch {
+            print("[websocket] Error creating modifier status message: \(error)")
+        }
     }
 
     func sendClipboardUpdate(_ message: String) {

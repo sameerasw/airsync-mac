@@ -64,31 +64,58 @@ class MacRemoteManager: ObservableObject {
     
     // MARK: - Input Simulation
     
-    func simulateKeyCode(_ code: Int) {
-        let src = CGEventSource(stateID: .hidSystemState)
+    func simulateKeyCode(_ code: Int, modifiers: [String] = []) {
+        let flags = parseModifiers(modifiers)
+        let src: CGEventSource? = nil // Better compatibility for system shortcuts
+        
         let keyDown = CGEvent(keyboardEventSource: src, virtualKey: CGKeyCode(code), keyDown: true)
         let keyUp = CGEvent(keyboardEventSource: src, virtualKey: CGKeyCode(code), keyDown: false)
+        
+        keyDown?.flags = flags
+        keyUp?.flags = flags
         
         keyDown?.post(tap: .cghidEventTap)
         keyUp?.post(tap: .cghidEventTap)
     }
     
-    func simulateText(_ text: String) {
-        let src = CGEventSource(stateID: .hidSystemState)
+    func simulateText(_ text: String, modifiers: [String] = []) {
+        let flags = parseModifiers(modifiers)
+        let src: CGEventSource? = nil
         
         for char in text {
             // Create a blank event
             if let event = CGEvent(keyboardEventSource: src, virtualKey: 0, keyDown: true) {
                 var charCode = Array(String(char).utf16)
                 event.keyboardSetUnicodeString(stringLength: charCode.count, unicodeString: &charCode)
+                event.flags = flags
                 event.post(tap: .cghidEventTap)
             }
             
              if let eventUp = CGEvent(keyboardEventSource: src, virtualKey: 0, keyDown: false) {
+                 eventUp.flags = flags
                  eventUp.post(tap: .cghidEventTap)
              }
         }
     }
+    
+    private func parseModifiers(_ modifiers: [String]) -> CGEventFlags {
+        var flags: CGEventFlags = []
+        for mod in modifiers {
+            switch mod.lowercased() {
+            case "shift": flags.insert(.maskShift)
+            case "ctrl", "control": flags.insert(.maskControl)
+            case "option", "alt": flags.insert(.maskAlternate)
+            case "command", "cmd": flags.insert(.maskCommand)
+            default: break
+            }
+        }
+        if !modifiers.isEmpty {
+            print("[MacRemoteManager] Active modifiers: \(modifiers) -> flags: \(flags.rawValue)")
+        }
+        return flags
+    }
+    
+    // Traditional toggle removed in favor of real-time setModifierState
 
     func simulateKey(_ key: Key) {
         simulateKeyCode(key.rawValue)
