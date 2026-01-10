@@ -703,6 +703,15 @@ class WebSocketServer: ObservableObject {
                 
                 DispatchQueue.main.async {
                     switch action {
+                    case "keypress":
+                        if let code = dict["keycode"] as? Int {
+                            MacRemoteManager.shared.simulateKeyCode(code)
+                        }
+                    case "type":
+                        if let text = dict["text"] as? String {
+                            MacRemoteManager.shared.simulateText(text)
+                        }
+                        
                     case "arrow_up":
                         MacRemoteManager.shared.simulateKey(.upArrow)
                     case "arrow_down":

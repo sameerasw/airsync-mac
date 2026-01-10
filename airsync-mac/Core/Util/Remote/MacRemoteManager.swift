@@ -64,13 +64,34 @@ class MacRemoteManager: ObservableObject {
     
     // MARK: - Input Simulation
     
-    func simulateKey(_ key: Key) {
+    func simulateKeyCode(_ code: Int) {
         let src = CGEventSource(stateID: .hidSystemState)
-        let keyDown = CGEvent(keyboardEventSource: src, virtualKey: CGKeyCode(key.rawValue), keyDown: true)
-        let keyUp = CGEvent(keyboardEventSource: src, virtualKey: CGKeyCode(key.rawValue), keyDown: false)
+        let keyDown = CGEvent(keyboardEventSource: src, virtualKey: CGKeyCode(code), keyDown: true)
+        let keyUp = CGEvent(keyboardEventSource: src, virtualKey: CGKeyCode(code), keyDown: false)
         
         keyDown?.post(tap: .cghidEventTap)
         keyUp?.post(tap: .cghidEventTap)
+    }
+    
+    func simulateText(_ text: String) {
+        let src = CGEventSource(stateID: .hidSystemState)
+        
+        for char in text {
+            // Create a blank event
+            if let event = CGEvent(keyboardEventSource: src, virtualKey: 0, keyDown: true) {
+                var charCode = Array(String(char).utf16)
+                event.keyboardSetUnicodeString(stringLength: charCode.count, unicodeString: &charCode)
+                event.post(tap: .cghidEventTap)
+            }
+            
+             if let eventUp = CGEvent(keyboardEventSource: src, virtualKey: 0, keyDown: false) {
+                 eventUp.post(tap: .cghidEventTap)
+             }
+        }
+    }
+
+    func simulateKey(_ key: Key) {
+        simulateKeyCode(key.rawValue)
     }
     
     func simulateMediaKey(_ key: MediaKey) {
