@@ -489,7 +489,7 @@ class WebSocketServer: ObservableObject {
                         if let range = cleaned.range(of: "base64,") { cleaned = String(cleaned[range.upperBound...]) }
 
                         var iconPath: String? = nil
-                        if let data = Data(base64Encoded: cleaned) {
+                        if let data = Data(base64Encoded: cleaned), !cleaned.isEmpty {
                             let fileURL = appIconsDirectory().appendingPathComponent("\(package).png")
                             do {
                                 try data.write(to: fileURL, options: .atomic)
@@ -499,17 +499,28 @@ class WebSocketServer: ObservableObject {
                             }
                         }
 
-                        let app = AndroidApp(
-                            packageName: package,
-                            name: name,
-                            iconUrl: iconPath,
-                            listening: listening,
-                            systemApp: systemApp
-                        )
-
                         DispatchQueue.main.async {
-                            AppState.shared.androidApps[package] = app
-                            if let iconPath { AppState.shared.androidApps[package]?.iconUrl = iconPath }
+                            // Check for existing app to preserve icon if not provided
+                            if var existingApp = AppState.shared.androidApps[package] {
+                                // Update properties
+                                existingApp.listening = listening
+                                // Update icon only if we got a new one
+                                if let newIconPath = iconPath {
+                                    existingApp.iconUrl = newIconPath
+                                }
+                                // Ideally update name/systemApp if changed, though less critical
+                                AppState.shared.androidApps[package] = existingApp
+                            } else {
+                                // Create new app
+                                let app = AndroidApp(
+                                    packageName: package,
+                                    name: name,
+                                    iconUrl: iconPath,
+                                    listening: listening,
+                                    systemApp: systemApp
+                                )
+                                AppState.shared.androidApps[package] = app
+                            }
                         }
                     }
 
