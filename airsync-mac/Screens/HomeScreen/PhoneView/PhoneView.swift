@@ -38,7 +38,7 @@ struct PhoneView: View {
 
 
                 // Seasonal Snowfall Overlay
-                SnowfallView()
+//                SnowfallView()
 
                 // Foreground content
                 ScreenView()
