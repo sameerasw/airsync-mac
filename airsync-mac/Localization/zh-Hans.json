@@ -9,6 +9,7 @@
   "onboarding.title": "欢迎使用 AirSync",
   "notifications.empty.title": "已同步完成!",
   "notifications.empty.emoji": "└(=^‥^=)┐",
+  "notifications.calls": "Calls",
   "notifications.actions.hide": "隐藏",
   "notifications.actions.dismiss": "关闭",
   "notifications.tab": "通知",
