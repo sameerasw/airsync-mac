@@ -26,6 +26,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppState.shared.updateDockIconVisibility()
     }
 
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            print("[AppDelegate] Opening file: \(url.path)")
+            WebSocketServer.shared.sendFile(url: url)
+        }
+    }
+
+    @objc func openFileService(_ pboard: NSPasteboard, userData: String, error: NSErrorPointer) {
+        if let urls = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
+            for url in urls {
+                print("[AppDelegate] Service opening file: \(url.path)")
+                WebSocketServer.shared.sendFile(url: url)
+            }
+        }
+    }
+
     // Configure and retain main window when captured
     func configureMainWindowIfNeeded(_ window: NSWindow) {
         if mainWindow == nil || mainWindow !== window {

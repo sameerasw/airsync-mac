@@ -45,6 +45,7 @@ class WebSocketServer: ObservableObject {
     private struct IncomingFileIO {
         var tempUrl: URL
         var fileHandle: FileHandle?
+        var chunkSize: Int
     }
     private var incomingFiles: [String: IncomingFileIO] = [:]
     private var incomingFilesChecksum: [String: String] = [:]
@@ -558,6 +559,7 @@ class WebSocketServer: ObservableObject {
                let name = dict["name"] as? String,
                let size = dict["size"] as? Int,
                let mime = dict["mime"] as? String {
+                let chunkSize = dict["chunkSize"] as? Int ?? 64 * 1024
                 let checksum = dict["checksum"] as? String
 
                 let tempDir = FileManager.default.temporaryDirectory
@@ -566,7 +568,7 @@ class WebSocketServer: ObservableObject {
                 FileManager.default.createFile(atPath: tempFile.path, contents: nil, attributes: nil)
                 let handle = try? FileHandle(forWritingTo: tempFile)
 
-                let io = IncomingFileIO(tempUrl: tempFile, fileHandle: handle)
+                let io = IncomingFileIO(tempUrl: tempFile, fileHandle: handle, chunkSize: chunkSize)
                 incomingFiles[id] = io
                 if let checksum = checksum {
                     incomingFilesChecksum[id] = checksum
@@ -578,13 +580,15 @@ class WebSocketServer: ObservableObject {
         case .fileChunk:
             if let dict = message.data.value as? [String: Any],
                let id = dict["id"] as? String,
+               let index = dict["index"] as? Int,
                let chunkBase64 = dict["chunk"] as? String,
                let io = incomingFiles[id],
                let data = Data(base64Encoded: chunkBase64) {
 
-                io.fileHandle?.seekToEndOfFile()
+                let offset = UInt64(index * io.chunkSize)
+                try? io.fileHandle?.seek(toOffset: offset)
                 io.fileHandle?.write(data)
-                // Update incoming progress in AppState (increment)
+                // Update incoming progress in AppState
                 let prev = AppState.shared.transfers[id]?.bytesTransferred ?? 0
                 let newBytes = prev + data.count
                 AppState.shared.updateIncomingProgress(id: id, receivedBytes: newBytes)
@@ -1124,111 +1128,137 @@ class WebSocketServer: ObservableObject {
 
     // MARK: - File transfer (Mac -> Android)
     func sendFile(url: URL, chunkSize: Int = 64 * 1024) {
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
-        guard let data = try? Data(contentsOf: url) else { return }
-        // compute checksum
-        let checksum = FileTransferProtocol.sha256Hex(data)
-
-    let transferId = UUID().uuidString
-        let fileName = url.lastPathComponent
-        let totalSize = data.count
-        let mime = mimeType(for: url) ?? "application/octet-stream"
-
-    // Track in AppState
-    AppState.shared.startOutgoingTransfer(id: transferId, name: fileName, size: totalSize, mime: mime, chunkSize: chunkSize)
-
-    // Send init message
-    let initMessage = FileTransferProtocol.buildInit(id: transferId, name: fileName, size: totalSize, mime: mime, checksum: checksum)
-    sendToFirstAvailable(message: initMessage)
-
-        // Send chunks using a simple sliding window to allow multiple in-flight chunks
-        let windowSize = 8
-        let totalChunks = (totalSize + chunkSize - 1) / chunkSize
-        outgoingAcks[transferId] = []
-
-        // Keep a buffer of sent chunks for potential retransmit: index -> (payloadBase64, attempts, lastSent)
-        var sentBuffer: [Int: (payload: String, attempts: Int, lastSent: Date)] = [:]
-
-        var nextIndexToSend = 0
-        let startTime = Date()
-
-        func sendChunkAt(_ idx: Int) {
-            let start = idx * chunkSize
-            let end = min(start + chunkSize, totalSize)
-            let chunk = data.subdata(in: start..<end)
-            let base64 = chunk.base64EncodedString()
-            let chunkMessage = FileTransferProtocol.buildChunk(id: transferId, index: idx, base64Chunk: base64)
-            sendToFirstAvailable(message: chunkMessage)
-            sentBuffer[idx] = (payload: base64, attempts: 1, lastSent: Date())
-        }
-
-        // Prime the window
-        while nextIndexToSend < totalChunks && nextIndexToSend < windowSize {
-            sendChunkAt(nextIndexToSend)
-            nextIndexToSend += 1
-        }
-
-        // Loop until all chunks are acked
-        while true {
-            let acked = outgoingAcks[transferId] ?? []
-
-            // compute baseIndex = lowest unacked index (first missing starting from 0)
-            var baseIndex = 0
-            while acked.contains(baseIndex) {
-                // free memory for acknowledged chunks
-                sentBuffer.removeValue(forKey: baseIndex)
-                baseIndex += 1
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                print("[websocket] (file-transfer) File does not exist at \(url.path)")
+                return
             }
 
-            // Update progress in AppState
-            let bytesAcked = min(acked.count * chunkSize, totalSize)
-            AppState.shared.updateOutgoingProgress(id: transferId, bytesTransferred: bytesAcked)
-
-            // completion when baseIndex reached totalChunks
-            if baseIndex >= totalChunks {
-                break
+            let fileName = url.lastPathComponent
+            let mime = self.mimeType(for: url) ?? "application/octet-stream"
+            
+            guard let fileHandle = try? FileHandle(forReadingFrom: url) else {
+                print("[websocket] (file-transfer) Could not open file handle for \(url.path)")
+                return
             }
-
-            // send new chunks while window has space
-            while nextIndexToSend < totalChunks && (nextIndexToSend - baseIndex) < windowSize {
-                sendChunkAt(nextIndexToSend)
-                nextIndexToSend += 1
+            
+            let totalSize: Int
+            do {
+                let attr = try FileManager.default.attributesOfItem(atPath: url.path)
+                totalSize = attr[.size] as? Int ?? 0
+            } catch {
+                print("[websocket] (file-transfer) Could not get attributes for \(url.path)")
+                return
             }
+            
+            // compute checksum without loading whole file
+            print("[websocket] (file-transfer) Computing checksum for \(fileName)...")
+            var hasher = SHA256()
+            let hashBuffer = 1024 * 1024
+            while true {
+                let data = fileHandle.readData(ofLength: hashBuffer)
+                if data.isEmpty { break }
+                hasher.update(data: data)
+            }
+            let checksum = hasher.finalize().compactMap { String(format: "%02x", $0) }.joined()
+            try? fileHandle.seek(toOffset: 0)
 
-            // Retransmit chunks that haven't been acked and exceeded timeout
-            let now = Date()
-            for (idx, entry) in sentBuffer {
-                if acked.contains(idx) { continue }
-                let elapsedMs = now.timeIntervalSince(entry.lastSent) * 1000.0
-                if elapsedMs > Double(ackWaitMs) {
-                    if entry.attempts >= maxChunkRetries {
-                        print("[websocket] (file-transfer) Failed to get ack for chunk \(idx) after \(maxChunkRetries) attempts")
-                        outgoingAcks.removeValue(forKey: transferId)
-                        return
-                    }
-                    // retransmit
-                    let start = idx * chunkSize
-                    let end = min(start + chunkSize, totalSize)
-                    let chunk = data.subdata(in: start..<end)
+            let transferId = UUID().uuidString
+            print("[websocket] (file-transfer) Starting transfer id=\(transferId) name=\(fileName) size=\(totalSize)")
+
+            // Track in AppState
+            AppState.shared.startOutgoingTransfer(id: transferId, name: fileName, size: totalSize, mime: mime, chunkSize: chunkSize)
+
+            // Send init message
+            let initMessage = FileTransferProtocol.buildInit(id: transferId, name: fileName, size: totalSize, mime: mime, chunkSize: chunkSize, checksum: checksum)
+            self.sendToFirstAvailable(message: initMessage)
+
+            // Send chunks using a simple sliding window
+            let windowSize = 8
+            let totalChunks = totalSize == 0 ? 1 : (totalSize + chunkSize - 1) / chunkSize
+            self.outgoingAcks[transferId] = []
+
+            // sentBuffer: index -> (payloadBase64, attempts, lastSent)
+            var sentBuffer: [Int: (payload: String, attempts: Int, lastSent: Date)] = [:]
+            var nextIndexToSend = 0
+            let startTime = Date()
+
+            func sendChunkAt(_ idx: Int) {
+                let offset = UInt64(idx * chunkSize)
+                do {
+                    try fileHandle.seek(toOffset: offset)
+                    let chunk = fileHandle.readData(ofLength: chunkSize)
                     let base64 = chunk.base64EncodedString()
                     let chunkMessage = FileTransferProtocol.buildChunk(id: transferId, index: idx, base64Chunk: base64)
-                    sendToFirstAvailable(message: chunkMessage)
-                    sentBuffer[idx] = (payload: base64, attempts: entry.attempts + 1, lastSent: Date())
+                    self.sendToFirstAvailable(message: chunkMessage)
+                    sentBuffer[idx] = (payload: base64, attempts: 1, lastSent: Date())
+                } catch {
+                    print("[websocket] (file-transfer) Seek/Read failed for chunk \(idx): \(error)")
                 }
             }
 
-            // brief sleep to avoid busy-looping
-            usleep(50_000) // 50ms
+            // Loop until all chunks are acked
+            var transferFailed = false
+            while !transferFailed {
+                let acked = self.outgoingAcks[transferId] ?? []
+                
+                // compute baseIndex = lowest unacked index
+                var baseIndex = 0
+                while acked.contains(baseIndex) {
+                    sentBuffer.removeValue(forKey: baseIndex)
+                    baseIndex += 1
+                }
+
+                // Update progress in AppState
+                let bytesAcked = min(baseIndex * chunkSize, totalSize)
+                AppState.shared.updateOutgoingProgress(id: transferId, bytesTransferred: bytesAcked)
+
+                if baseIndex >= totalChunks {
+                    break
+                }
+
+                // send new chunks while window has space
+                while nextIndexToSend < totalChunks && (nextIndexToSend - baseIndex) < windowSize {
+                    sendChunkAt(nextIndexToSend)
+                    nextIndexToSend += 1
+                }
+
+                // Retransmit logic
+                let now = Date()
+                for (idx, entry) in sentBuffer {
+                    if acked.contains(idx) { continue }
+                    let elapsedMs = now.timeIntervalSince(entry.lastSent) * 1000.0
+                    if elapsedMs > Double(self.ackWaitMs) {
+                        if entry.attempts >= self.maxChunkRetries {
+                            print("[websocket] (file-transfer) Failed to get ack for chunk \(idx) after \(self.maxChunkRetries) attempts")
+                            AppState.shared.failTransfer(id: transferId, reason: "Multiple retries failed for chunk \(idx)")
+                            transferFailed = true
+                            break
+                        }
+                        // retransmit
+                        let chunkMessage = FileTransferProtocol.buildChunk(id: transferId, index: idx, base64Chunk: entry.payload)
+                        self.sendToFirstAvailable(message: chunkMessage)
+                        sentBuffer[idx] = (payload: entry.payload, attempts: entry.attempts + 1, lastSent: Date())
+                    }
+                }
+
+                usleep(20_000) // 20ms
+            }
+
+            try? fileHandle.close()
+            
+            if !transferFailed {
+                AppState.shared.updateOutgoingProgress(id: transferId, bytesTransferred: totalSize)
+                let elapsed = Date().timeIntervalSince(startTime)
+                print("[websocket] (file-transfer) Completed sending \(totalSize) bytes in \(String(format: "%.2f", elapsed)) s")
+
+                let completeMessage = FileTransferProtocol.buildComplete(id: transferId, name: fileName, size: totalSize, checksum: checksum)
+                self.sendToFirstAvailable(message: completeMessage)
+            }
+            
+            self.outgoingAcks.removeValue(forKey: transferId)
         }
-
-    // Ensure progress shows 100%
-    AppState.shared.updateOutgoingProgress(id: transferId, bytesTransferred: totalSize)
-    let elapsed = Date().timeIntervalSince(startTime)
-        print("[websocket] (file-transfer) Completed sending \(totalSize) bytes in \(elapsed) s")
-
-        // Send complete
-    let completeMessage = FileTransferProtocol.buildComplete(id: transferId, name: fileName, size: totalSize, checksum: checksum)
-        sendToFirstAvailable(message: completeMessage)
     }
 
     func toggleNotification(for package: String, to state: Bool) {

@@ -2,7 +2,7 @@ import Foundation
 import CryptoKit
 
 enum FileTransferProtocol {
-    static func buildInit(id: String, name: String, size: Int, mime: String, checksum: String?) -> String {
+    static func buildInit(id: String, name: String, size: Int, mime: String, chunkSize: Int, checksum: String?) -> String {
         let checksumLine = (checksum?.isEmpty == false) ? ",\n        \"checksum\": \"\(checksum!)\"" : ""
         return """
         {
@@ -11,7 +11,8 @@ enum FileTransferProtocol {
                 "id": "\(id)",
                 "name": "\(name)",
                 "size": \(size),
-                "mime": "\(mime)"\(checksumLine)
+                "mime": "\(mime)",
+                "chunkSize": \(chunkSize)\(checksumLine)
             }
         }
         """
