@@ -194,11 +194,13 @@ class WebSocketServer: ObservableObject {
                 self.lock.unlock()
 
                 // Only call disconnectDevice if no other sessions remain
-                if isEmpty {
-                    DispatchQueue.main.async {
-                        AppState.shared.disconnectDevice()
+                    if isEmpty {
+                        DispatchQueue.main.async {
+                            AppState.shared.disconnectDevice()
+                            // Stop any ongoing transfers immediately
+                            AppState.shared.stopAllTransfers(reason: "Device disconnected")
+                        }
                     }
-                }
             }
         )
     }
@@ -658,7 +660,7 @@ class WebSocketServer: ObservableObject {
                     if let state = state {
                         fileQueue.async {
                             // Close file safely on the serial queue
-                            let _ = try? state.fileHandle?.closeFile()
+                            state.fileHandle?.closeFile()
                             
                             // Validate size
                             var totalBytes: UInt64 = 0
@@ -773,6 +775,15 @@ class WebSocketServer: ObservableObject {
                     title: "Transfer complete",
                     body: verified ? "File sent successfully" : "File might be incomplete"
                 )
+            }
+            
+        case .fileTransferCancel:
+            if let dict = message.data.value as? [String: Any],
+               let id = dict["id"] as? String {
+                print("[websocket] (file-transfer) Received cancellation for id=\(id)")
+                DispatchQueue.main.async {
+                    AppState.shared.stopTransferRemote(id: id)
+                }
             }
 
         case .macMediaControl:
@@ -1335,6 +1346,20 @@ class WebSocketServer: ObservableObject {
 
                 // send new chunks while window has space
                 while nextIndexToSend < totalChunks && (nextIndexToSend - baseIndex) < windowSize {
+                    
+                    // Check if transfer was cancelled externally (e.g. by user)
+                    var isCancelled = false
+                     DispatchQueue.main.sync {
+                        if let t = AppState.shared.transfers[transferId], t.status != .inProgress {
+                            isCancelled = true
+                        }
+                     }
+                    if isCancelled {
+                        transferFailed = true
+                        print("[websocket] (file-transfer) Transfer cancelled externally, stopping loop.")
+                        break
+                    }
+
                     sendChunkAt(nextIndexToSend)
                     nextIndexToSend += 1
                 }
@@ -1380,6 +1405,18 @@ class WebSocketServer: ObservableObject {
             self.outgoingAcks.removeValue(forKey: transferId)
             self.lock.unlock()
         }
+    }
+
+    func sendTransferCancel(id: String) {
+        let message = """
+        {
+            "type": "fileTransferCancel",
+            "data": {
+                "id": "\(id)"
+            }
+        }
+        """
+        sendToFirstAvailable(message: message)
     }
 
     func toggleNotification(for package: String, to state: Bool) {

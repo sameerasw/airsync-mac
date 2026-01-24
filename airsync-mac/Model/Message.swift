@@ -29,6 +29,7 @@ enum MessageType: String, Codable {
     case fileTransferComplete
     case fileChunkAck
     case transferVerified
+    case fileTransferCancel
     // wake up / quick connect
     case wakeUpRequest
     // remote control (Mac)

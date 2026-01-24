@@ -225,7 +225,29 @@ extension AppState {
     }
 
     func cancelTransfer(id: String) {
+        // Send cancel message to remote
+        WebSocketServer.shared.sendTransferCancel(id: id)
         failTransfer(id: id, reason: "Cancelled by user")
+    }
+    
+    func stopTransferRemote(id: String) {
+        failTransfer(id: id, reason: "Cancelled by receiver")
+    }
+    
+    func stopAllTransfers(reason: String) {
+        DispatchQueue.main.async {
+            for (id, session) in self.transfers {
+                if case .inProgress = session.status {
+                    var s = session
+                    s.status = .failed(reason: reason)
+                    self.transfers[id] = s
+                }
+            }
+            // Clear active if any
+            if self.activeTransferId != nil {
+                self.scheduleTransferDismiss()
+            }
+        }
     }
 }
 
