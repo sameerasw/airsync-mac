@@ -347,6 +347,12 @@ class AppState: ObservableObject {
     @Published var browseItems: [FileBrowserItem] = []
     @Published var isBrowsingLoading: Bool = false
     @Published var browseError: String? = nil
+    @Published var showHiddenFiles: Bool = false {
+        didSet {
+            // refresh current directory when hidden files toggle changes
+            fetchDirectory(path: browsePath)
+        }
+    }
 
     // File transfer tracking state
     @Published var transfers: [String: FileTransferSession] = [:]
@@ -655,7 +661,11 @@ class AppState: ObservableObject {
         isBrowsingLoading = true
         // Keep the path updated immediately for UI responsiveness
         browsePath = path
-        WebSocketServer.shared.sendBrowseRequest(path: path)
+        WebSocketServer.shared.sendBrowseRequest(path: path, showHidden: showHiddenFiles)
+    }
+
+    func pullFile(path: String) {
+        WebSocketServer.shared.sendPullRequest(path: path)
     }
     
     func navigateUp() {

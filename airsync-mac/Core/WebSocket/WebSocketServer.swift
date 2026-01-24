@@ -1476,15 +1476,22 @@ class WebSocketServer: ObservableObject {
         sendToFirstAvailable(message: message)
     }
 
-    func sendBrowseRequest(path: String) {
+    func sendBrowseRequest(path: String, showHidden: Bool = false) {
         let message = """
         {
             "type": "browseLs",
             "data": {
-                "path": "\(path)"
+                "path": "\(path)",
+                "showHidden": \(showHidden)
             }
         }
         """
+        sendToFirstAvailable(message: message)
+    }
+
+    func sendPullRequest(path: String) {
+        let message = FileTransferProtocol.buildFilePull(path: path)
+        print("[websocket] Sending pull request for \(path)")
         sendToFirstAvailable(message: message)
     }
 

@@ -35,14 +35,18 @@ struct FileBrowserView: View {
                     Spacer()
 
 
-                    GlassButtonView(
-                        label: "More",
-                        systemImage: "ellipsis",
-                        iconOnly: true,
-                        action: {
-                            // more context menu
-                        }
-                    )
+                    Menu {
+                        Toggle("Show hidden files", isOn: $appState.showHiddenFiles)
+                    } label: {
+                        GlassButtonView(
+                            label: "More",
+                            systemImage: "ellipsis",
+                            iconOnly: true,
+                            action: {}
+                        )
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
 
                     if appState.isBrowsingLoading {
                         ProgressView()
@@ -148,6 +152,16 @@ struct FileBrowserItemRow: View {
                 Image(systemName: "chevron.right")
                     .font(.caption)
                     .foregroundColor(.secondary)
+            } else {
+                Button(action: {
+                    let cleanPath = AppState.shared.browsePath.hasSuffix("/") ? AppState.shared.browsePath : AppState.shared.browsePath + "/"
+                    let fullPath = cleanPath + item.name
+                    AppState.shared.pullFile(path: fullPath)
+                }) {
+                    Image(systemName: "square.and.arrow.down")
+                        .foregroundColor(.accentColor)
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.vertical, 4)
