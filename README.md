@@ -1,4 +1,4 @@
- # AirSync macOS app source code
+ # AirSync macOS
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/fdc68d4f-162f-4599-bc52-5920b23dc0a2" />
