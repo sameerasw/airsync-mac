@@ -54,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.delegate = self
         }
         window.isReleasedWhenClosed = false
-        window.collectionBehavior.insert(.moveToActiveSpace)
+        window.isReleasedWhenClosed = false
     }
 
 

@@ -45,6 +45,13 @@ extension AppState {
                 startedAt: Date(),
                 status: .inProgress
             )
+            
+            // Auto-show dialog if enabled
+            if self.showFileShareDialog {
+                self.activeTransferId = id
+                self.transferDismissTimer?.invalidate()
+                self.transferDismissTimer = nil
+            }
         }
     }
 
@@ -61,6 +68,13 @@ extension AppState {
                 startedAt: Date(),
                 status: .inProgress
             )
+
+            // Auto-show dialog if enabled
+            if self.showFileShareDialog {
+                self.activeTransferId = id
+                self.transferDismissTimer?.invalidate()
+                self.transferDismissTimer = nil
+            }
         }
     }
 
@@ -86,6 +100,11 @@ extension AppState {
             s.bytesTransferred = s.size
             s.status = .completed(verified: verified)
             self.transfers[id] = s
+            
+            // Auto-dismiss after 10s if this is the active one
+            if self.activeTransferId == id {
+                self.scheduleTransferDismiss()
+            }
         }
     }
 
@@ -94,6 +113,11 @@ extension AppState {
             guard var s = self.transfers[id] else { return }
             s.status = .completed(verified: verified)
             self.transfers[id] = s
+            
+            // Auto-dismiss after 10s if this is the active one
+            if self.activeTransferId == id {
+                self.scheduleTransferDismiss()
+            }
         }
     }
 
@@ -102,6 +126,11 @@ extension AppState {
             guard var s = self.transfers[id] else { return }
             s.status = .failed(reason: reason)
             self.transfers[id] = s
+            
+            // Auto-dismiss failed transfers after 10s too, to let user see error
+            if self.activeTransferId == id {
+               self.scheduleTransferDismiss()
+            }
         }
     }
 
@@ -117,6 +146,24 @@ extension AppState {
                 }
             }
         }
+    }
+    func scheduleTransferDismiss() {
+        self.transferDismissTimer?.invalidate()
+        self.transferDismissTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.clearActiveTransfer()
+            }
+        }
+    }
+
+    func clearActiveTransfer() {
+        self.activeTransferId = nil
+        self.transferDismissTimer?.invalidate()
+        self.transferDismissTimer = nil
+    }
+
+    func cancelTransfer(id: String) {
+        failTransfer(id: id, reason: "Cancelled by user")
     }
 }
 

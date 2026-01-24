@@ -62,6 +62,10 @@ class AppState: ObservableObject {
             .string(forKey: "notificationSound") ?? "default"
         self.dismissNotif = UserDefaults.standard
             .bool(forKey: "dismissNotif")
+        
+        // File Share Dialog default true
+        let savedShowFileShareDialog = UserDefaults.standard.object(forKey: "showFileShareDialog")
+        self.showFileShareDialog = savedShowFileShareDialog == nil ? true : UserDefaults.standard.bool(forKey: "showFileShareDialog")
 
         let savedNotificationMode = UserDefaults.standard
             .string(forKey: "callNotificationMode") ?? CallNotificationMode.popup.rawValue
@@ -308,6 +312,12 @@ class AppState: ObservableObject {
         }
     }
 
+    @Published var showFileShareDialog: Bool {
+        didSet {
+            UserDefaults.standard.set(showFileShareDialog, forKey: "showFileShareDialog")
+        }
+    }
+
     @Published var sendNowPlayingStatus: Bool {
         didSet {
             UserDefaults.standard.set(sendNowPlayingStatus, forKey: "sendNowPlayingStatus")
@@ -333,6 +343,8 @@ class AppState: ObservableObject {
 
     // File transfer tracking state
     @Published var transfers: [String: FileTransferSession] = [:]
+    @Published var activeTransferId: String? = nil
+    var transferDismissTimer: Timer?
 
     // Toggle licensing
     let licenseCheck: Bool = true
