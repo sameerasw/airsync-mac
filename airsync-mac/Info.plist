@@ -3,7 +3,22 @@
 <plist version="1.0">
 <dict>
 	<key>AndroidVersion</key>
-	<string>2.2.0</string>
+	<string>2.4.0</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>All Files</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.item</string>
+				<string>public.content</string>
+				<string>public.data</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleIcons</key>
 	<dict>
 		<key>CFBundleAlternateIcons</key>
@@ -28,35 +43,6 @@
 	<string>003</string>
 	<key>NSAppleScriptEnabled</key>
 	<true/>
-	<key>OSAScriptingDefinition</key>
-	<string>AirSync.sdef</string>
-	<key>SUEnableDownloaderService</key>
-	<true/>
-	<key>SUEnableInstallerLauncherService</key>
-	<true/>
-	<key>SUFeedURL</key>
-	<string>https://sameerasw.github.io/airsync-mac/appcast.xml</string>
-	<key>SUPublicEDKey</key>
-	<string>sHwLY7+V1LUTP7lmY9FYK8FAZgn2zlUhYCEiDazyaMQ=</string>
-	<key>TrialSecret</key>
-	<string>$(TRIAL_SECRET)</string>
-	<key>UpdateFeedURL</key>
-	<string>https://sameerasw.github.io/airsync-mac/releases/latest</string>
-	<key>CFBundleDocumentTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleTypeName</key>
-			<string>All Files</string>
-			<key>LSHandlerRank</key>
-			<string>Alternate</string>
-			<key>LSItemContentTypes</key>
-			<array>
-				<string>public.item</string>
-				<string>public.content</string>
-				<string>public.data</string>
-			</array>
-		</dict>
-	</array>
 	<key>NSServices</key>
 	<array>
 		<dict>
@@ -80,5 +66,19 @@
 			</array>
 		</dict>
 	</array>
+	<key>OSAScriptingDefinition</key>
+	<string>AirSync.sdef</string>
+	<key>SUEnableDownloaderService</key>
+	<true/>
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://sameerasw.github.io/airsync-mac/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>sHwLY7+V1LUTP7lmY9FYK8FAZgn2zlUhYCEiDazyaMQ=</string>
+	<key>TrialSecret</key>
+	<string>$(TRIAL_SECRET)</string>
+	<key>UpdateFeedURL</key>
+	<string>https://sameerasw.github.io/airsync-mac/releases/latest</string>
 </dict>
 </plist>

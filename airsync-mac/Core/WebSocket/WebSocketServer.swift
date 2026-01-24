@@ -1327,7 +1327,14 @@ class WebSocketServer: ObservableObject {
             AppState.shared.startOutgoingTransfer(id: transferId, name: fileName, size: totalSize, mime: mime, chunkSize: chunkSize)
 
             // Send init message
-            let initMessage = FileTransferProtocol.buildInit(id: transferId, name: fileName, size: totalSize, mime: mime, chunkSize: chunkSize, checksum: checksum)
+            let initMessage = FileTransferProtocol.buildInit(
+                id: transferId,
+                name: fileName,
+                size: Int64(totalSize),
+                mime: mime,
+                chunkSize: chunkSize,
+                checksum: checksum
+            )
             self.sendToFirstAvailable(message: initMessage)
 
             // Send chunks using a simple sliding window
@@ -1434,7 +1441,12 @@ class WebSocketServer: ObservableObject {
                 let elapsed = Date().timeIntervalSince(startTime)
                 print("[websocket] (file-transfer) Completed sending \(totalSize) bytes in \(String(format: "%.2f", elapsed)) s")
 
-                let completeMessage = FileTransferProtocol.buildComplete(id: transferId, name: fileName, size: totalSize, checksum: checksum)
+                let completeMessage = FileTransferProtocol.buildComplete(
+                    id: transferId,
+                    name: fileName,
+                    size: Int64(totalSize),
+                    checksum: checksum
+                )
                 self.sendToFirstAvailable(message: completeMessage)
             }
             
