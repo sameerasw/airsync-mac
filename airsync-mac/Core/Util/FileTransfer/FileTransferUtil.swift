@@ -24,6 +24,10 @@ extension AppState {
         var bytesTransferred: Int
         var chunkSize: Int
         let startedAt: Date
+        var estimatedTimeRemaining: TimeInterval? // smoothed
+        var smoothedSpeed: Double?
+        var lastUpdateTime: Date
+        var bytesSinceLastUpdate: Int
         var status: TransferStatus
 
         var progress: Double {
@@ -43,6 +47,8 @@ extension AppState {
                 bytesTransferred: 0,
                 chunkSize: chunkSize,
                 startedAt: Date(),
+                lastUpdateTime: Date(),
+                bytesSinceLastUpdate: 0,
                 status: .inProgress
             )
             
@@ -66,6 +72,8 @@ extension AppState {
                 bytesTransferred: 0,
                 chunkSize: 0,
                 startedAt: Date(),
+                lastUpdateTime: Date(),
+                bytesSinceLastUpdate: 0,
                 status: .inProgress
             )
 
@@ -81,7 +89,35 @@ extension AppState {
     func updateOutgoingProgress(id: String, bytesTransferred: Int) {
         DispatchQueue.main.async {
             guard var s = self.transfers[id] else { return }
+            let now = Date()
+            let timeDiff = now.timeIntervalSince(s.lastUpdateTime)
+            let bytesDiff = bytesTransferred - s.bytesTransferred
+            
             s.bytesTransferred = min(bytesTransferred, s.size)
+            s.bytesSinceLastUpdate += bytesDiff
+            
+            // Update speed / ETA every 1 second
+            if timeDiff >= 1.0 {
+                let intervalSpeed = Double(s.bytesSinceLastUpdate) / timeDiff
+                
+                let alpha = 0.4
+                if let oldSpeed = s.smoothedSpeed {
+                    s.smoothedSpeed = alpha * intervalSpeed + (1.0 - alpha) * oldSpeed
+                } else {
+                    s.smoothedSpeed = intervalSpeed
+                }
+                
+                s.lastUpdateTime = now
+                s.bytesSinceLastUpdate = 0
+                
+                // Calculate ETA
+                if let speed = s.smoothedSpeed, speed > 0 {
+                    let remainingBytes = Double(s.size - s.bytesTransferred)
+                    let newEta = remainingBytes / speed
+                    s.estimatedTimeRemaining = newEta
+                }
+            }
+            
             self.transfers[id] = s
         }
     }
@@ -89,7 +125,33 @@ extension AppState {
     func updateIncomingProgress(id: String, receivedBytes: Int) {
         DispatchQueue.main.async {
             guard var s = self.transfers[id] else { return }
+            let now = Date()
+            let timeDiff = now.timeIntervalSince(s.lastUpdateTime)
+            let bytesDiff = receivedBytes - s.bytesTransferred
+            
             s.bytesTransferred = min(receivedBytes, s.size)
+            s.bytesSinceLastUpdate += bytesDiff
+            
+            // Update speed / ETA every 1 second
+            if timeDiff >= 1.0 {
+                let intervalSpeed = Double(s.bytesSinceLastUpdate) / timeDiff
+                
+                let alpha = 0.4
+                if let oldSpeed = s.smoothedSpeed {
+                    s.smoothedSpeed = alpha * intervalSpeed + (1.0 - alpha) * oldSpeed
+                } else {
+                    s.smoothedSpeed = intervalSpeed
+                }
+                
+                s.lastUpdateTime = now
+                s.bytesSinceLastUpdate = 0
+                
+                if let speed = s.smoothedSpeed, speed > 0 {
+                    let remaining = Double(s.size - s.bytesTransferred)
+                    s.estimatedTimeRemaining = remaining / speed
+                }
+            }
+            
             self.transfers[id] = s
         }
     }

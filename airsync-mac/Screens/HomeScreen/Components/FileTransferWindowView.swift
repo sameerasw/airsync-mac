@@ -30,74 +30,109 @@ struct FileTransferWindowView: View {
     var body: some View {
         ZStack {
             if let session = session {
-                VStack(spacing: 20) {
+                VStack(spacing: 24) {
                     
-                    // Circular Progress
+                    // Header removed - set as window title instead
+
+                    // Circular Progress Area
                     ZStack {
+                        // Background Ring
                         Circle()
-                            .stroke(lineWidth: 6)
-                            .opacity(0.3)
-                            .foregroundColor(isFailed ? .red : .gray)
+                            .stroke(lineWidth: 8)
+                            .opacity(0.15)
+                            .foregroundColor(isFailed ? .red : .primary)
                         
+                        // Progress Ring
                         Circle()
                             .trim(from: 0.0, to: CGFloat(progress))
-                            .stroke(style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
+                            .stroke(style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
                             .foregroundColor(isFailed ? .red : .blue)
                             .rotationEffect(Angle(degrees: 270.0))
                             .animation(.linear, value: progress)
                         
-                        // File Icon
-                        Image(systemName: "doc.fill")
-                            .font(.system(size: 40))
-                            .foregroundColor(isFailed ? .red : .primary)
+                        // Center Content
+                        ZStack(alignment: .bottom) {
+                            Image(systemName: "doc.fill")
+                                .font(.system(size: 42))
+                                .foregroundColor(isFailed ? .red : .primary.opacity(0.8))
+                                .offset(y: -4)
+                            
+                            HStack(spacing: 4) {
+                                Image(systemName: session.direction == .outgoing ? "arrow.up" : "arrow.down")
+                                    .font(.system(size: 10, weight: .bold))
+                                Text("\(Int(progress * 100))%")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .monospacedDigit()
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.thinMaterial)
+                            .clipShape(Capsule())
+                            .shadow(radius: 2)
+                            .offset(y: 20)
+                        }
                     }
-                    .frame(width: 80, height: 80)
-                    .padding(.top, 10)
-
-                    // File Info
-                    VStack(spacing: 8) {
+                    .frame(width: 140, height: 140)
+ 
+                    // File Name
+                    VStack(spacing: 6) {
                         Text(session.name)
-                            .font(.headline)
+                            .font(.system(size: 14, weight: .regular))
                             .lineLimit(1)
                             .truncationMode(.middle)
+                            .padding(.horizontal)
+                            .opacity(0.8)
                         
-                        Text(statusText)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+                        if !isCompleted && !isFailed {
+                            if let eta = session.estimatedTimeRemaining {
+                                Text(formatTime(eta))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("Calculating...")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
                     }
-                    
+                        
                     // Actions
-                    HStack(spacing: 16) {
+                    HStack(spacing: 12) {
                         if isCompleted {
                             if session.direction == .incoming {
-                                GlassButtonView(label: "Open", systemImage: "arrow.up.forward.app") {
+                                GlassButtonView(label: "Open", systemImage: "arrow.up.forward.app", size:.large) {
                                     openFile(session.name)
                                 }
-                                GlassButtonView(label: "Locate", systemImage: "folder") {
+                                GlassButtonView(label: "Locate", systemImage: "folder", size:.large) {
                                     locateFile(session.name)
                                 }
                             }
                             
-                            GlassButtonView(label: "Done", systemImage: "checkmark", primary: true) {
+                            GlassButtonView(
+                                label: "Done",
+                                systemImage: "checkmark",
+                                size:.large,
+                                primary: true
+                            ) {
                                 appState.clearActiveTransfer()
                             }
                         } else if isFailed {
-                            GlassButtonView(label: "Close", systemImage: "xmark") {
+                            GlassButtonView(label: "Close", systemImage: "xmark", size:.large) {
                                 appState.clearActiveTransfer()
                             }
                         } else {
                             // In Progress
-                            GlassButtonView(label: "Hide", systemImage: "eye.slash") {
-                                appState.activeTransferId = nil // Just hide window, transfer continues
+                            GlassButtonView(label: "Hide", systemImage: "eye.slash", size:.large) {
+                                appState.activeTransferId = nil
                             }
                             
-                            GlassButtonView(label: "Cancel", systemImage: "xmark.circle.fill") {
+                            GlassButtonView(label: "Cancel", systemImage: "xmark.circle.fill", size:.large) {
                                 appState.cancelTransfer(id: session.id)
                             }
                             .foregroundStyle(.red)
                         }
                     }
-                    .padding(.bottom, 10)
+                    .padding(.bottom, 20)
                 }
                 .padding(24)
             } else {
@@ -107,7 +142,6 @@ struct FileTransferWindowView: View {
                     }
             }
         }
-        .frame(width: 320, height: 300)
         .onAppear {
             NSWindow.allowsAutomaticWindowTabbing = false
         }
@@ -116,26 +150,28 @@ struct FileTransferWindowView: View {
                 dismissWindow()
             }
         }
-        .background(FileTransferWindowAccessor(callback: { window in
+        .background(FileTransferWindowAccessor(title: headerText, callback: { window in
             window.level = .floating
             window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary, .transient]
             window.isReleasedWhenClosed = false
+            window.titleVisibility = .visible
+            window.title = headerText
         }))
     }
     
-    private var statusText: String {
-        guard let s = session else { return "" }
-        if isFailed {
-            if case .failed(let reason) = s.status { return "Failed: \(reason)" }
-            return "Failed"
+    private var headerText: String {
+        guard let s = session, let deviceName = appState.device?.name else { return "File Transfer" }
+        return s.direction == .outgoing ? "Sending to \(deviceName)..." : "Receiving from \(deviceName)..."
+    }
+
+    private func formatTime(_ seconds: TimeInterval) -> String {
+        if seconds < 60 {
+            return String(format: "%.0fs remaining", seconds)
+        } else {
+            let mins = Int(seconds / 60)
+            let secs = Int(seconds.truncatingRemainder(dividingBy: 60))
+            return String(format: "%dm %02ds remaining", mins, secs)
         }
-        if isCompleted {
-            return "Transfer Complete"
-        }
-        let sizeMB = Double(s.size) / 1024.0 / 1024.0
-        let transferredMB = Double(s.bytesTransferred) / 1024.0 / 1024.0
-        let percent = Int(progress * 100)
-        return String(format: "%.1f / %.1f MB (%d%%)", transferredMB, sizeMB, percent)
     }
     
     private func openFile(_ filename: String) {
@@ -155,6 +191,7 @@ struct FileTransferWindowView: View {
 }
 
 struct FileTransferWindowAccessor: NSViewRepresentable {
+    var title: String
     var callback: (NSWindow) -> Void
 
     func makeNSView(context: Context) -> NSView {
@@ -167,6 +204,10 @@ struct FileTransferWindowAccessor: NSViewRepresentable {
         return nsView
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            nsView.window?.title = title
+        }
+    }
 }
 
