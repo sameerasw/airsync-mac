@@ -903,9 +903,46 @@ class WebSocketServer: ObservableObject {
                 }
             }
             
-        case .volumeControl, .macVolume, .toggleAppNotif:
+        case .volumeControl, .macVolume, .toggleAppNotif, .browseLs:
             // Outgoing messages from Mac, ignore if received
             break
+            
+        case .browseData:
+            if let dict = message.data.value as? [String: Any],
+               let path = dict["path"] as? String,
+               let itemsArray = dict["items"] as? [[String: Any]] {
+                
+                var items: [FileBrowserItem] = []
+                for itemDict in itemsArray {
+                    let name = itemDict["name"] as? String ?? ""
+                    let isDir = itemDict["isDir"] as? Bool ?? false
+                    
+                    let size = (itemDict["size"] as? NSNumber)?.int64Value ?? 
+                               (itemDict["size"] as? Int64) ?? 
+                               Int64(itemDict["size"] as? Int ?? 0)
+                               
+                    let timeValue = (itemDict["time"] as? NSNumber)?.int64Value ?? 
+                                    (itemDict["time"] as? Int64) ?? 
+                                    Int64(itemDict["time"] as? Int ?? 0)
+                    
+                    if !name.isEmpty {
+                        items.append(FileBrowserItem(name: name, isDir: isDir, size: size, time: timeValue))
+                    }
+                }
+                
+                DispatchQueue.main.async {
+                    AppState.shared.browsePath = path
+                    AppState.shared.browseItems = items
+                    AppState.shared.browseError = nil
+                    AppState.shared.isBrowsingLoading = false
+                }
+            } else if let error = (message.data.value as? [String: Any])?["error"] as? String {
+                print("[websocket] Browse error: \(error)")
+                DispatchQueue.main.async {
+                    AppState.shared.browseError = error
+                    AppState.shared.isBrowsingLoading = false
+                }
+            }
         }
 
 
@@ -1433,6 +1470,18 @@ class WebSocketServer: ObservableObject {
             "data": {
                 "package": "\(package)",
                 "state": "\(state)"
+            }
+        }
+        """
+        sendToFirstAvailable(message: message)
+    }
+
+    func sendBrowseRequest(path: String) {
+        let message = """
+        {
+            "type": "browseLs",
+            "data": {
+                "path": "\(path)"
             }
         }
         """

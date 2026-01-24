@@ -341,6 +341,13 @@ class AppState: ObservableObject {
         }
     }
 
+    // File browser state
+    @Published var showFileBrowser: Bool = false
+    @Published var browsePath: String = "/sdcard/"
+    @Published var browseItems: [FileBrowserItem] = []
+    @Published var isBrowsingLoading: Bool = false
+    @Published var browseError: String? = nil
+
     // File transfer tracking state
     @Published var transfers: [String: FileTransferSession] = [:]
     @Published var activeTransferId: String? = nil
@@ -628,6 +635,40 @@ class AppState: ObservableObject {
             if self.adbConnected {
                 ADBConnector.disconnectADB()
             }
+            
+            self.showFileBrowser = false
+            self.browseItems.removeAll()
+        }
+    }
+
+    // MARK: - Remote File Browser
+    
+    func openFileBrowser() {
+        showFileBrowser = true
+        fetchDirectory(path: "/sdcard/")
+    }
+    
+    func fetchDirectory(path: String) {
+        // Only fetch if connected
+        guard device != nil else { return }
+        
+        isBrowsingLoading = true
+        // Keep the path updated immediately for UI responsiveness
+        browsePath = path
+        WebSocketServer.shared.sendBrowseRequest(path: path)
+    }
+    
+    func navigateUp() {
+        // Prevent going above /sdcard/
+        guard browsePath != "/sdcard/" && browsePath != "/sdcard" else { return }
+        
+        var components = browsePath.split(separator: "/").map(String.init)
+        if components.count > 1 {
+            components.removeLast()
+            let parent = "/" + components.joined(separator: "/") + "/"
+            fetchDirectory(path: parent)
+        } else {
+            fetchDirectory(path: "/sdcard/")
         }
     }
 

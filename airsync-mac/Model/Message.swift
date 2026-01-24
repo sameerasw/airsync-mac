@@ -37,6 +37,9 @@ enum MessageType: String, Codable {
     case volumeControl // outgoing from Mac (legacy/other direction)
     case macVolume     // outgoing from Mac
     case toggleAppNotif // outgoing from Mac
+    // file browser
+    case browseLs
+    case browseData
 }
 
 struct Message: Codable {

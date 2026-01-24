@@ -48,6 +48,20 @@ struct ScreenView: View {
                         modifiers: .command
                     )
 
+                    GlassButtonView(
+                        label: "Browse",
+                        systemImage: "folder",
+                        iconOnly: true,
+                        action: {
+                            appState.openFileBrowser()
+                        }
+                    )
+                    .transition(.identity)
+                    .keyboardShortcut(
+                        "b",
+                        modifiers: .command
+                    )
+
 
                     if appState.adbConnected{
                         GlassButtonView(
