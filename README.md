@@ -1,10 +1,7 @@
  # AirSync macOS app source code
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/1b59fa22-780b-455d-87b1-6bb028c69d37" />
-<!--   <img src="https://github.com/user-attachments/assets/7c81bd2a-3799-44f2-b63a-350344f68e42" width="30%" />
-  <img src="https://github.com/user-attachments/assets/58996c84-083f-4464-b0a5-bce069935898" width="30%" />
-  <img src="https://github.com/user-attachments/assets/3f9d3113-1e16-4071-b1fc-f8f33a24c439" width="30%" /> -->
+  <img src="https://github.com/user-attachments/assets/fdc68d4f-162f-4599-bc52-5920b23dc0a2" />
 </p>
 
 [![AirSync demo](https://img.youtube.com/vi/HDv0Hu9z294?si=dgycryP1T8QvPJYa/0.jpg)](https://www.youtube.com/watch?v=HDv0Hu9z294?si=dgycryP1T8QvPJYa) | [Read Documentation and How-To](https://airsync.notion.site/) | [Help translating AirSync to your language on crowdin!](https://crwd.in/airsync/612ea64319db322fa1ed070574109c242534446)
