@@ -16,11 +16,43 @@ struct CodableValue: Codable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
+        
+        // Try dictionary first (most common for our data messages)
         if let dict = try? container.decode([String: AnyCodable].self) {
-            self.value = dict.mapValues { $0.value }
-        } else {
-            self.value = try container.decode(String.self)
+            let converted = dict.mapValues { $0.value }
+            self.value = converted
+            print("[CodableValue] ✅ Decoded dictionary with \(converted.keys.count) keys: \(converted.keys.joined(separator: ", "))")
+            return
         }
+        
+        // Try array
+        if let array = try? container.decode([AnyCodable].self) {
+            self.value = array.map { $0.value }
+            print("[CodableValue] ✅ Decoded array with \(array.count) elements")
+            return
+        }
+        
+        // Try primitives
+        if let string = try? container.decode(String.self) {
+            self.value = string
+            return
+        }
+        if let int = try? container.decode(Int.self) {
+            self.value = int
+            return
+        }
+        if let double = try? container.decode(Double.self) {
+            self.value = double
+            return
+        }
+        if let bool = try? container.decode(Bool.self) {
+            self.value = bool
+            return
+        }
+        
+        // Fallback
+        print("[CodableValue] ⚠️ Failed to decode, using empty dictionary")
+        self.value = [String: Any]()
     }
 
     func encode(to encoder: Encoder) throws {

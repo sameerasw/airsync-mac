@@ -37,6 +37,7 @@ struct AppGridView: View {
                     }
                 }
                 .padding(12)
+                Spacer(minLength: 100)
             }
         }
         .searchable(text: $searchText, placement: .toolbar, prompt: "Search Apps")
@@ -59,25 +60,33 @@ private struct AppGridItemView: View {
                     AppContextMenuContent(app: app)
                 }
                 .onDrag(createDragProvider)
+                .help(appState.device != nil ? "Tap to mirror \(app.name)" : app.name)
 
-            // Notification mute indicator
-            if !app.listening {
-                Image(systemName: "bell.slash")
-                    .resizable()
-                    .frame(width: 10, height: 10)
-                    .offset(x: -8, y: 8)
+            VStack(spacing: 4) {
+                // Notification mute indicator
+                if !app.listening {
+                    Image(systemName: "bell.slash")
+                        .resizable()
+                        .frame(width: 10, height: 10)
+                        .foregroundColor(.secondary)
+                }
+                
+                // Mirror available indicator (WebSocket mirroring)
+                if appState.device != nil {
+                    Image(systemName: "rectangle.on.rectangle")
+                        .resizable()
+                        .frame(width: 10, height: 10)
+                        .foregroundColor(.blue)
+                }
             }
+            .offset(x: -8, y: 8)
         }
     }
 
     private func handleTap() {
-        if let device = appState.device, appState.adbConnected {
-            ADBConnector.startScrcpy(
-                ip: device.ipAddress,
-                port: appState.adbPort,
-                deviceName: device.name,
-                package: app.packageName
-            )
+        // Use WebSocket mirroring instead of scrcpy
+        if appState.device != nil {
+            WebSocketServer.shared.requestAppMirror(packageName: app.packageName)
         }
     }
 
@@ -149,26 +158,37 @@ private struct AppContextMenuContent: View {
     var isPinned: Bool {
         appState.pinnedApps.contains(where: { $0.packageName == app.packageName })
     }
-
+    
     var body: some View {
+        // Mirror App (WebSocket mirroring)
+        if appState.device != nil {
+            Button {
+                WebSocketServer.shared.requestAppMirror(packageName: app.packageName)
+            } label: {
+                Label("Mirror App", systemImage: "rectangle.on.rectangle")
+            }
+            
+            Divider()
+        }
+        
         // Pin/Unpin option (only for Plus members)
-//        if appState.isPlus {
-//            if !isPinned {
-//                Button {
-//                    _ = appState.addPinnedApp(app)
-//                } label: {
-//                    Label("Pin to Dock", systemImage: "pin")
-//                }
-//            } else {
-//                Button {
-//                    appState.removePinnedApp(app.packageName)
-//                } label: {
-//                    Label("Unpin from Dock", systemImage: "pin.slash")
-//                }
-//            }
-//
-//            Divider()
-//        }
+        if appState.isPlus {
+            if !isPinned {
+                Button {
+                    _ = appState.addPinnedApp(app)
+                } label: {
+                    Label("Pin to Dock", systemImage: "pin")
+                }
+            } else {
+                Button {
+                    appState.removePinnedApp(app.packageName)
+                } label: {
+                    Label("Unpin from Dock", systemImage: "pin.slash")
+                }
+            }
+
+            Divider()
+        }
 
         // Notification toggle
         Button {

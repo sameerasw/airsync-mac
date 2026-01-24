@@ -14,6 +14,42 @@ import UserNotifications
 import Swifter
 internal import Combine
 import CryptoKit
+import AppKit
+import CoreGraphics
+#if canImport(SwiftUI)
+import SwiftUI
+#endif
+
+// Media key constants
+private let NX_KEYTYPE_PLAY: Int32 = 16
+private let NX_KEYTYPE_NEXT: Int32 = 17
+private let NX_KEYTYPE_PREVIOUS: Int32 = 18
+private let NX_KEYTYPE_FAST: Int32 = 19
+private let NX_KEYTYPE_REWIND: Int32 = 20
+
+#if canImport(SwiftUI)
+struct MirrorFallbackView: View {
+    @ObservedObject private var appState = AppState.shared
+    var body: some View {
+        ZStack {
+            if let image = appState.latestMirrorFrame {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .background(Color.black)
+            } else {
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text("Waiting for mirror frames…")
+                        .foregroundStyle(.secondary)
+                }
+                .padding()
+            }
+        }
+        .frame(minWidth: 320, minHeight: 600)
+    }
+}
+#endif
 
 enum WebSocketStatus {
     case stopped
@@ -26,7 +62,19 @@ class WebSocketServer: ObservableObject {
     static let shared = WebSocketServer()
 
     private var server = HttpServer()
-    private var activeSessions: [WebSocketSession] = []
+    // Use a wrapper to store weak references to sessions
+    private class WeakSessionBox {
+        weak var session: WebSocketSession?
+        init(_ session: WebSocketSession) {
+            self.session = session
+        }
+    }
+    private var sessionBoxes: [WeakSessionBox] = []
+    private var activeSessions: [WebSocketSession] {
+        // Clean up nil references and return valid sessions
+        sessionBoxes = sessionBoxes.filter { $0.session != nil }
+        return sessionBoxes.compactMap { $0.session }
+    }
     @Published var symmetricKey: SymmetricKey?
 
     @Published var localPort: UInt16?
@@ -39,6 +87,9 @@ class WebSocketServer: ObservableObject {
     private var lastKnownIP: String?
     private var networkMonitorTimer: Timer?
     private let networkCheckInterval: TimeInterval = 10.0 // seconds
+    
+    // Guard flag to prevent double teardown during mirror stop
+    private var isStoppingMirror = false
 
     // Incoming file transfers (Android -> Mac) — keep only IO here; state lives in AppState
     private struct IncomingFileIO {
@@ -47,15 +98,25 @@ class WebSocketServer: ObservableObject {
     }
     private var incomingFiles: [String: IncomingFileIO] = [:]
     private var incomingFilesChecksum: [String: String] = [:]
+    // Serial queue for file operations to prevent race conditions
+    private let fileOperationQueue = DispatchQueue(label: "com.airsync.fileoperations", qos: .userInitiated)
     // Outgoing transfer ack tracking
     private var outgoingAcks: [String: Set<Int>] = [:]
+    private let outgoingAcksLock = NSLock()
 
-    private let maxChunkRetries = 3
-    private let ackWaitMs: UInt16 = 2000 // 2s
+    private let maxChunkRetries = 10  // Increased from 3 for better reliability
+    private let ackWaitMs: UInt16 = 3000 // 3s (increased from 2s)
 
     private var lastKnownAdapters: [(name: String, address: String)] = []
     // Track last adapter selection we logged to avoid repetitive logs
     private var lastLoggedSelectedAdapter: (name: String, address: String)? = nil
+
+    private var unifiedDecoder = UnifiedFrameDecoder.shared
+
+    #if os(macOS)
+    fileprivate var mirrorWindow: NSWindow?
+    fileprivate var mirrorWindowDelegate: MirrorWindowDelegate?
+    #endif
 
     init() {
         loadOrGenerateSymmetricKey()
@@ -68,9 +129,47 @@ class WebSocketServer: ObservableObject {
                 print("[websocket] Notification permission granted: \(granted)")
             }
         }
+        setupSimpleDecoderCallback()
+    }
+
+    deinit {
+        print("[websocket] WebSocketServer deinit")
+        // Clean up all resources
+        sessionBoxes.removeAll()
+        unifiedDecoder.onDecodedFrame = nil
+        stopNetworkMonitoring()
+    }
+    
+    private func setupSimpleDecoderCallback() {
+        unifiedDecoder.onDecodedFrame = { [weak self] image in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                // Guard against processing frames when not mirroring or stopping
+                guard AppState.shared.isMirroring, !self.isStoppingMirror else { return }
+                
+                AppState.shared.latestMirrorFrame = image
+                if !AppState.shared.isMirrorActive {
+                    AppState.shared.isMirrorActive = true
+                    #if os(macOS)
+                    self.presentMirrorWindowIfNeeded()
+                    #endif
+                    print("[mirror] First decoded frame -> presenting UI now")
+                }
+            }
+        }
     }
 
     func start(port: UInt16 = Defaults.serverPort) {
+        // Prevent concurrent starts
+        if case .starting = AppState.shared.webSocketStatus {
+            print("[websocket] start() called while status is starting; ignoring")
+            return
+        }
+        if case .started = AppState.shared.webSocketStatus {
+            print("[websocket] start() called while status is started; ignoring")
+            return
+        }
+
         DispatchQueue.main.async {
             AppState.shared.webSocketStatus = .starting
         }
@@ -86,7 +185,7 @@ class WebSocketServer: ObservableObject {
                     return
                 }
 
-                try self.server.start(in_port_t(port))
+                try self.server.start(in_port_t(port), forceIPv4: true, priority: .default)
                 let ip = self.getLocalIPAddress(adapterName: AppState.shared.selectedNetworkAdapterName)
 
                 DispatchQueue.main.async {
@@ -98,6 +197,9 @@ class WebSocketServer: ObservableObject {
                 }
                 print("[websocket] WebSocket server started at ws://\(ip ?? "unknown"):\(port)/socket)")
 
+                // Ensure decoder callback is set up when server starts
+                self.setupSimpleDecoderCallback()
+                
                 self.startNetworkMonitoring()
             } catch {
                 DispatchQueue.main.async {
@@ -113,11 +215,40 @@ class WebSocketServer: ObservableObject {
 
 
     func stop() {
+        // Clear sessions first to avoid accessing deallocated objects
+        sessionBoxes.removeAll()
+        
+        // Stop the server
         server.stop()
-        activeSessions.removeAll()
+        
+        // Clear decoder callback when server stops
+        unifiedDecoder.onDecodedFrame = nil
+        
+        // Reset mirror guard flag
+        isStoppingMirror = false
+        
+        // Clear mirror state immediately
         DispatchQueue.main.async {
+            AppState.shared.isMirrorActive = false
+            AppState.shared.latestMirrorFrame = nil
+            AppState.shared.isMirroring = false
+            AppState.shared.isMirrorRequestPending = false
             AppState.shared.webSocketStatus = .stopped
         }
+        
+        #if os(macOS)
+        // Simple window cleanup
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            if let window = self.mirrorWindow {
+                window.delegate = nil
+                self.mirrorWindowDelegate = nil
+                window.orderOut(nil)
+            }
+            self.mirrorWindow = nil
+        }
+        #endif
+        
         stopNetworkMonitoring()
     }
 
@@ -132,56 +263,133 @@ class WebSocketServer: ObservableObject {
     """
         sendToFirstAvailable(message: message)
     }
-
+    
+    func sendClipboardUpdate(_ message: String) {
+        sendToFirstAvailable(message: message)
+    }
 
     private func setupWebSocket() {
         server["/socket"] = websocket(
             text: { [weak self] session, text in
-                guard let self = self else { return }
+                autoreleasepool {
+                    guard let self = self else { return }
 
-                // Step 1: Decrypt the message
-                let decryptedText: String
-                if let key = self.symmetricKey {
-                    decryptedText = decryptMessage(text, using: key) ?? ""
-                } else {
-                    decryptedText = text
-                }
+                    // Skip verbose logging for mirror frames (check raw text before decryption)
+                    let isMirrorFrameRaw = text.contains("mirrorFrame")
+                    if !isMirrorFrameRaw {
+                        print("[websocket] [raw] incoming text length=\(text.count)")
+                    }
+                    // Step 1: Decrypt the message
+                    let decryptedText: String
+                    if let key = self.symmetricKey {
+                        decryptedText = decryptMessage(text, using: key) ?? ""
+                    } else {
+                        decryptedText = text
+                    }
+                    let usedEncryption = (self.symmetricKey != nil)
+                    
+                    // Skip verbose logging for mirror frames (too frequent)
+                    let isMirrorFrame = decryptedText.contains("\"type\":\"mirrorFrame\"") || decryptedText.contains("\"type\": \"mirrorFrame\"")
+                    
+                    if !isMirrorFrame {
+                        print("[websocket] [decrypt] used=\(usedEncryption) decryptedLen=\(decryptedText.count)")
+                        let truncated = decryptedText.count > 300
+                        ? decryptedText.prefix(300) + "..."
+                        : decryptedText
+                        print("[websocket] [received] \n\(truncated)")
+                    }
 
-                let truncated = decryptedText.count > 300
-                ? decryptedText.prefix(300) + "..."
-                : decryptedText
-                print("[websocket] [received] \n\(truncated)")
 
-
-                // Step 2: Decode JSON and handle
-                if let data = decryptedText.data(using: .utf8) {
-                    do {
-                        let message = try JSONDecoder().decode(Message.self, from: data)
-                        DispatchQueue.main.async {
-                            self.handleMessage(message)
+                    // Step 2: Decode JSON and handle
+                    if let data = decryptedText.data(using: .utf8) {
+                        do {
+                            // Use JSONSerialization instead of Codable for flexible parsing
+                            guard let jsonObject = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                                print("[websocket] Failed to parse JSON as dictionary")
+                                return
+                            }
+                            
+                            // Extract type and data manually
+                            guard let typeString = jsonObject["type"] as? String,
+                                  let messageType = MessageType(rawValue: typeString) else {
+                                print("[websocket] Invalid or missing message type")
+                                return
+                            }
+                            
+                            let messageData = jsonObject["data"] as? [String: Any] ?? [:]
+                            
+                            // Skip verbose logging for mirror frames
+                            if messageType != .mirrorFrame {
+                                print("[websocket] ✅ Parsed JSON - type: \(typeString), data keys: \(messageData.keys.joined(separator: ", "))")
+                            }
+                            
+                            // Create message with raw dictionary data
+                            let message = FlexibleMessage(type: messageType, data: messageData)
+                            DispatchQueue.main.async {
+                                    self.handleFlexibleMessage(message)
+                            }
+                        } catch {
+                            let snippet = String(decryptedText.prefix(200))
+                            print("[websocket] WebSocket JSON decode failed: \(error) | snippet=\(snippet)")
                         }
-                    } catch {
-                        print("[websocket] WebSocket JSON decode failed: \(error)")
                     }
                 }
             },
 
             connected: { [weak self] session in
-                print("[websocket] Device connected")
-                self?.activeSessions.append(session)
+                guard let self = self else { return }
+                print("[websocket] ✅ Device connected successfully!")
+                print("[websocket] Session info: \(session)")
+                
+                // Enforce single active session to avoid reconnect loops
+                if !self.sessionBoxes.isEmpty {
+                    print("[websocket] Replacing existing session")
+                    // Keep only the newest session; drop references to older ones
+                    self.sessionBoxes.removeAll()
+                }
+                
+                // Add new session with weak reference
+                self.sessionBoxes.append(WeakSessionBox(session))
+                print("[websocket] Active sessions: \(self.activeSessions.count)")
+                
+                // Send a welcome message to confirm connection
+                let welcomeMessage = """
+                {
+                    "type": "connectionConfirmed",
+                    "data": {
+                        "message": "Connected to Mac successfully",
+                        "timestamp": "\(Date().timeIntervalSince1970)"
+                    }
+                }
+                """
+                
+                // Send message on a background queue to avoid blocking
+                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                    self?.sendToFirstAvailable(message: welcomeMessage)
+                }
             },
             disconnected: { [weak self] session in
                 guard let self = self else { return }
                 print("[websocket] Device disconnected")
 
-                self.activeSessions.removeAll(where: { $0 === session })
+                // Remove the session safely
+                self.sessionBoxes.removeAll(where: { $0.session === session })
 
                 // Only call disconnectDevice if no other sessions remain
-                if self.activeSessions.isEmpty {
+                let isEmpty = self.activeSessions.isEmpty
+                if isEmpty {
                     DispatchQueue.main.async {
                         AppState.shared.disconnectDevice()
+                        // Clear mirror state when last session disconnects
+                        AppState.shared.isMirrorActive = false
+                        AppState.shared.latestMirrorFrame = nil
+                        
+                        // Close mirror window if open
+                        self.mirrorWindow?.close()
+                        self.mirrorWindow = nil
                     }
                 }
+                print("[websocket] Active sessions: \(self.activeSessions.count)")
             }
         )
     }
@@ -298,29 +506,57 @@ class WebSocketServer: ObservableObject {
                 let version = dict["version"] as? String ?? "2.0.0"
                 let adbPorts = dict["adbPorts"] as? [String] ?? []
 
-                AppState.shared.device = Device(
-                    name: name,
-                    ipAddress: ip,
-                    port: port,
-                    version: version,
-                    adbPorts: adbPorts
-                )
+                DispatchQueue.main.async {
+                    AppState.shared.device = Device(
+                        name: name,
+                        ipAddress: ip,
+                        port: port,
+                        version: version,
+                        adbPorts: adbPorts
+                    )
+                }
 
-                if let base64 = dict["wallpaper"] as? String {
-                    AppState.shared.currentDeviceWallpaperBase64 = base64
+                if let base64 = dict["wallpaper"] as? String, !base64.isEmpty {
+                    print("[websocket] 📱 Received wallpaper in device info (\(base64.count) chars)")
+                    DispatchQueue.global(qos: .utility).async {
+                        DispatchQueue.main.async {
+                            AppState.shared.currentDeviceWallpaperBase64 = base64
+                        }
+                    }
                 }
 
                 if (!AppState.shared.adbConnected && AppState.shared.adbEnabled && AppState.shared.isPlus) {
                     ADBConnector.connectToADB(ip: ip)
                 }
 
-				// mark first-time pairing
+                // mark first-time pairing
                 if UserDefaults.standard.hasPairedDeviceOnce == false {
                     UserDefaults.standard.hasPairedDeviceOnce = true
                 }
                 
                 // Send Mac info response to Android
                 sendMacInfoResponse()
+                
+                // Android now proactively syncs data on connection
+                // Only request data if not received within 3 seconds (fallback)
+                print("[websocket] 📊 Waiting for Android to proactively sync data...")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                    // Only request if we haven't received data yet
+                    if LiveNotificationManager.shared.callLogs.isEmpty {
+                        print("[websocket] 📊 Requesting call logs (fallback)")
+                        self.requestCallLogs()
+                    }
+                    if LiveNotificationManager.shared.smsThreads.isEmpty {
+                        print("[websocket] 📊 Requesting SMS threads (fallback)")
+                        self.requestSmsThreads()
+                    }
+                    if LiveNotificationManager.shared.healthSummary == nil {
+                        print("[websocket] 📊 Requesting health summary (fallback)")
+                        self.requestHealthSummary()
+                    }
+                }
+                
+                // Mirroring is user-initiated from the UI; do not auto-start here.
                }
 
 
@@ -341,6 +577,7 @@ class WebSocketServer: ObservableObject {
                     }
                 }
                 let notif = Notification(title: title, body: body, app: app, nid: nid, package: package, actions: actions)
+                print("[websocket] notification: id=\(nid) title=\(title) app=\(app)")
                 DispatchQueue.main.async {
                     AppState.shared.addNotification(notif)
                 }
@@ -441,19 +678,22 @@ class WebSocketServer: ObservableObject {
                 let albumArt = (music["albumArt"] as? String) ?? ""
                 let likeStatus = (music["likeStatus"] as? String) ?? "none"
 
-                AppState.shared.status = DeviceStatus(
-                    battery: .init(level: level, isCharging: isCharging),
-                    isPaired: paired,
-                    music: .init(
-                        isPlaying: playing,
-                        title: title,
-                        artist: artist,
-                        volume: volume,
-                        isMuted: isMuted,
-                        albumArt: albumArt,
-                        likeStatus: likeStatus
+                DispatchQueue.main.async {
+                    AppState.shared.status = DeviceStatus(
+                        battery: .init(level: level, isCharging: isCharging),
+                        isPaired: paired,
+                        music: .init(
+                            isPlaying: playing,
+                            title: title,
+                            artist: artist,
+                            volume: volume,
+                            isMuted: isMuted,
+                            albumArt: albumArt,
+                            likeStatus: likeStatus
+                        )
                     )
-                )
+                }
+                print("[websocket] status: battery=\(level)% charging=\(isCharging) music=\(title) playing=\(playing)")
             }
 
 
@@ -464,6 +704,33 @@ class WebSocketServer: ObservableObject {
                 print("[websocket] Dismissal \(success ? "succeeded" : "failed") for notification id: \(id)")
             }
 
+        case .mediaControlRequest:
+            // Mac sends this to Android, shouldn't receive it
+            print("[websocket] Warning: received 'mediaControlRequest' from remote (ignored).")
+            
+        case .macMediaControl:
+            // Android sends this to control Mac music playback
+            if let dict = message.data.value as? [String: Any],
+               let action = dict["action"] as? String {
+                print("[websocket] 🎵 Received Mac media control: \(action)")
+                
+                // Execute media control on Mac using system media keys
+                DispatchQueue.main.async {
+                    self.executeMacMediaControl(action: action)
+                }
+            }
+            
+        case .macInfo:
+            // Mac sends this to Android, shouldn't receive it
+            print("[websocket] Warning: received 'macInfo' from remote (ignored).")
+            
+        case .macMediaControlResponse:
+            if let dict = message.data.value as? [String: Any],
+               let action = dict["action"] as? String,
+               let success = dict["success"] as? Bool {
+                print("[websocket] 🎵 Mac media control \(action) \(success ? "succeeded" : "failed")")
+            }
+            
         case .mediaControlResponse:
             if let dict = message.data.value as? [String: Any],
                let action = dict["action"] as? String,
@@ -473,9 +740,12 @@ class WebSocketServer: ObservableObject {
 
         case .appIcons:
             if let dict = message.data.value as? [String: [String: Any]] {
-                DispatchQueue.global(qos: .background).async {
+                print("[websocket] appIcons: incoming=\(dict.count)")
+                DispatchQueue.global(qos: .userInitiated).async {
                     let incomingPackages = Set(dict.keys)
                     let existingPackages = Set(AppState.shared.androidApps.keys)
+                    var updates: [(String, AndroidApp)] = []
+                    var toRemove: [String] = []
 
                     // Decode & write/update icons
                     for (package, details) in dict {
@@ -505,28 +775,23 @@ class WebSocketServer: ObservableObject {
                             listening: listening,
                             systemApp: systemApp
                         )
-
-                        DispatchQueue.main.async {
-                            AppState.shared.androidApps[package] = app
-                            if let iconPath { AppState.shared.androidApps[package]?.iconUrl = iconPath }
-                        }
+                        updates.append((package, app))
                     }
 
-                    // Remove apps (and their icon files) that are no longer present on the device
-                    let toRemove = existingPackages.subtracting(incomingPackages)
-                    if !toRemove.isEmpty {
-                        DispatchQueue.main.async {
-                            for pkg in toRemove {
-                                if let iconPath = AppState.shared.androidApps[pkg]?.iconUrl {
-                                    try? FileManager.default.removeItem(atPath: iconPath)
-                                }
-                                AppState.shared.androidApps.removeValue(forKey: pkg)
-                            }
-                        }
-                    }
+                    // Determine apps to remove
+                    toRemove = Array(existingPackages.subtracting(incomingPackages))
 
-                    // Persist updated snapshot
                     DispatchQueue.main.async {
+                        for (pkg, app) in updates {
+                            AppState.shared.androidApps[pkg] = app
+                            if let iconPath = app.iconUrl { AppState.shared.androidApps[pkg]?.iconUrl = iconPath }
+                        }
+                        for pkg in toRemove {
+                            if let iconPath = AppState.shared.androidApps[pkg]?.iconUrl {
+                                try? FileManager.default.removeItem(atPath: iconPath)
+                            }
+                            AppState.shared.androidApps.removeValue(forKey: pkg)
+                        }
                         AppState.shared.saveAppsToDisk()
                     }
                 }
@@ -536,111 +801,223 @@ class WebSocketServer: ObservableObject {
         case .clipboardUpdate:
             if let dict = message.data.value as? [String: Any],
                let text = dict["text"] as? String {
-                AppState.shared.updateClipboardFromAndroid(text)
+                print("[websocket] clipboardUpdate len=\(text.count)")
+                DispatchQueue.main.async {
+                    guard !text.isEmpty else { return }
+                    AppState.shared.updateClipboardFromAndroid(text)
+                }
             }
 
         // File transfer messages (Android -> Mac)
         case .fileTransferInit:
-            if let dict = message.data.value as? [String: Any],
-               let id = dict["id"] as? String,
-               let name = dict["name"] as? String,
-               let size = dict["size"] as? Int,
-               let mime = dict["mime"] as? String {
+            if let dict = message.data.value as? [String: Any] {
+                // Support both old and new format
+                let id = (dict["transferId"] as? String) ?? (dict["id"] as? String)
+                let name = (dict["fileName"] as? String) ?? (dict["name"] as? String)
+                let size = (dict["fileSize"] as? Int) ?? (dict["size"] as? Int)
+                let mime = dict["mime"] as? String ?? "application/octet-stream"
                 let checksum = dict["checksum"] as? String
+                
+                guard let transferId = id, let fileName = name, let fileSize = size else {
+                    print("[websocket] (file-transfer) init: missing required fields")
+                    return
+                }
+                
+                print("[websocket] (file-transfer) init id=\(transferId) name=\(fileName) size=\(fileSize) mime=\(mime) checksum=\(checksum ?? "nil")")
 
                 let tempDir = FileManager.default.temporaryDirectory
-                let safeName = name.replacingOccurrences(of: "/", with: "_")
-                let tempFile = tempDir.appendingPathComponent("incoming_\(id)_\(safeName)")
+                let safeName = fileName.replacingOccurrences(of: "/", with: "_")
+                let tempFile = tempDir.appendingPathComponent("incoming_\(transferId)_\(safeName)")
                 FileManager.default.createFile(atPath: tempFile.path, contents: nil, attributes: nil)
                 let handle = try? FileHandle(forWritingTo: tempFile)
 
                 let io = IncomingFileIO(tempUrl: tempFile, fileHandle: handle)
-                incomingFiles[id] = io
+                incomingFiles[transferId] = io
                 if let checksum = checksum {
-                    incomingFilesChecksum[id] = checksum
+                    incomingFilesChecksum[transferId] = checksum
                 }
                 // Start tracking incoming transfer in AppState
-                AppState.shared.startIncomingTransfer(id: id, name: name, size: size, mime: mime)
+                DispatchQueue.main.async {
+                    AppState.shared.startIncomingTransfer(id: transferId, name: fileName, size: fileSize, mime: mime)
+                }
             }
 
         case .fileChunk:
-            if let dict = message.data.value as? [String: Any],
-               let id = dict["id"] as? String,
-               let chunkBase64 = dict["chunk"] as? String,
-               let io = incomingFiles[id],
-               let data = Data(base64Encoded: chunkBase64) {
-
-                io.fileHandle?.seekToEndOfFile()
-                io.fileHandle?.write(data)
-                // Update incoming progress in AppState (increment)
-                let prev = AppState.shared.transfers[id]?.bytesTransferred ?? 0
-                let newBytes = prev + data.count
-                AppState.shared.updateIncomingProgress(id: id, receivedBytes: newBytes)
+            if let dict = message.data.value as? [String: Any] {
+                // Support both old and new format
+                let id = (dict["transferId"] as? String) ?? (dict["id"] as? String)
+                let chunkBase64 = (dict["data"] as? String) ?? (dict["chunk"] as? String)
+                
+                guard let transferId = id, let chunkData = chunkBase64 else {
+                    return
+                }
+                
+                // Decode base64 on background thread
+                guard let data = Data(base64Encoded: chunkData, options: .ignoreUnknownCharacters) else {
+                    print("[websocket] (file-transfer) ❌ Failed to decode base64 chunk for id=\(transferId)")
+                    return
+                }
+                
+                // Write to file on serial queue to prevent race conditions
+                fileOperationQueue.async { [weak self] in
+                    guard let self = self,
+                          let io = self.incomingFiles[transferId],
+                          let fileHandle = io.fileHandle else {
+                        return
+                    }
+                    
+                    do {
+                        try fileHandle.seekToEnd()
+                        try fileHandle.write(contentsOf: data)
+                        
+                        // Update incoming progress in AppState (increment)
+                        DispatchQueue.main.async {
+                            let prev = AppState.shared.transfers[transferId]?.bytesTransferred ?? 0
+                            let newBytes = prev + data.count
+                            AppState.shared.updateIncomingProgress(id: transferId, receivedBytes: newBytes)
+                        }
+                    } catch {
+                        print("[websocket] (file-transfer) ❌ Error writing chunk: \(error)")
+                    }
+                }
             }
 
         case .fileChunkAck:
             if let dict = message.data.value as? [String: Any],
                let id = dict["id"] as? String,
                let index = dict["index"] as? Int {
+                outgoingAcksLock.lock()
                 var set = outgoingAcks[id] ?? []
                 set.insert(index)
                 outgoingAcks[id] = set
-                print("[websocket] (file-transfer) Received ack for id=\(id) index=\(index) totalAcked=\(set.count)")
+                let count = set.count
+                outgoingAcksLock.unlock()
+                print("[websocket] (file-transfer) Received ack for id=\(id) index=\(index) totalAcked=\(count)")
             }
 
         case .fileTransferComplete:
-                if let dict = message.data.value as? [String: Any],
-                    let id = dict["id"] as? String,
-                    let state = incomingFiles[id] {
-                    state.fileHandle?.closeFile()
-
-                    // Resolve a name for notifications and final filename. Prefer AppState metadata; fall back to temp filename.
-                    let resolvedName = AppState.shared.transfers[id]?.name ?? state.tempUrl.lastPathComponent
-
-                    // Verify checksum if present
-                    if let expected = incomingFilesChecksum[id] {
-                        if let fileData = try? Data(contentsOf: state.tempUrl) {
-                            let computed = SHA256.hash(data: fileData).compactMap { String(format: "%02x", $0) }.joined()
-                            if computed != expected {
-                                print("[websocket] (file-transfer) Checksum mismatch for incoming file id=\(id), expected=\(expected), computed=\(computed)")
-                                // Post notification about checksum mismatch via AppState util
-                                AppState.shared.postNativeNotification(
-                                    id: "incoming_file_\(id)_mismatch",
-                                    appName: "AirSync",
-                                    title: "Received: \(resolvedName)",
-                                    body: "Saved to Downloads (checksum mismatch)"
-                                )
-                            }
-                        }
-                        incomingFilesChecksum.removeValue(forKey: id)
+                if let dict = message.data.value as? [String: Any] {
+                    // Support both old and new format
+                    let id = (dict["transferId"] as? String) ?? (dict["id"] as? String)
+                    
+                    guard let transferId = id, let state = incomingFiles[transferId] else {
+                        print("[websocket] (file-transfer) complete: transfer not found")
+                        return
                     }
-
-                    // Move to Downloads
-                    if let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
+                    
+                    // Wait for all pending file operations to complete before closing and verifying
+                    fileOperationQueue.async { [weak self] in
+                        guard let self = self else { return }
+                        
+                        // Ensure all data is flushed to disk before closing
                         do {
-                            let finalDest = downloads.appendingPathComponent(resolvedName)
-                            if FileManager.default.fileExists(atPath: finalDest.path) {
-                                try FileManager.default.removeItem(at: finalDest)
-                            }
-                            try FileManager.default.moveItem(at: state.tempUrl, to: finalDest)
-
-                            // Optionally: show a user notification (simple print for now)
-                            print("[websocket] (file-transfer) Saved incoming file to \(finalDest.path)")
-
-                            // Mark as completed in AppState and post notification via AppState util
-                            AppState.shared.completeIncoming(id: id, verified: nil)
-                            AppState.shared.postNativeNotification(
-                                id: "incoming_file_\(id)",
-                                appName: "AirSync",
-                                title: "Received: \(resolvedName)",
-                                body: "Saved to Downloads"
-                            )
+                            try state.fileHandle?.synchronize()
                         } catch {
-                            print("[websocket] (file-transfer) Failed to move incoming file: \(error)")
+                            print("[websocket] (file-transfer) Warning: synchronize failed: \(error)")
                         }
+                        try? state.fileHandle?.close()
+                        print("[websocket] (file-transfer) complete id=\(transferId) temp=\(state.tempUrl.path)")
+
+                        // Resolve a name for notifications and final filename. Prefer AppState metadata; fall back to temp filename.
+                        let resolvedName = AppState.shared.transfers[transferId]?.name ?? state.tempUrl.lastPathComponent
+
+                        // Verify checksum if present
+                        if let expected = self.incomingFilesChecksum[transferId] {
+                        // Use streaming SHA256 to avoid loading entire file into memory
+                        if let stream = InputStream(url: state.tempUrl) {
+                            stream.open()
+                            defer { stream.close() }
+                            
+                            var hasher = SHA256()
+                            let bufferSize = 65536 // 64KB chunks
+                            var buffer = [UInt8](repeating: 0, count: bufferSize)
+                            
+                            while stream.hasBytesAvailable {
+                                let bytesRead = stream.read(&buffer, maxLength: bufferSize)
+                                if bytesRead > 0 {
+                                    hasher.update(data: buffer[0..<bytesRead])
+                                } else if bytesRead < 0 {
+                                    print("[websocket] (file-transfer) ❌ Error reading file for checksum")
+                                    break
+                                } else {
+                                    break // EOF
+                                }
+                            }
+                            
+                            let computed = hasher.finalize().compactMap { String(format: "%02x", $0) }.joined()
+                            print("[websocket] (file-transfer) Checksum verification: expected=\(expected.prefix(16))... computed=\(computed.prefix(16))...")
+                            print("[websocket] (file-transfer) Expected length: \(expected.count), Computed length: \(computed.count)")
+                            
+                            // Check if Android sent MD5 (32 chars) instead of SHA256 (64 chars)
+                            if expected.count == 32 && computed.count == 64 {
+                                print("[websocket] (file-transfer) ⚠️ MISMATCH: Android sent MD5 (32 chars) but Mac computed SHA256 (64 chars)")
+                                print("[websocket] (file-transfer) 💡 Android needs to use SHA256 instead of MD5 for checksums")
+                                DispatchQueue.main.async {
+                                    AppState.shared.postNativeNotification(
+                                        id: "incoming_file_\(transferId)_mismatch",
+                                        appName: "AirSync",
+                                        title: "Received: \(resolvedName)",
+                                        body: "Saved to Downloads (checksum algorithm mismatch: MD5 vs SHA256)"
+                                    )
+                                }
+                            } else if computed != expected {
+                                print("[websocket] (file-transfer) ❌ Checksum mismatch for incoming file id=\(transferId)")
+                                DispatchQueue.main.async {
+                                    AppState.shared.postNativeNotification(
+                                        id: "incoming_file_\(transferId)_mismatch",
+                                        appName: "AirSync",
+                                        title: "Received: \(resolvedName)",
+                                        body: "Saved to Downloads (checksum mismatch)"
+                                    )
+                                }
+                            } else {
+                                print("[websocket] (file-transfer) ✅ Checksum verified successfully")
+                            }
+                        }
+                        self.incomingFilesChecksum.removeValue(forKey: transferId)
                     }
 
-                    incomingFiles.removeValue(forKey: id)
+                        // Move to Downloads
+                        if let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
+                            do {
+                                let finalDest = downloads.appendingPathComponent(resolvedName)
+                                if FileManager.default.fileExists(atPath: finalDest.path) {
+                                    try FileManager.default.removeItem(at: finalDest)
+                                }
+                                try FileManager.default.moveItem(at: state.tempUrl, to: finalDest)
+
+                                // Optionally: show a user notification (simple print for now)
+                                print("[websocket] (file-transfer) ✅ Saved incoming file to \(finalDest.path)")
+
+                                // Mark as completed in AppState and post notification via AppState util
+                                DispatchQueue.main.async {
+                                    AppState.shared.completeIncoming(id: transferId, verified: nil)
+                                    AppState.shared.postNativeNotification(
+                                        id: "incoming_file_\(transferId)",
+                                        appName: "AirSync",
+                                        title: "Received: \(resolvedName)",
+                                        body: "Saved to Downloads"
+                                    )
+                                }
+                                
+                                // Send verification back to Android
+                                let verifyMessage = """
+                                {
+                                    "type": "transferVerified",
+                                    "data": {
+                                        "id": "\(transferId)",
+                                        "verified": true
+                                    }
+                                }
+                                """
+                                self.sendToFirstAvailable(message: verifyMessage)
+                            } catch {
+                                print("[websocket] (file-transfer) ❌ Failed to move incoming file: \(error)")
+                            }
+                        }
+
+                        self.incomingFiles.removeValue(forKey: transferId)
+                    } // End of fileOperationQueue.async
             }
         case .transferVerified:
             if let dict = message.data.value as? [String: Any],
@@ -648,55 +1025,1023 @@ class WebSocketServer: ObservableObject {
                let verified = dict["verified"] as? Bool {
                 print("[websocket] (file-transfer) Received transferVerified for id=\(id) verified=\(verified)")
                 // Update AppState and show a confirmation notification via AppState util
-                AppState.shared.completeOutgoingVerified(id: id, verified: verified)
-                AppState.shared.postNativeNotification(
-                    id: "transfer_verified_\(id)",
-                    appName: "AirSync",
-                    title: "Transfer verified",
-                    body: verified ? "Receiver verified the file checksum" : "Receiver reported checksum mismatch"
-                )
-            }
-
-        case .macMediaControl:
-            if let dict = message.data.value as? [String: Any],
-               let action = dict["action"] as? String {
-                print("[websocket] Received Mac media control: \(action)")
-                handleMacMediaControl(action: action)
-            }
-
-        case .callControl:
-            // This case handles call control messages from Android to Mac
-            // Currently not expected as Mac sends call control to Android, not vice versa
-            print("[websocket] Received callControl from Android (not typically expected)")
-
-        case .callControlResponse:
-            if let dict = message.data.value as? [String: Any],
-               let action = dict["action"] as? String,
-               let success = dict["success"] as? Bool {
-                let message = dict["message"] as? String ?? ""
-                print("[websocket] Call control \(action) \(success ? "succeeded" : "failed"): \(message)")
-                if !message.isEmpty {
-                    print("[websocket] Call control warning/info: \(message)")
+                DispatchQueue.main.async {
+                    AppState.shared.completeOutgoingVerified(id: id, verified: verified)
+                    AppState.shared.postNativeNotification(
+                        id: "transfer_verified_\(id)",
+                        appName: "AirSync",
+                        title: "Transfer verified",
+                        body: verified ? "Receiver verified the file checksum" : "Receiver reported checksum mismatch"
+                    )
                 }
             }
-
-        case .macMediaControlResponse:
-            // This case handles responses from Android to Mac media control responses
-            // Currently not needed as Mac sends responses to Android, not vice versa
-            print("[websocket] Received macMediaControlResponse (not typically expected)")
-
-        case .macInfo:
-            // This case handles macInfo messages from Android to Mac
-            // Currently not expected as Mac sends macInfo to Android, not vice versa
-            print("[websocket] Received macInfo message from Android (not typically expected)")
             
         case .wakeUpRequest:
             // This case handles wake-up requests from Android to Mac
             // Currently not expected as Mac sends wake-up requests to Android, not vice versa
             print("[websocket] Received wakeUpRequest from Android (not typically expected)")
+            
+        case .wallpaperResponse:
+            if let dict = message.data.value as? [String: Any] {
+                let success = dict["success"] as? Bool ?? false
+                let msg = dict["message"] as? String
+                let wallpaperB64 = dict["wallpaper"] as? String
+                print("[websocket] wallpaperResponse success=\(success) message=\(msg ?? "") wallpaperLen=\(wallpaperB64?.count ?? 0)")
+
+                DispatchQueue.global(qos: .utility).async {
+                    var stored: String? = nil
+                    if let wallpaperB64 = wallpaperB64, !wallpaperB64.isEmpty {
+                        stored = wallpaperB64
+                    }
+                    DispatchQueue.main.async {
+                        if let stored = stored {
+                            AppState.shared.currentDeviceWallpaperBase64 = stored
+                        }
+                    }
+                }
+            }
+            
+        case .mirrorRequest:
+            if let dict = message.data.value as? [String: Any],
+               let action = dict["action"] as? String {
+                let mode = dict["mode"] as? String
+                let package = dict["package"] as? String
+                let options = dict["options"] as? [String: Any] ?? [:]
+
+                if action == "start" {
+                    // Check state on main thread
+                    var isMirrorActive = false
+                    var isPlus = false
+                    var device: Device? = nil
+                    var adbConnected = false
+                    var adbPort: UInt16 = 0
+                    
+                    DispatchQueue.main.sync {
+                        isMirrorActive = AppState.shared.isMirrorActive
+                        isPlus = AppState.shared.isPlus
+                        device = AppState.shared.device
+                        adbConnected = AppState.shared.adbConnected
+                        adbPort = AppState.shared.adbPort
+                    }
+                    
+                    if isMirrorActive {
+                        print("[websocket] Mirror already active; ignoring duplicate start")
+                        sendMirrorResponse(["status": "already_active"]) 
+                        return
+                    }
+                    guard isPlus else {
+                        sendMirrorResponse(["status": "error", "message": "Mirror feature requires Plus subscription"])
+                        return
+                    }
+                    guard let device = device else {
+                        sendMirrorResponse(["status": "error", "message": "No connected device"])
+                        return
+                    }
+                    guard adbConnected else {
+                        sendMirrorResponse(["status": "error", "message": "ADB not connected"])
+                        return
+                    }
+                    // Save current scrcpy settings to restore after start
+                    var originalBitrate = 0
+                    var originalResolution = 0
+                    DispatchQueue.main.sync {
+                        originalBitrate = AppState.shared.scrcpyBitrate
+                        originalResolution = AppState.shared.scrcpyResolution
+                    }
+
+                    // Override bitrate/resolution if options provided (expecting Int)
+                    if let bitrateOpt = options["bitrate"] as? Int {
+                        DispatchQueue.main.async {
+                            AppState.shared.scrcpyBitrate = bitrateOpt
+                        }
+                    }
+                    if let resolutionOpt = options["resolution"] as? Int {
+                        DispatchQueue.main.async {
+                            AppState.shared.scrcpyResolution = resolutionOpt
+                        }
+                    }
+
+                    if mode == "app", let pkg = package, !pkg.isEmpty {
+                        ADBConnector.startScrcpy(ip: device.ipAddress, port: adbPort, deviceName: device.name, package: pkg)
+                        sendMirrorResponse([
+                            "status": "started",
+                            "mode": "app",
+                            "package": pkg,
+                            "transport": "websocket",
+                            "wsUrl": "ws://\(self.localIPAddress ?? "127.0.0.1"):\(self.localPort ?? Defaults.serverPort)/socket"
+                        ])
+                    } else if mode == "desktop" {
+                        ADBConnector.startScrcpy(ip: device.ipAddress, port: adbPort, deviceName: device.name, desktop: true)
+                        sendMirrorResponse([
+                            "status": "started",
+                            "mode": "desktop",
+                            "package": "",
+                            "transport": "websocket",
+                            "wsUrl": "ws://\(self.localIPAddress ?? "127.0.0.1"):\(self.localPort ?? Defaults.serverPort)/socket"
+                        ])
+                    } else {
+                        ADBConnector.startScrcpy(ip: device.ipAddress, port: adbPort, deviceName: device.name)
+                        sendMirrorResponse([
+                            "status": "started",
+                            "mode": "device",
+                            "package": "",
+                            "transport": "websocket",
+                            "wsUrl": "ws://\(self.localIPAddress ?? "127.0.0.1"):\(self.localPort ?? Defaults.serverPort)/socket"
+                        ])
+                    }
+
+                    // Restore original scrcpy settings to avoid side effects
+                    DispatchQueue.main.async {
+                        AppState.shared.scrcpyBitrate = originalBitrate
+                        AppState.shared.scrcpyResolution = originalResolution
+                    }
+
+                } else if action == "stop" {
+                    // No direct stop API here; placeholder
+                    // Could implement sending AppleScript or other means to kill scrcpy process or signal to stop
+                    sendMirrorResponse(["status": "not_implemented"])
+                } else {
+                    sendMirrorResponse(["status": "error", "message": "Unknown mirrorRequest action"])
+                }
+            }
+            
+        case .mirrorResponse:
+            if let dict = message.data.value as? [String: Any] {
+                let status = dict["status"] as? String ?? "unknown"
+                let message = dict["message"] as? String ?? ""
+                let mode = dict["mode"] as? String ?? ""
+                let package = dict["package"] as? String ?? ""
+                print("[websocket] mirrorResponse status=\(status) message=\(message) mode=\(mode) package=\(package)")
+            }
+            
+        case .mirrorStart:
+            print("[mirror] 📥 Received mirrorStart from Android")
+            if let dict = message.data.value as? [String: Any] {
+                // Check if mirror was requested by Mac (safe access without sync)
+                let shouldAccept: Bool
+                if Thread.isMainThread {
+                    shouldAccept = AppState.shared.isMirrorRequestPending || AppState.shared.isMirroring
+                } else {
+                    var result = false
+                    DispatchQueue.main.sync {
+                        result = AppState.shared.isMirrorRequestPending || AppState.shared.isMirroring
+                    }
+                    shouldAccept = result
+                }
+                
+                if !shouldAccept {
+                    print("[mirror] ⚠️ Rejecting unsolicited mirror start from Android")
+                    sendMirrorAck(action: "start", ok: false, message: "Mirror not requested by Mac")
+                    // Tell Android to stop
+                    self.stopMirroring()
+                    return
+                }
+                
+                if self.activeSessions.count > 1 {
+                    // Keep only the last (most recent) session; drop references to older ones
+                    if let last = self.activeSessions.last {
+                        self.sessionBoxes = [WeakSessionBox(last)]
+                    }
+                    print("[mirror] Pruned extra sessions; now \(self.activeSessions.count)")
+                }
+                DispatchQueue.main.async {
+                    let wasActive = AppState.shared.isMirrorActive
+                    AppState.shared.isMirrorActive = true
+                    AppState.shared.isMirrorRequestPending = false
+                    AppState.shared.isMirroring = true
+                    AppState.shared.mirrorError = nil
+                    #if os(macOS)
+                    self.presentMirrorWindowIfNeeded()
+                    #endif
+                    if !wasActive {
+                        print("[mirror] ✅ Mirror started successfully -> presenting UI now")
+                    }
+                }
+                // Optionally parse parameters for debugging
+                print("[mirror] 📊 Mirror parameters: fps=\(dict["fps"] ?? "nil") quality=\(dict["quality"] ?? "nil") width=\(dict["width"] ?? "nil") height=\(dict["height"] ?? "nil")")
+                sendMirrorAck(action: "start", ok: true)
+            } else {
+                print("[mirror] ❌ Mirror start failed: Missing data")
+                sendMirrorAck(action: "start", ok: false, message: "Missing data for mirrorStart")
+                DispatchQueue.main.async {
+                    AppState.shared.isMirrorRequestPending = false
+                    AppState.shared.mirrorError = "Mirror start failed: Invalid data from Android"
+                }
+            }
+
+        case .mirrorStop:
+            print("[mirror] 🛑 Received mirrorStop from Android")
+            
+            // Guard against duplicate stop events
+            guard !isStoppingMirror else {
+                print("[mirror] 🛑 Already stopping mirror, ignoring duplicate mirrorStop")
+                sendMirrorAck(action: "stop", ok: true)
+                return
+            }
+            
+            // Check if we're actually mirroring
+            let wasMirroring: Bool
+            if Thread.isMainThread {
+                wasMirroring = AppState.shared.isMirroring || AppState.shared.isMirrorActive
+            } else {
+                var result = false
+                DispatchQueue.main.sync {
+                    result = AppState.shared.isMirroring || AppState.shared.isMirrorActive
+                }
+                wasMirroring = result
+            }
+            
+            guard wasMirroring else {
+                print("[mirror] 🛑 Not mirroring, ignoring mirrorStop")
+                sendMirrorAck(action: "stop", ok: true)
+                return
+            }
+            
+            isStoppingMirror = true
+            
+            // Stop processing decoded frames immediately (before any async work)
+            unifiedDecoder.onDecodedFrame = nil
+            
+            // Update state on main thread
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                
+                AppState.shared.isMirrorActive = false
+                AppState.shared.latestMirrorFrame = nil
+                AppState.shared.isMirroring = false
+                AppState.shared.isMirrorRequestPending = false
+                
+                #if os(macOS)
+                // Safe window cleanup
+                if let window = self.mirrorWindow {
+                    window.delegate = nil
+                    self.mirrorWindowDelegate = nil
+                    window.orderOut(nil)
+                }
+                self.mirrorWindow = nil
+                #endif
+                
+                print("[mirror] ✅ Mirror stopped successfully")
+                
+                // Reset guard flag after cleanup
+                self.isStoppingMirror = false
+            }
+            
+            sendMirrorAck(action: "stop", ok: true)
+            
+        case .mirrorStatus:
+            if let dict = message.data.value as? [String: Any] {
+                let isActive = dict["isActive"] as? Bool ?? false
+                let statusMessage = dict["message"] as? String ?? ""
+                print("[mirror] 📊 Mirror status: active=\(isActive), message=\(statusMessage)")
+            }
+
+        case .mirrorFrame:
+            if let dict = message.data.value as? [String: Any] {
+                let base64Payload = (dict["image"] as? String) ?? (dict["frame"] as? String)
+                let format = (dict["format"] as? String)?.lowercased()
+                let isConfig = (dict["isConfig"] as? Bool) ?? false
+
+                guard let base64 = base64Payload, let data = Data(base64Encoded: base64) else {
+                    print("[websocket] mirrorFrame failed to decode base64 payload")
+                    break
+                }
+
+                // Use unified decoder for all formats - no H.264 fallback
+                unifiedDecoder.decode(frameData: data, format: format, isConfig: isConfig)
+            }
+
+        case .remoteConnectResponse:
+            if let dict = message.data.value as? [String: Any],
+               let features = dict["features"] as? [String] {
+                print("[websocket] remoteConnectResponse features: \(features)")
+                // Optionally: set a flag in AppState if needed
+                // e.g. AppState.shared.remoteConnectFeatures = features
+            }
+            
+        case .screenshotResponse:
+            if let dict = message.data.value as? [String: Any],
+               let base64Image = dict["image"] as? String {
+                if let imageData = Data(base64Encoded: base64Image) {
+                    if let nsImage = NSImage(data: imageData) {
+                        DispatchQueue.main.async {
+                            AppState.shared.latestMirrorFrame = nsImage // Reuse latestMirrorFrame for screenshot
+                            AppState.shared.isMirrorActive = false      // On-demand screenshot, not active mirror stream
+                        }
+                    } else {
+                        print("[websocket] screenshotResponse failed to create NSImage from data")
+                    }
+                } else {
+                    print("[websocket] screenshotResponse failed to decode base64 image data")
+                }
+            }
+
+        case .remoteConnectRequest:
+            if let dict = message.data.value as? [String: Any], let features = dict["features"] as? [String] {
+                print("[websocket] Received remoteConnectRequest (unexpected on Mac) features=\(features)")
+            } else {
+                print("[websocket] Received remoteConnectRequest (unexpected on Mac)")
+            }
+            
+        case .inputEvent:
+            if let dict = message.data.value as? [String: Any] {
+                print("[remote-control] 📥 Received inputEvent response from Android: \(dict)")
+                if let success = dict["success"] as? Bool {
+                    if success {
+                        print("[remote-control] ✅ Input event processed successfully on Android")
+                    } else {
+                        let error = dict["error"] as? String ?? "Unknown error"
+                        print("[remote-control] ❌ Input event failed on Android: \(error)")
+                    }
+                }
+            } else {
+                print("[remote-control] ⚠️ Received inputEvent from Android (unexpected format)")
+            }
+            
+        case .navAction:
+            if let dict = message.data.value as? [String: Any] {
+                print("[remote-control] 📥 Received navAction response from Android: \(dict)")
+                if let success = dict["success"] as? Bool {
+                    if success {
+                        print("[remote-control] ✅ Nav action processed successfully on Android")
+                    } else {
+                        let error = dict["error"] as? String ?? "Unknown error"
+                        print("[remote-control] ❌ Nav action failed on Android: \(error)")
+                    }
+                }
+            } else {
+                print("[remote-control] ⚠️ Received navAction from Android (unexpected format)")
+            }
+            
+        case .launchApp:
+            print("[websocket] Received launchApp from Android (ignored on Mac)")
+            
+        case .screenshotRequest:
+            print("[websocket] Received screenshotRequest from Android (ignored on Mac)")
+            
+        // MARK: - SMS/Messaging Handlers
+        case .smsThreads:
+            print("[websocket] 📱 Received smsThreads message")
+            if let dict = message.data.value as? [String: Any] {
+                print("[websocket] 📱 SMS data dict keys: \(dict.keys)")
+                if let threadsData = dict["threads"] as? [[String: Any]] {
+                    print("[websocket] 📱 Processing \(threadsData.count) SMS threads")
+                    let threads = threadsData.compactMap { threadDict -> SmsThread? in
+                        guard let threadId = threadDict["threadId"] as? String,
+                              let address = threadDict["address"] as? String,
+                              let messageCount = threadDict["messageCount"] as? Int,
+                              let snippet = threadDict["snippet"] as? String else {
+                            print("[websocket] ❌ Failed to parse SMS thread - missing required fields")
+                            return nil
+                        }
+                        
+                        // Parse date as Int or Int64
+                        let dateMs: Int64
+                        if let date64 = threadDict["date"] as? Int64 {
+                            dateMs = date64
+                        } else if let dateInt = threadDict["date"] as? Int {
+                            dateMs = Int64(dateInt)
+                        } else {
+                            print("[websocket] ❌ Failed to parse date for SMS thread")
+                            return nil
+                        }
+                        
+                        let unreadCount = threadDict["unreadCount"] as? Int ?? 0
+                        
+                        return SmsThread(
+                            threadId: threadId,
+                            address: address,
+                            contactName: threadDict["contactName"] as? String,
+                            messageCount: messageCount,
+                            snippet: snippet,
+                            date: Date(timeIntervalSince1970: Double(dateMs) / 1000.0),
+                            unreadCount: unreadCount
+                        )
+                    }
+                    print("[websocket] 📱 Successfully parsed \(threads.count) SMS threads")
+                    LiveNotificationManager.shared.handleSmsThreads(threads)
+                    print("[websocket] 📱 SMS threads sent to LiveNotificationManager")
+                } else {
+                    print("[websocket] ❌ Failed to parse threads array from SMS data")
+                }
+            } else {
+                print("[websocket] ❌ Failed to parse smsThreads data dict")
+            }
+            
+        case .smsMessages:
+            print("[websocket] 📱 Received smsMessages")
+            if let dict = message.data.value as? [String: Any] {
+                print("[websocket] 📱 SMS messages data dict keys: \(dict.keys)")
+                if let messagesData = dict["messages"] as? [[String: Any]] {
+                    print("[websocket] 📱 Processing \(messagesData.count) SMS messages")
+                    let messages = messagesData.compactMap { messageDict -> SmsMessage? in
+                        guard let id = messageDict["id"] as? String,
+                              let threadId = messageDict["threadId"] as? String,
+                              let address = messageDict["address"] as? String,
+                              let body = messageDict["body"] as? String,
+                              let type = messageDict["type"] as? Int,
+                              let read = messageDict["read"] as? Bool else {
+                            print("[websocket] ❌ Failed to parse SMS message - missing required fields")
+                            return nil
+                        }
+                        
+                        // Parse date as Int or Int64
+                        let dateMs: Int64
+                        if let date64 = messageDict["date"] as? Int64 {
+                            dateMs = date64
+                        } else if let dateInt = messageDict["date"] as? Int {
+                            dateMs = Int64(dateInt)
+                        } else {
+                            print("[websocket] ❌ Failed to parse date for SMS message")
+                            return nil
+                        }
+                        
+                        return SmsMessage(
+                            id: id,
+                            threadId: threadId,
+                            address: address,
+                            body: body,
+                            date: Date(timeIntervalSince1970: Double(dateMs) / 1000.0),
+                            type: type,
+                            read: read,
+                            contactName: messageDict["contactName"] as? String
+                        )
+                    }
+                    print("[websocket] 📱 Successfully parsed \(messages.count) SMS messages")
+                    LiveNotificationManager.shared.handleSmsMessages(messages)
+                    print("[websocket] 📱 SMS messages sent to LiveNotificationManager")
+                } else {
+                    print("[websocket] ❌ Failed to parse messages array from SMS data")
+                }
+            } else {
+                print("[websocket] ❌ Failed to parse smsMessages data dict")
+            }
+            
+        case .smsSendResponse:
+            if let dict = message.data.value as? [String: Any],
+               let success = dict["success"] as? Bool {
+                let msg = dict["message"] as? String ?? ""
+                print("[websocket] SMS send \(success ? "succeeded" : "failed"): \(msg)")
+                
+                // If SMS was sent successfully, request updated threads after a short delay
+                if success {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        print("[websocket] 📱 Requesting SMS threads refresh after successful send")
+                        self.requestSmsThreads()
+                    }
+                }
+            }
+            
+        case .smsReceived:
+            if let dict = message.data.value as? [String: Any],
+               let id = dict["id"] as? String,
+               let threadId = dict["threadId"] as? String,
+               let address = dict["address"] as? String,
+               let body = dict["body"] as? String,
+               let dateMs = dict["date"] as? Int64,
+               let _ = dict["type"] as? Int, // SMS type (1=received, 2=sent)
+               let read = dict["read"] as? Bool {
+                
+                let sms = LiveSmsNotification(
+                    id: id,
+                    threadId: threadId,
+                    address: address,
+                    contactName: dict["contactName"] as? String,
+                    body: body,
+                    date: Date(timeIntervalSince1970: Double(dateMs) / 1000.0),
+                    read: read
+                )
+                LiveNotificationManager.shared.handleSmsReceived(sms)
+                print("[websocket] New SMS from \(sms.displayName)")
+            }
+            
+        // MARK: - Call Log Handlers
+        case .callLogs:
+            print("[websocket] 📞 Received callLogs message")
+            if let dict = message.data.value as? [String: Any] {
+                print("[websocket] 📞 Call logs data dict keys: \(dict.keys)")
+                if let logsData = dict["logs"] as? [[String: Any]] {
+                    print("[websocket] 📞 Processing \(logsData.count) call log entries")
+                    let logs = logsData.compactMap { logDict -> CallLogEntry? in
+                        guard let id = logDict["id"] as? String,
+                              let number = logDict["number"] as? String,
+                              let type = logDict["type"] as? String,
+                              let duration = logDict["duration"] as? Int,
+                              let isRead = logDict["isRead"] as? Bool else {
+                            print("[websocket] ❌ Failed to parse call log - missing required fields")
+                            return nil
+                        }
+                        
+                        // Parse date as Int or Int64
+                        let dateMs: Int64
+                        if let date64 = logDict["date"] as? Int64 {
+                            dateMs = date64
+                        } else if let dateInt = logDict["date"] as? Int {
+                            dateMs = Int64(dateInt)
+                        } else {
+                            print("[websocket] ❌ Failed to parse date for call log")
+                            return nil
+                        }
+                        
+                        return CallLogEntry(
+                            id: id,
+                            number: number,
+                            contactName: logDict["contactName"] as? String,
+                            type: type,
+                            date: Date(timeIntervalSince1970: Double(dateMs) / 1000.0),
+                            duration: duration,
+                            isRead: isRead
+                        )
+                    }
+                    print("[websocket] 📞 Successfully parsed \(logs.count) call log entries")
+                    LiveNotificationManager.shared.handleCallLogs(logs)
+                    print("[websocket] 📞 Call logs sent to LiveNotificationManager")
+                } else {
+                    print("[websocket] ❌ Failed to parse logs array from call data")
+                }
+            } else {
+                print("[websocket] ❌ Failed to parse callLogs data dict")
+            }
+            
+        // MARK: - Live Call Notification Handlers
+        case .callNotification:
+            if let dict = message.data.value as? [String: Any],
+               let id = dict["id"] as? String,
+               let number = dict["number"] as? String,
+               let stateStr = dict["state"] as? String,
+               let startTimeMs = dict["startTime"] as? Int64,
+               let isIncoming = dict["isIncoming"] as? Bool,
+               let state = CallState(rawValue: stateStr) {
+                
+                let call = LiveCallNotification(
+                    id: id,
+                    number: number,
+                    contactName: dict["contactName"] as? String,
+                    state: state,
+                    startTime: Date(timeIntervalSince1970: Double(startTimeMs) / 1000.0),
+                    isIncoming: isIncoming
+                )
+                LiveNotificationManager.shared.handleCallNotification(call)
+                print("[websocket] Call notification: \(call.displayName) - \(state)")
+            }
+            
+        case .callActionResponse:
+            if let dict = message.data.value as? [String: Any],
+               let action = dict["action"] as? String,
+               let success = dict["success"] as? Bool {
+                let msg = dict["message"] as? String ?? ""
+                print("[websocket] Call action '\(action)' \(success ? "succeeded" : "failed"): \(msg)")
+            }
+            
+        // MARK: - Health Data Handlers
+        case .healthSummary:
+            print("[websocket] 📊 Received healthSummary message")
+            if let dict = message.data.value as? [String: Any] {
+                print("[websocket] 📊 Health data dict keys: \(dict.keys.joined(separator: ", "))")
+                
+                // Helper function to safely parse optional Int (handles NSNull and 0 as nil for certain fields)
+                func parseOptionalInt(_ key: String, treatZeroAsNil: Bool = false) -> Int? {
+                    guard let value = dict[key] else { return nil }
+                    if value is NSNull { return nil }
+                    if let intVal = value as? Int {
+                        return (treatZeroAsNil && intVal == 0) ? nil : intVal
+                    }
+                    if let doubleVal = value as? Double {
+                        let intVal = Int(doubleVal)
+                        return (treatZeroAsNil && intVal == 0) ? nil : intVal
+                    }
+                    if let numVal = value as? NSNumber {
+                        let intVal = numVal.intValue
+                        return (treatZeroAsNil && intVal == 0) ? nil : intVal
+                    }
+                    return nil
+                }
+                
+                // Helper function to safely parse optional Double (handles NSNull, NaN, Infinity)
+                func parseOptionalDouble(_ key: String) -> Double? {
+                    guard let value = dict[key] else { return nil }
+                    if value is NSNull { return nil }
+                    var result: Double? = nil
+                    if let doubleVal = value as? Double { result = doubleVal }
+                    else if let intVal = value as? Int { result = Double(intVal) }
+                    else if let numVal = value as? NSNumber { result = numVal.doubleValue }
+                    // Guard against NaN and Infinity
+                    if let r = result, !r.isFinite { return nil }
+                    return result
+                }
+                
+                // Try to parse date as Int64, Int, Double, or NSNumber
+                let dateMs: Int64
+                if let date64 = dict["date"] as? Int64 {
+                    dateMs = date64
+                } else if let dateInt = dict["date"] as? Int {
+                    dateMs = Int64(dateInt)
+                } else if let dateDouble = dict["date"] as? Double {
+                    dateMs = Int64(dateDouble)
+                } else if let dateNum = dict["date"] as? NSNumber {
+                    dateMs = dateNum.int64Value
+                } else {
+                    print("[websocket] ❌ Failed to parse date from health summary - type: \(type(of: dict["date"])), value: \(String(describing: dict["date"]))")
+                    break
+                }
+                
+                // Validate date is reasonable (not in distant past or future)
+                let dateSeconds = Double(dateMs) / 1000.0
+                let date = Date(timeIntervalSince1970: dateSeconds)
+                let now = Date()
+                let oneYearAgo = now.addingTimeInterval(-365 * 24 * 60 * 60)
+                let oneWeekFromNow = now.addingTimeInterval(7 * 24 * 60 * 60)
+                
+                guard date > oneYearAgo && date < oneWeekFromNow else {
+                    print("[websocket] ❌ Health summary date out of range: \(date)")
+                    break
+                }
+                
+                print("[websocket] 📊 Parsing health summary with date: \(dateMs) (\(date))")
+                
+                let summary = HealthSummary(
+                    date: date,
+                    steps: parseOptionalInt("steps"),
+                    distance: parseOptionalDouble("distance"),
+                    calories: parseOptionalInt("calories"),
+                    activeMinutes: parseOptionalInt("activeMinutes"),
+                    heartRateAvg: parseOptionalInt("heartRateAvg", treatZeroAsNil: true),
+                    heartRateMin: parseOptionalInt("heartRateMin", treatZeroAsNil: true),
+                    heartRateMax: parseOptionalInt("heartRateMax", treatZeroAsNil: true),
+                    sleepDuration: parseOptionalInt("sleepDuration"),
+                    floorsClimbed: parseOptionalInt("floorsClimbed"),
+                    weight: parseOptionalDouble("weight"),
+                    bloodPressureSystolic: parseOptionalInt("bloodPressureSystolic", treatZeroAsNil: true),
+                    bloodPressureDiastolic: parseOptionalInt("bloodPressureDiastolic", treatZeroAsNil: true),
+                    oxygenSaturation: parseOptionalDouble("oxygenSaturation"),
+                    restingHeartRate: parseOptionalInt("restingHeartRate", treatZeroAsNil: true),
+                    vo2Max: parseOptionalDouble("vo2Max"),
+                    bodyTemperature: parseOptionalDouble("bodyTemperature"),
+                    bloodGlucose: parseOptionalDouble("bloodGlucose"),
+                    hydration: parseOptionalDouble("hydration")
+                )
+                print("[websocket] 📊 Created HealthSummary: steps=\(summary.steps ?? 0), calories=\(summary.calories ?? 0), distance=\(String(format: "%.2f", summary.distance ?? 0))")
+                LiveNotificationManager.shared.handleHealthSummary(summary)
+                print("[websocket] 📊 Health summary sent to LiveNotificationManager")
+            } else {
+                print("[websocket] ❌ Failed to parse health summary data dict")
+            }
+            
+        case .healthData:
+            print("[websocket] Received health data records")
+            // Handle detailed health data if needed
+            
+        // MARK: - Audio Mirroring Handlers
+        case .audioStart:
+            if let dict = message.data.value as? [String: Any] {
+                let sampleRate = dict["sampleRate"] as? Int ?? 44100
+                let channels = dict["channels"] as? Int ?? 2
+                let bitsPerSample = dict["bitsPerSample"] as? Int ?? 16
+                print("[audio] 🔊 Audio stream starting: sampleRate=\(sampleRate), channels=\(channels), bits=\(bitsPerSample)")
+                AudioStreamPlayer.shared.configure(sampleRate: sampleRate, channels: channels, bitsPerSample: bitsPerSample)
+                AudioStreamPlayer.shared.start()
+            }
+            
+        case .audioStop:
+            print("[audio] 🔇 Audio stream stopped")
+            AudioStreamPlayer.shared.stop()
+            
+        case .audioFrame:
+            if let dict = message.data.value as? [String: Any],
+               let base64Frame = dict["frame"] as? String {
+                let frameIndex = dict["index"] as? Int64 ?? 0
+                AudioStreamPlayer.shared.receiveFrame(base64Frame, frameIndex: frameIndex)
+            }
+
+        case .callMicAudio:
+            if let dict = message.data.value as? [String: Any],
+               let audioBase64 = dict["audio"] as? String {
+                CallAudioManager.shared.handleCallAudio(base64Data: audioBase64)
+            }
+            
+        // Ignore requests sent from Android (shouldn't happen)
+        case .requestSmsThreads, .requestSmsMessages, .sendSms, .markSmsRead,
+             .requestCallLogs, .markCallLogRead, .callAction,
+             .requestHealthSummary, .requestHealthData:
+            print("[websocket] Received request message from Android (ignored)")
+            
+        case .callControl:
+            print("[websocket] Received callControl from Android (ignored on Mac)")
+            
+        case .initiateCall:
+            // Mac sends this to Android, shouldn't receive it
+            print("[websocket] Warning: received 'initiateCall' from remote (ignored).")
+            
+        case .initiateCallResponse:
+            if let dict = message.data.value as? [String: Any],
+               let success = dict["success"] as? Bool {
+                let msg = dict["message"] as? String ?? ""
+                let number = dict["number"] as? String ?? ""
+                print("[websocket] 📞 Initiate call response: success=\(success) number=\(number) message=\(msg)")
+            }
+            
+        case .callControlResponse:
+            if let dict = message.data.value as? [String: Any],
+               let action = dict["action"] as? String,
+               let success = dict["success"] as? Bool {
+                let msg = dict["message"] as? String ?? ""
+                print("[websocket] 📞 Call control '\(action)' \(success ? "succeeded" : "failed"): \(msg)")
+            }
+            
+        case .callAudioControl:
+            print("[websocket] Received callAudioControl from Android (ignored on Mac)")
+            
+        @unknown default:
+            print("[websocket] Warning: unhandled message type: \(message.type)")
+            return
         }
 
 
+    }
+
+    // MARK: - Flexible Message Handling (JSONSerialization-based)
+    
+    func handleFlexibleMessage(_ message: FlexibleMessage) {
+        switch message.type {
+        case .device:
+            if let name = message.data["name"] as? String,
+               let ip = message.data["ipAddress"] as? String,
+               let port = message.data["port"] as? Int {
+
+                let version = message.data["version"] as? String ?? "2.0.0"
+                let adbPorts = message.data["adbPorts"] as? [String] ?? []
+
+                DispatchQueue.main.async {
+                    AppState.shared.device = Device(
+                        name: name,
+                        ipAddress: ip,
+                        port: port,
+                        version: version,
+                        adbPorts: adbPorts
+                    )
+
+                    if let base64 = message.data["wallpaper"] as? String {
+                        AppState.shared.currentDeviceWallpaperBase64 = base64
+                    }
+                }
+
+                if (!AppState.shared.adbConnected && AppState.shared.adbEnabled && AppState.shared.isPlus) {
+                    ADBConnector.connectToADB(ip: ip)
+                }
+
+                // mark first-time pairing
+                if UserDefaults.standard.hasPairedDeviceOnce == false {
+                    UserDefaults.standard.hasPairedDeviceOnce = true
+                }
+                
+                // Send Mac info response to Android
+                sendMacInfoResponse()
+                
+                // Mirroring is user-initiated from the UI; do not auto-start here.
+               }
+
+        case .notification:
+            if let nid = message.data["id"] as? String,
+               let title = message.data["title"] as? String,
+               let body = message.data["body"] as? String,
+               let app = message.data["app"] as? String,
+               let package = message.data["package"] as? String {
+                var actions: [NotificationAction] = []
+                if let arr = message.data["actions"] as? [[String: Any]] {
+                    for a in arr {
+                        if let name = a["name"] as? String, let typeStr = a["type"] as? String,
+                           let t = NotificationAction.ActionType(rawValue: typeStr) {
+                            actions.append(NotificationAction(name: name, type: t))
+                        }
+                    }
+                }
+                let notif = Notification(title: title, body: body, app: app, nid: nid, package: package, actions: actions)
+                print("[websocket] notification: id=\(nid) title=\(title) app=\(app)")
+                DispatchQueue.main.async {
+                    AppState.shared.addNotification(notif)
+                }
+            }
+
+        case .status:
+            if let battery = message.data["battery"] as? [String: Any],
+               let level = battery["level"] as? Int,
+               let isCharging = battery["isCharging"] as? Bool,
+               let paired = message.data["isPaired"] as? Bool,
+               let music = message.data["music"] as? [String: Any],
+               let playing = music["isPlaying"] as? Bool,
+               let title = music["title"] as? String,
+               let artist = music["artist"] as? String,
+               let volume = music["volume"] as? Int,
+               let isMuted = music["isMuted"] as? Bool
+            {
+                let albumArt = (music["albumArt"] as? String) ?? ""
+                let likeStatus = (music["likeStatus"] as? String) ?? "none"
+
+                DispatchQueue.main.async {
+                    AppState.shared.status = DeviceStatus(
+                        battery: .init(level: level, isCharging: isCharging),
+                        isPaired: paired,
+                        music: .init(
+                            isPlaying: playing,
+                            title: title,
+                            artist: artist,
+                            volume: volume,
+                            isMuted: isMuted,
+                            albumArt: albumArt,
+                            likeStatus: likeStatus
+                        )
+                    )
+                }
+                print("[websocket] status: battery=\(level)% charging=\(isCharging) music=\(title) playing=\(playing)")
+            }
+
+        case .smsThreads:
+            print("[websocket] 📱 Received smsThreads message")
+            print("[websocket] 📱 SMS data dict keys: \(message.data.keys)")
+            if let threadsData = message.data["threads"] as? [[String: Any]] {
+                print("[websocket] 📱 Processing \(threadsData.count) SMS threads")
+                let threads = threadsData.compactMap { threadDict -> SmsThread? in
+                    guard let threadId = threadDict["threadId"] as? String,
+                          let address = threadDict["address"] as? String,
+                          let messageCount = threadDict["messageCount"] as? Int,
+                          let snippet = threadDict["snippet"] as? String else {
+                        print("[websocket] ❌ Failed to parse SMS thread - missing required fields")
+                        return nil
+                    }
+                    
+                    // Parse date as Int or Int64
+                    let dateMs: Int64
+                    if let date64 = threadDict["date"] as? Int64 {
+                        dateMs = date64
+                    } else if let dateInt = threadDict["date"] as? Int {
+                        dateMs = Int64(dateInt)
+                    } else {
+                        print("[websocket] ❌ Failed to parse date for SMS thread")
+                        return nil
+                    }
+                    
+                    let unreadCount = threadDict["unreadCount"] as? Int ?? 0
+                    
+                    return SmsThread(
+                        threadId: threadId,
+                        address: address,
+                        contactName: threadDict["contactName"] as? String,
+                        messageCount: messageCount,
+                        snippet: snippet,
+                        date: Date(timeIntervalSince1970: Double(dateMs) / 1000.0),
+                        unreadCount: unreadCount
+                    )
+                }
+                print("[websocket] 📱 Successfully parsed \(threads.count) SMS threads")
+                LiveNotificationManager.shared.handleSmsThreads(threads)
+                print("[websocket] 📱 SMS threads sent to LiveNotificationManager")
+            } else {
+                print("[websocket] ❌ Failed to parse threads array from SMS data")
+            }
+
+        case .callLogs:
+            print("[websocket] 📞 Received callLogs message")
+            print("[websocket] 📞 Call logs data dict keys: \(message.data.keys)")
+            if let logsData = message.data["logs"] as? [[String: Any]] {
+                print("[websocket] 📞 Processing \(logsData.count) call log entries")
+                let logs = logsData.compactMap { logDict -> CallLogEntry? in
+                    guard let id = logDict["id"] as? String,
+                          let number = logDict["number"] as? String,
+                          let type = logDict["type"] as? String,
+                          let duration = logDict["duration"] as? Int,
+                          let isRead = logDict["isRead"] as? Bool else {
+                        print("[websocket] ❌ Failed to parse call log - missing required fields")
+                        return nil
+                    }
+                    
+                    // Parse date as Int or Int64
+                    let dateMs: Int64
+                    if let date64 = logDict["date"] as? Int64 {
+                        dateMs = date64
+                    } else if let dateInt = logDict["date"] as? Int {
+                        dateMs = Int64(dateInt)
+                    } else {
+                        print("[websocket] ❌ Failed to parse date for call log")
+                        return nil
+                    }
+                    
+                    return CallLogEntry(
+                        id: id,
+                        number: number,
+                        contactName: logDict["contactName"] as? String,
+                        type: type,
+                        date: Date(timeIntervalSince1970: Double(dateMs) / 1000.0),
+                        duration: duration,
+                        isRead: isRead
+                    )
+                }
+                print("[websocket] 📞 Successfully parsed \(logs.count) call log entries")
+                LiveNotificationManager.shared.handleCallLogs(logs)
+                print("[websocket] 📞 Call logs sent to LiveNotificationManager")
+            } else {
+                print("[websocket] ❌ Failed to parse logs array from call data")
+            }
+
+        case .healthSummary:
+            print("[websocket] 📊 Received healthSummary message")
+            print("[websocket] 📊 Health data dict: \(message.data)")
+            
+            // Try to parse date as Int64, Int, or Double
+            let dateMs: Int64
+            if let date64 = message.data["date"] as? Int64 {
+                dateMs = date64
+            } else if let dateInt = message.data["date"] as? Int {
+                dateMs = Int64(dateInt)
+            } else if let dateDouble = message.data["date"] as? Double {
+                dateMs = Int64(dateDouble)
+            } else {
+                print("[websocket] ❌ Failed to parse date from health summary - type: \(type(of: message.data["date"]))")
+                break
+            }
+            
+            print("[websocket] 📊 Parsing health summary with date: \(dateMs)")
+            
+            // Filter out 0 values for heart rate (treat as nil)
+            let heartRateAvg = message.data["heartRateAvg"] as? Int
+            let heartRateMin = message.data["heartRateMin"] as? Int
+            let heartRateMax = message.data["heartRateMax"] as? Int
+            
+            let summary = HealthSummary(
+                date: Date(timeIntervalSince1970: Double(dateMs) / 1000.0),
+                steps: message.data["steps"] as? Int,
+                distance: message.data["distance"] as? Double,
+                calories: message.data["calories"] as? Int,
+                activeMinutes: message.data["activeMinutes"] as? Int,
+                heartRateAvg: (heartRateAvg == 0) ? nil : heartRateAvg,
+                heartRateMin: (heartRateMin == 0) ? nil : heartRateMin,
+                heartRateMax: (heartRateMax == 0) ? nil : heartRateMax,
+                sleepDuration: message.data["sleepDuration"] as? Int,
+                floorsClimbed: message.data["floorsClimbed"] as? Int,
+                weight: message.data["weight"] as? Double,
+                bloodPressureSystolic: message.data["bloodPressureSystolic"] as? Int,
+                bloodPressureDiastolic: message.data["bloodPressureDiastolic"] as? Int,
+                oxygenSaturation: message.data["oxygenSaturation"] as? Double,
+                restingHeartRate: message.data["restingHeartRate"] as? Int,
+                vo2Max: message.data["vo2Max"] as? Double,
+                bodyTemperature: message.data["bodyTemperature"] as? Double,
+                bloodGlucose: message.data["bloodGlucose"] as? Double,
+                hydration: message.data["hydration"] as? Double
+            )
+            print("[websocket] 📊 Created HealthSummary: steps=\(summary.steps ?? 0), calories=\(summary.calories ?? 0), distance=\(summary.distance ?? 0)")
+            LiveNotificationManager.shared.handleHealthSummary(summary)
+            print("[websocket] 📊 Health summary sent to LiveNotificationManager")
+
+        case .smsMessages:
+            print("[websocket] 📱 Received smsMessages")
+            print("[websocket] 📱 SMS messages data dict keys: \(message.data.keys)")
+            if let messagesData = message.data["messages"] as? [[String: Any]] {
+                print("[websocket] 📱 Processing \(messagesData.count) SMS messages")
+                let messages = messagesData.compactMap { messageDict -> SmsMessage? in
+                    guard let id = messageDict["id"] as? String,
+                          let threadId = messageDict["threadId"] as? String,
+                          let address = messageDict["address"] as? String,
+                          let body = messageDict["body"] as? String,
+                          let type = messageDict["type"] as? Int,
+                          let read = messageDict["read"] as? Bool else {
+                        print("[websocket] ❌ Failed to parse SMS message - missing required fields")
+                        return nil
+                    }
+                    
+                    // Parse date as Int or Int64
+                    let dateMs: Int64
+                    if let date64 = messageDict["date"] as? Int64 {
+                        dateMs = date64
+                    } else if let dateInt = messageDict["date"] as? Int {
+                        dateMs = Int64(dateInt)
+                    } else {
+                        print("[websocket] ❌ Failed to parse date for SMS message")
+                        return nil
+                    }
+                    
+                    return SmsMessage(
+                        id: id,
+                        threadId: threadId,
+                        address: address,
+                        body: body,
+                        date: Date(timeIntervalSince1970: Double(dateMs) / 1000.0),
+                        type: type,
+                        read: read,
+                        contactName: messageDict["contactName"] as? String
+                    )
+                }
+                print("[websocket] 📱 Successfully parsed \(messages.count) SMS messages")
+                LiveNotificationManager.shared.handleSmsMessages(messages)
+                print("[websocket] 📱 SMS messages sent to LiveNotificationManager")
+            } else {
+                print("[websocket] ❌ Failed to parse messages array from SMS data")
+            }
+
+        default:
+            // For all other message types, convert back to the old Message format and use existing handler
+            let codableValue = CodableValue(message.data)
+            let oldMessage = Message(type: message.type, data: codableValue)
+            handleMessage(oldMessage)
+        }
     }
 
     // MARK: - Mac Media Control Handler
@@ -794,17 +2139,496 @@ class WebSocketServer: ObservableObject {
     // MARK: - Sending Helpers
 
     private func broadcast(message: String) {
+        print("[websocket] [broadcast] sessions=\(activeSessions.count) msgLen=\(message.count)")
         activeSessions.forEach { $0.writeText(message) }
     }
 
-    private func sendToFirstAvailable(message: String) {
+    func sendToFirstAvailable(message: String) {
+        guard !activeSessions.isEmpty else {
+            let preview = message.prefix(60)
+            print("[websocket] [send] No active sessions; dropping message preview=\(preview)")
+            return
+        }
+        
+        // Get first session safely
+        guard let first = activeSessions.first else {
+            return
+        }
+        
+        // Send message with error handling
         if let key = symmetricKey, let encrypted = encryptMessage(message, using: key) {
-            activeSessions.first?.writeText(encrypted)
+            print("[websocket] [send] encrypted len=\(encrypted.count)")
+            first.writeText(encrypted)
         } else {
-            activeSessions.first?.writeText(message)
+            let encryptionState = (symmetricKey != nil) ? "enabled-but-failed" : "disabled"
+            print("[websocket] [send] plain len=\(message.count) (encryption=\(encryptionState))")
+            first.writeText(message)
+        }
+    }
+    
+    // New Sending Helpers per instructions
+    
+    func sendRemoteConnectRequest(features: [String]) {
+        let dataDict: [String: Any] = [
+            "features": features
+        ]
+        let messageDict: [String: Any] = [
+            "type": "remoteConnectRequest",
+            "data": dataDict
+        ]
+        
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                sendToFirstAvailable(message: jsonString)
+            }
+        } catch {
+            print("[websocket] Error creating remoteConnectRequest message: \(error)")
+        }
+    }
+    
+    func sendInputTap(x: Int, y: Int) {
+        print("[remote-control] 📍 Sending TAP: x=\(x), y=\(y)")
+        let dataDict: [String: Any] = [
+            "type": "tap",
+            "x": x,
+            "y": y
+        ]
+        sendInputEvent(dataDict)
+        print("[remote-control] ✅ TAP event sent to Android")
+    }
+    
+    func sendInputSwipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Int) {
+        print("[remote-control] 👆 Sending SWIPE: (\(x1),\(y1)) → (\(x2),\(y2)) duration=\(durationMs)ms")
+        let dataDict: [String: Any] = [
+            "type": "swipe",
+            "x1": x1,
+            "y1": y1,
+            "x2": x2,
+            "y2": y2,
+            "durationMs": durationMs
+        ]
+        sendInputEvent(dataDict)
+        print("[remote-control] ✅ SWIPE event sent to Android")
+    }
+    
+    func sendInputKey(keyCode: Int) {
+        let dataDict: [String: Any] = [
+            "type": "key",
+            "keyCode": keyCode
+        ]
+        sendInputEvent(dataDict)
+    }
+    
+    func sendInputText(_ text: String) {
+        let dataDict: [String: Any] = [
+            "type": "text",
+            "text": text
+        ]
+        sendInputEvent(dataDict)
+    }
+    
+    private func sendInputEvent(_ data: [String: Any]) {
+        let messageDict: [String: Any] = [
+            "type": "inputEvent",
+            "data": data
+        ]
+        
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                print("[remote-control] 📤 Sending inputEvent: \(jsonString)")
+                sendToFirstAvailable(message: jsonString)
+            }
+        } catch {
+            print("[remote-control] ❌ Error creating inputEvent message: \(error)")
+        }
+    }
+    
+    func sendNavAction(_ action: String) {
+        print("[remote-control] 🧭 Sending NAV ACTION: \(action)")
+        let messageDict: [String: Any] = [
+            "type": "navAction",
+            "data": [
+                "action": action
+            ]
+        ]
+        
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                print("[remote-control] 📤 Sending navAction: \(jsonString)")
+                sendToFirstAvailable(message: jsonString)
+                print("[remote-control] ✅ NAV ACTION sent to Android")
+            }
+        } catch {
+            print("[websocket] Error creating navAction message: \(error)")
+        }
+    }
+    
+    func sendTextInput(text: String) {
+        let escapedText = text.replacingOccurrences(of: "\"", with: "\\\"")
+                              .replacingOccurrences(of: "\n", with: "\\n")
+                              .replacingOccurrences(of: "\r", with: "\\r")
+                              .replacingOccurrences(of: "\t", with: "\\t")
+        let message = """
+        {
+            "type": "inputEvent",
+            "data": {
+                "action": "text",
+                "text": "\(escapedText)"
+            }
+        }
+        """
+        sendToFirstAvailable(message: message)
+        
+        // Also try via ADB if connected (more reliable)
+        if AppState.shared.adbConnected {
+            sendTextViaADB(text: text)
+        }
+    }
+    
+    /// Send text input via ADB shell command
+    private func sendTextViaADB(text: String) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let adbPath = ADBConnector.findExecutable(named: "adb", fallbackPaths: ADBConnector.possibleADBPaths) else {
+                return
+            }
+            
+            let adbIP = AppState.shared.adbConnectedIP.isEmpty ? AppState.shared.device?.ipAddress ?? "" : AppState.shared.adbConnectedIP
+            guard !adbIP.isEmpty else { return }
+            
+            let adbPort = AppState.shared.adbPort
+            let fullAddress = "\(adbIP):\(adbPort)"
+            
+            // Escape special characters for shell
+            let escapedText = text
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "'", with: "\\'")
+                .replacingOccurrences(of: " ", with: "%s") // ADB uses %s for space
+                .replacingOccurrences(of: "&", with: "\\&")
+                .replacingOccurrences(of: "|", with: "\\|")
+                .replacingOccurrences(of: ";", with: "\\;")
+                .replacingOccurrences(of: "(", with: "\\(")
+                .replacingOccurrences(of: ")", with: "\\)")
+                .replacingOccurrences(of: "<", with: "\\<")
+                .replacingOccurrences(of: ">", with: "\\>")
+            
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: adbPath)
+            process.arguments = ["-s", fullAddress, "shell", "input", "text", escapedText]
+            
+            do {
+                try process.run()
+                // Don't wait - fire and forget for responsiveness
+            } catch {
+                print("[mirror] ADB text input failed: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    func sendKeyEvent(keyCode: Int, text: String) {
+        // First try via WebSocket to Android accessibility service
+        let escapedText = text.replacingOccurrences(of: "\"", with: "\\\"")
+        let message = """
+        {
+            "type": "inputEvent",
+            "data": {
+                "action": "key",
+                "keyCode": \(keyCode),
+                "text": "\(escapedText)"
+            }
+        }
+        """
+        sendToFirstAvailable(message: message)
+        
+        // Also try via ADB if connected (more reliable for key events)
+        if AppState.shared.adbConnected {
+            sendKeyEventViaADB(keyCode: keyCode)
+        }
+    }
+    
+    /// Send key event with meta state (for shortcuts like Ctrl+C, Ctrl+V)
+    func sendKeyEventWithMeta(keyCode: Int, metaState: Int) {
+        let message = """
+        {
+            "type": "inputEvent",
+            "data": {
+                "action": "keyWithMeta",
+                "keyCode": \(keyCode),
+                "metaState": \(metaState)
+            }
+        }
+        """
+        sendToFirstAvailable(message: message)
+        print("[websocket] Sent key with meta: keyCode=\(keyCode), meta=\(metaState)")
+    }
+    
+    /// Send key event via ADB shell command
+    private func sendKeyEventViaADB(keyCode: Int) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let adbPath = ADBConnector.findExecutable(named: "adb", fallbackPaths: ADBConnector.possibleADBPaths) else {
+                return
+            }
+            
+            let adbIP = AppState.shared.adbConnectedIP.isEmpty ? AppState.shared.device?.ipAddress ?? "" : AppState.shared.adbConnectedIP
+            guard !adbIP.isEmpty else { return }
+            
+            let adbPort = AppState.shared.adbPort
+            let fullAddress = "\(adbIP):\(adbPort)"
+            
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: adbPath)
+            process.arguments = ["-s", fullAddress, "shell", "input", "keyevent", String(keyCode)]
+            
+            do {
+                try process.run()
+                // Don't wait - fire and forget for responsiveness
+            } catch {
+                print("[mirror] ADB key event failed: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    func setAndroidScreenState(screenOff: Bool) {
+        let message = """
+        {
+            "type": "setScreenState",
+            "data": {
+                "screenOff": \(screenOff)
+            }
+        }
+        """
+        sendToFirstAvailable(message: message)
+        print("[mirror] 📱 \(screenOff ? "Turning off" : "Turning on") Android screen")
+    }
+    
+    func sendLaunchApp(package: String) {
+        let messageDict: [String: Any] = [
+            "type": "launchApp",
+            "data": [
+                "package": package
+            ]
+        ]
+        
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                sendToFirstAvailable(message: jsonString)
+            }
+        } catch {
+            print("[websocket] Error creating launchApp message: \(error)")
+        }
+    }
+    
+    func requestScreenshot(format: String = "jpeg", quality: Double = 0.6, maxWidth: Int? = nil) {
+        var dataDict: [String: Any] = [
+            "format": format,
+            "quality": quality
+        ]
+        if let maxWidth = maxWidth {
+            dataDict["maxWidth"] = maxWidth
+        }
+        
+        let messageDict: [String: Any] = [
+            "type": "screenshotRequest",
+            "data": dataDict
+        ]
+        
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                sendToFirstAvailable(message: jsonString)
+            }
+        } catch {
+            print("[websocket] Error creating screenshotRequest message: \(error)")
         }
     }
 
+    // MARK: - Mirror Request/Response Helpers
+
+    func sendMirrorRequest(action: String, mode: String? = nil, package: String? = nil, options: [String: Any] = [:]) {
+        // Guard against multiple mirror requests
+        if action == "start" {
+            var shouldProceed = false
+            if Thread.isMainThread {
+                shouldProceed = !AppState.shared.isMirrorRequestPending && !AppState.shared.isMirroring
+            } else {
+                DispatchQueue.main.sync {
+                    shouldProceed = !AppState.shared.isMirrorRequestPending && !AppState.shared.isMirroring
+                }
+            }
+            
+            guard shouldProceed else {
+                print("[mirror] ⚠️ Mirror request already pending or active, ignoring duplicate request")
+                return
+            }
+            
+            DispatchQueue.main.async { AppState.shared.isMirrorRequestPending = true }
+        }
+        // Build a WebSocket URL to our existing /socket endpoint
+        func buildMirrorServerURL() -> String {
+            // Prefer the current known IP; if nil, try to resolve via adapter selection
+            let ip: String = {
+                if let ip = self.localIPAddress, !ip.isEmpty { return ip }
+                return self.getLocalIPAddress(adapterName: AppState.shared.selectedNetworkAdapterName) ?? "127.0.0.1"
+            }()
+            let port = Int(self.localPort ?? Defaults.serverPort)
+            return "ws://\(ip):\(port)/socket"
+        }
+
+        // Start from provided options and add sane defaults
+        var combinedOptions: [String: Any] = options
+
+        // Ensure transport is websocket so Android connects back to us via WebSocket
+        if combinedOptions["transport"] == nil { combinedOptions["transport"] = "websocket" }
+
+        // Provide sensible defaults for performance - if missing
+        // Reduced defaults for better stability and lower latency
+        if combinedOptions["fps"] == nil { combinedOptions["fps"] = 25 }  // 25 FPS for stability
+        if combinedOptions["maxWidth"] == nil { combinedOptions["maxWidth"] = 720 }  // Lower resolution for speed
+        if combinedOptions["quality"] == nil { combinedOptions["quality"] = 0.7 }  // Good balance
+        if combinedOptions["bitrateKbps"] == nil { combinedOptions["bitrateKbps"] = 3000 }  // 3 Mbps default
+        
+        // Enable auto-approve by default for seamless mirroring
+        if combinedOptions["autoApprove"] == nil { combinedOptions["autoApprove"] = true }
+        
+        // Enable audio mirroring by default
+        if combinedOptions["enableAudio"] == nil { combinedOptions["enableAudio"] = true }
+
+        // Prefer bitrateKbps if caller set a general bitrate
+        if let bitrate = combinedOptions["bitrate"] as? Int, bitrate > 0, combinedOptions["bitrateKbps"] == nil {
+            combinedOptions["bitrateKbps"] = bitrate
+        }
+
+        // Provide the server URL Android should connect back to
+        combinedOptions["serverUrl"] = buildMirrorServerURL()
+
+        var dataDict: [String: Any] = ["action": action]
+        if let mode = mode, !mode.isEmpty { dataDict["mode"] = mode }
+        if let package = package, !package.isEmpty { dataDict["package"] = package }
+        if !combinedOptions.isEmpty { dataDict["options"] = combinedOptions }
+
+        let messageDict: [String: Any] = [
+            "type": "mirrorRequest",
+            "data": dataDict
+        ]
+
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                sendToFirstAvailable(message: jsonString)
+            }
+        } catch {
+            print("[websocket] Error creating mirrorRequest message: \(error)")
+        }
+    }
+
+    func sendMirrorResponse(_ payload: [String: Any]) {
+        let messageDict: [String: Any] = [
+            "type": "mirrorResponse",
+            "data": payload
+        ]
+
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                sendToFirstAvailable(message: jsonString)
+            }
+        } catch {
+            print("[websocket] Error creating mirrorResponse message: \(error)")
+        }
+    }
+    
+    func sendMirrorAck(action: String, ok: Bool, message: String? = nil) {
+        var data: [String: Any] = [
+            "action": action,
+            "ok": ok
+        ]
+        if let message { data["message"] = message }
+        let dict: [String: Any] = [
+            "type": "mirrorResponse",
+            "data": data
+        ]
+        if let json = try? JSONSerialization.data(withJSONObject: dict),
+           let str = String(data: json, encoding: .utf8) {
+            sendToFirstAvailable(message: str)
+        }
+    }
+
+    // MARK: - Mirror UI Presentation
+    private func presentMirrorWindowIfNeeded() {
+        #if os(macOS)
+        // Ensure we're on main thread
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.presentMirrorWindowIfNeeded()
+            }
+            return
+        }
+        
+        // Safely check if window exists and is visible
+        // Use weak reference to avoid crashes on deallocated windows
+        if let win = mirrorWindow {
+            // Try to safely check window validity using windowNumber
+            // A valid window has a positive windowNumber
+            let isValidWindow = win.windowNumber > 0
+            
+            if !isValidWindow {
+                // Window is invalid, clear reference and create new one
+                mirrorWindow = nil
+                mirrorWindowDelegate = nil
+                print("[mirror] Previous window invalid (windowNumber <= 0), creating new one")
+            } else if win.isVisible {
+                win.level = .floating
+                win.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+                return
+            }
+        }
+
+        // Create a new window hosting the mirror view
+        // Standard Android phone aspect ratio: 9:19.5 (e.g., 1080x2340)
+        let aspectRatio: CGFloat = 19.5 / 9.0
+        let windowWidth: CGFloat = 400
+        let windowHeight: CGFloat = windowWidth * aspectRatio
+        
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "AirSync Mirror - Remote Control"
+        window.aspectRatio = NSSize(width: 9, height: 19.5)
+        window.minSize = NSSize(width: 300, height: 300 * aspectRatio)
+        window.maxSize = NSSize(width: 600, height: 600 * aspectRatio)
+        
+        // Set window level to float above other windows (like CSS z-index)
+        window.level = .floating
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+
+        #if canImport(SwiftUI)
+        // Use interactive mirror view with remote control capabilities
+        let root = InteractiveMirrorView()
+        window.contentView = NSHostingView(rootView: root)
+        #else
+        // Fallback if SwiftUI is not available
+        window.contentView = NSView()
+        #endif
+
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        self.mirrorWindow = window
+        
+        // Create per-window delegate instance and store it strongly
+        let delegate = MirrorWindowDelegate(server: self)
+        self.mirrorWindowDelegate = delegate
+        window.delegate = delegate
+        #endif
+    }
 
     // MARK: - Notification Control
 
@@ -827,6 +2651,34 @@ class WebSocketServer: ObservableObject {
            let json = String(data: jsonData, encoding: .utf8) {
             sendToFirstAvailable(message: json)
         }
+    }
+    
+    // MARK: - Call Control via WebSocket (works without ADB)
+    func sendCallActionViaWebSocket(eventId: String, action: String) {
+        // Map action names to what Android expects
+        let androidAction: String
+        switch action.lowercased() {
+        case "accept":
+            androidAction = "answer"
+        case "decline":
+            androidAction = "reject"
+        case "end":
+            androidAction = "hangup"
+        default:
+            androidAction = action
+        }
+        
+        let message = """
+        {
+            "type": "callAction",
+            "data": {
+                "eventId": "\(eventId)",
+                "action": "\(androidAction)"
+            }
+        }
+        """
+        sendToFirstAvailable(message: message)
+        print("[websocket] 📞 Sent call action via WebSocket: \(androidAction) for event: \(eventId)")
     }
 
     func sendCallAction(eventId: String, action: String) {
@@ -908,13 +2760,14 @@ class WebSocketServer: ObservableObject {
     private func sendMediaAction(_ action: String) {
         let message = """
         {
-            "type": "mediaControl",
+            "type": "macMediaControl",
             "data": {
                 "action": "\(action)"
             }
         }
         """
         sendToFirstAvailable(message: message)
+        print("[websocket] 🎵 Sent macMediaControl action: \(action)")
     }
 
     // MARK: - Volume Controls
@@ -956,7 +2809,145 @@ class WebSocketServer: ObservableObject {
         sendToFirstAvailable(message: message)
     }
 
-    func sendClipboardUpdate(_ message: String) {
+    // MARK: - SMS/Messaging
+    
+    func requestSmsThreads(limit: Int = 50) {
+        let message = """
+        {
+            "type": "requestSmsThreads",
+            "data": {
+                "limit": \(limit)
+            }
+        }
+        """
+        sendToFirstAvailable(message: message)
+    }
+    
+    func requestSmsMessages(threadId: String, limit: Int = 100) {
+        let message = """
+        {
+            "type": "requestSmsMessages",
+            "data": {
+                "threadId": "\(threadId)",
+                "limit": \(limit)
+            }
+        }
+        """
+        sendToFirstAvailable(message: message)
+    }
+    
+    func sendSms(to address: String, message: String) {
+        let escapedMessage = message.replacingOccurrences(of: "\"", with: "\\\"")
+        let msg = """
+        {
+            "type": "sendSms",
+            "data": {
+                "address": "\(address)",
+                "message": "\(escapedMessage)"
+            }
+        }
+        """
+        sendToFirstAvailable(message: msg)
+    }
+    
+    /// Initiate a phone call on Android
+    func initiateCall(phoneNumber: String) {
+        let msg = """
+        {
+            "type": "initiateCall",
+            "data": {
+                "phoneNumber": "\(phoneNumber)"
+            }
+        }
+        """
+        sendToFirstAvailable(message: msg)
+        print("[websocket] 📞 Initiating call to: \(phoneNumber)")
+    }
+    
+    func markSmsAsRead(messageId: String) {
+        let message = """
+        {
+            "type": "markSmsRead",
+            "data": {
+                "messageId": "\(messageId)"
+            }
+        }
+        """
+        sendToFirstAvailable(message: message)
+    }
+    
+    // MARK: - Call Logs
+    
+    func requestCallLogs(limit: Int = 100, since: Date? = nil) {
+        var dataDict: [String: Any] = ["limit": limit]
+        if let since = since {
+            dataDict["since"] = Int(since.timeIntervalSince1970 * 1000)
+        }
+        
+        if let jsonData = try? JSONSerialization.data(withJSONObject: ["type": "requestCallLogs", "data": dataDict], options: []),
+           let json = String(data: jsonData, encoding: .utf8) {
+            sendToFirstAvailable(message: json)
+        }
+    }
+    
+    func markCallLogAsRead(callId: String) {
+        let message = """
+        {
+            "type": "markCallLogRead",
+            "data": {
+                "callId": "\(callId)"
+            }
+        }
+        """
+        sendToFirstAvailable(message: message)
+    }
+    
+    // MARK: - Call Actions
+    
+    func sendCallAction(_ action: String) {
+        let message = """
+        {
+            "type": "callAction",
+            "data": {
+                "action": "\(action)"
+            }
+        }
+        """
+        sendToFirstAvailable(message: message)
+    }
+    
+    // MARK: - Health Data
+    
+    func requestHealthSummary(for date: Date? = nil) {
+        let targetDate = date ?? Date()
+        let dateMs = Int64(targetDate.timeIntervalSince1970 * 1000)
+        
+        print("[websocket] 📅 Requesting health summary for date: \(targetDate), timestamp: \(dateMs)")
+        
+        let message = """
+        {
+            "type": "requestHealthSummary",
+            "data": {
+                "date": \(dateMs)
+            }
+        }
+        """
+        sendToFirstAvailable(message: message)
+    }
+    
+    func requestHealthData(hours: Int = 24, for date: Date? = nil) {
+        let targetDate = date ?? Date()
+        let dateMs = Int64(targetDate.timeIntervalSince1970 * 1000)
+        
+        let message = """
+        {
+            "type": "requestHealthData",
+            "data": {
+                "hours": \(hours),
+                "date": \(dateMs)
+            }
+        }
+        """
         sendToFirstAvailable(message: message)
     }
 
@@ -979,7 +2970,9 @@ class WebSocketServer: ObservableObject {
                 "volume": 50, // Hardcoded for now - will be replaced later
                 "isMuted": false, // Hardcoded for now - will be replaced later
                 "albumArt": albumArtBase64 ?? "",
-                "likeStatus": "none" // Hardcoded for now - will be replaced later
+                "likeStatus": "none", // Hardcoded for now - will be replaced later
+                "elapsedTime": musicInfo.elapsedTime ?? 0,
+                "duration": musicInfo.duration ?? 0
             ]
             statusDict["music"] = musicDict
         }
@@ -999,55 +2992,109 @@ class WebSocketServer: ObservableObject {
         }
     }
 
-    // MARK: - File transfer (Mac -> Android)
+    // MARK: - File transfer (Mac -> Android) - Streaming version to reduce memory usage
     func sendFile(url: URL, chunkSize: Int = 64 * 1024) {
         guard FileManager.default.fileExists(atPath: url.path) else { return }
-        guard let data = try? Data(contentsOf: url) else { return }
-        // compute checksum
-        let checksum = FileTransferProtocol.sha256Hex(data)
+        
+        // Get file size without loading into memory
+        guard let fileAttributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let totalSize = fileAttributes[.size] as? Int else {
+            print("[websocket] (file-transfer) Failed to get file attributes")
+            return
+        }
+        
+        // Open file handle for streaming reads
+        guard let fileHandle = FileHandle(forReadingAtPath: url.path) else {
+            print("[websocket] (file-transfer) Failed to open file for reading")
+            return
+        }
+        defer { try? fileHandle.close() }
+        
+        // Compute checksum using streaming (don't load entire file)
+        let checksum = computeStreamingChecksum(for: url) ?? ""
+        print("[websocket] (file-transfer) sendFile path=\(url.path) size=\(totalSize) chunkSize=\(chunkSize)")
 
-    let transferId = UUID().uuidString
+        let transferId = UUID().uuidString
         let fileName = url.lastPathComponent
-        let totalSize = data.count
         let mime = mimeType(for: url) ?? "application/octet-stream"
 
-    // Track in AppState
-    AppState.shared.startOutgoingTransfer(id: transferId, name: fileName, size: totalSize, mime: mime, chunkSize: chunkSize)
+        // Track in AppState
+        AppState.shared.startOutgoingTransfer(id: transferId, name: fileName, size: totalSize, mime: mime, chunkSize: chunkSize)
 
-    // Send init message
-    let initMessage = FileTransferProtocol.buildInit(id: transferId, name: fileName, size: totalSize, mime: mime, checksum: checksum)
-    sendToFirstAvailable(message: initMessage)
+        // Send init message
+        let initMessage = FileTransferProtocol.buildInit(id: transferId, name: fileName, size: totalSize, mime: mime, checksum: checksum)
+        sendToFirstAvailable(message: initMessage)
 
         // Send chunks using a simple sliding window to allow multiple in-flight chunks
-        let windowSize = 8
         let totalChunks = (totalSize + chunkSize - 1) / chunkSize
+        outgoingAcksLock.lock()
         outgoingAcks[transferId] = []
+        outgoingAcksLock.unlock()
+        print("[websocket] (file-transfer) id=\(transferId) name=\(fileName) totalChunks=\(totalChunks) checksumPrefix=\(checksum.prefix(8))")
 
-        // Keep a buffer of sent chunks for potential retransmit: index -> (payloadBase64, attempts, lastSent)
-        var sentBuffer: [Int: (payload: String, attempts: Int, lastSent: Date)] = [:]
+        // Track sent chunk info - NO LONGER stores chunk data to save memory
+        var sentBuffer: [Int: (attempts: Int, lastSent: Date)] = [:]
 
         var nextIndexToSend = 0
         let startTime = Date()
-
-        func sendChunkAt(_ idx: Int) {
-            let start = idx * chunkSize
-            let end = min(start + chunkSize, totalSize)
-            let chunk = data.subdata(in: start..<end)
-            let base64 = chunk.base64EncodedString()
-            let chunkMessage = FileTransferProtocol.buildChunk(id: transferId, index: idx, base64Chunk: base64)
-            sendToFirstAvailable(message: chunkMessage)
-            sentBuffer[idx] = (payload: base64, attempts: 1, lastSent: Date())
+        
+        // Helper to check if we have an active connection
+        func hasActiveConnection() -> Bool {
+            return !self.activeSessions.isEmpty
+        }
+        
+        // Helper to wait for connection with timeout
+        func waitForConnection(timeoutSeconds: Double = 10) -> Bool {
+            let deadline = Date().addingTimeInterval(timeoutSeconds)
+            while Date() < deadline {
+                if hasActiveConnection() {
+                    return true
+                }
+                usleep(100_000) // 100ms
+            }
+            return false
+        }
+        
+        // Helper to read chunk from file at specific index using shared handle
+        func readChunkAt(_ idx: Int) -> Data? {
+            do {
+                let offset = UInt64(idx * chunkSize)
+                if #available(macOS 10.15.4, *) {
+                    try fileHandle.seek(toOffset: offset)
+                } else {
+                    fileHandle.seek(toFileOffset: offset)
+                }
+                let bytesToRead = min(chunkSize, totalSize - idx * chunkSize)
+                return fileHandle.readData(ofLength: bytesToRead)
+            } catch {
+                print("[websocket] (file-transfer) Error reading chunk \(idx): \(error)")
+                return nil
+            }
         }
 
-        // Prime the window
-        while nextIndexToSend < totalChunks && nextIndexToSend < windowSize {
-            sendChunkAt(nextIndexToSend)
-            nextIndexToSend += 1
-        }
-
-        // Loop until all chunks are acked
+        // Main Send Loop
+        let ackWaitMs = 30000 // 30s wait for ack before retry (increased for stability)
+        let maxChunkRetries = 5
+        let windowSize = 12 // Increased slightly from 8 to improve throughput
+        
         while true {
+            // Check if connection is still alive
+            if !hasActiveConnection() {
+                print("[websocket] (file-transfer) Connection lost, waiting...")
+                if !waitForConnection(timeoutSeconds: 30) {
+                    print("[websocket] (file-transfer) Timed out waiting for reconnection")
+                    AppState.shared.failTransfer(id: transferId, reason: "Connection lost")
+                    outgoingAcksLock.lock()
+                    outgoingAcks.removeValue(forKey: transferId)
+                    outgoingAcksLock.unlock()
+                    break
+                }
+                print("[websocket] (file-transfer) Reconnected, resuming transfer")
+            }
+            
+            outgoingAcksLock.lock()
             let acked = outgoingAcks[transferId] ?? []
+            outgoingAcksLock.unlock()
 
             // compute baseIndex = lowest unacked index (first missing starting from 0)
             var baseIndex = 0
@@ -1066,46 +3113,88 @@ class WebSocketServer: ObservableObject {
                 break
             }
 
-            // send new chunks while window has space
+            // send new chunks sliding window
             while nextIndexToSend < totalChunks && (nextIndexToSend - baseIndex) < windowSize {
-                sendChunkAt(nextIndexToSend)
+                if let chunk = readChunkAt(nextIndexToSend) {
+                    let base64 = chunk.base64EncodedString(options: [])
+                    let chunkMessage = FileTransferProtocol.buildChunk(id: transferId, index: nextIndexToSend, base64Chunk: base64)
+                    
+                    print("[websocket] (file-transfer) -> send chunk id=\(transferId) index=\(nextIndexToSend) size=\(chunk.count)")
+                    sendToFirstAvailable(message: chunkMessage)
+                    
+                    sentBuffer[nextIndexToSend] = (attempts: 0, lastSent: Date())
+                    // Rate limit: 2ms sleep between chunks to avoid flooding socket
+                    usleep(2000) 
+                } else {
+                    print("[websocket] (file-transfer) Failed to read chunk \(nextIndexToSend)")
+                }
                 nextIndexToSend += 1
             }
 
-            // Retransmit chunks that haven't been acked and exceeded timeout
+            // Retransmit chunks logic
             let now = Date()
-            for (idx, entry) in sentBuffer {
+            let bufferSnapshot = sentBuffer 
+            for (idx, entry) in bufferSnapshot {
                 if acked.contains(idx) { continue }
                 let elapsedMs = now.timeIntervalSince(entry.lastSent) * 1000.0
                 if elapsedMs > Double(ackWaitMs) {
                     if entry.attempts >= maxChunkRetries {
                         print("[websocket] (file-transfer) Failed to get ack for chunk \(idx) after \(maxChunkRetries) attempts")
+                        AppState.shared.failTransfer(id: transferId, reason: "Chunk \(idx) failed after \(maxChunkRetries) retries")
+                        outgoingAcksLock.lock()
                         outgoingAcks.removeValue(forKey: transferId)
+                        outgoingAcksLock.unlock()
                         return
                     }
-                    // retransmit
-                    let start = idx * chunkSize
-                    let end = min(start + chunkSize, totalSize)
-                    let chunk = data.subdata(in: start..<end)
-                    let base64 = chunk.base64EncodedString()
-                    let chunkMessage = FileTransferProtocol.buildChunk(id: transferId, index: idx, base64Chunk: base64)
-                    sendToFirstAvailable(message: chunkMessage)
-                    sentBuffer[idx] = (payload: base64, attempts: entry.attempts + 1, lastSent: Date())
+                    
+                    if !hasActiveConnection() { continue }
+                    
+                    if let chunk = readChunkAt(idx) {
+                        let base64 = chunk.base64EncodedString(options: [])
+                        let chunkMessage = FileTransferProtocol.buildChunk(id: transferId, index: idx, base64Chunk: base64)
+                        print("[websocket] (file-transfer) retransmit id=\(transferId) index=\(idx) attempt=\(entry.attempts + 1)")
+                        sendToFirstAvailable(message: chunkMessage)
+                        sentBuffer[idx] = (attempts: entry.attempts + 1, lastSent: Date())
+                        usleep(5000) // 5ms sleep on retransmit
+                    }
                 }
             }
 
-            // brief sleep to avoid busy-looping
-            usleep(50_000) // 50ms
+            usleep(20_000) // 20ms
         }
 
-    // Ensure progress shows 100%
-    AppState.shared.updateOutgoingProgress(id: transferId, bytesTransferred: totalSize)
-    let elapsed = Date().timeIntervalSince(startTime)
+        // Ensure progress shows 100%
+        AppState.shared.updateOutgoingProgress(id: transferId, bytesTransferred: totalSize)
+        let elapsed = Date().timeIntervalSince(startTime)
         print("[websocket] (file-transfer) Completed sending \(totalSize) bytes in \(elapsed) s")
 
         // Send complete
-    let completeMessage = FileTransferProtocol.buildComplete(id: transferId, name: fileName, size: totalSize, checksum: checksum)
+        let completeMessage = FileTransferProtocol.buildComplete(id: transferId, name: fileName, size: totalSize, checksum: checksum)
         sendToFirstAvailable(message: completeMessage)
+    }
+    
+    // Helper to compute streaming checksum without loading file into memory
+    private func computeStreamingChecksum(for url: URL) -> String? {
+        guard let stream = InputStream(url: url) else { return nil }
+        stream.open()
+        defer { stream.close() }
+        
+        var hasher = SHA256()
+        let bufferSize = 65536 // 64KB
+        var buffer = [UInt8](repeating: 0, count: bufferSize)
+        
+        while stream.hasBytesAvailable {
+            let bytesRead = stream.read(&buffer, maxLength: bufferSize)
+            if bytesRead > 0 {
+                hasher.update(data: buffer[0..<bytesRead])
+            } else if bytesRead < 0 {
+                return nil
+            } else {
+                break
+            }
+        }
+        
+        return hasher.finalize().compactMap { String(format: "%02x", $0) }.joined()
     }
 
     func toggleNotification(for package: String, to state: Bool) {
@@ -1248,6 +3337,277 @@ class WebSocketServer: ObservableObject {
         QuickConnectManager.shared.wakeUpLastConnectedDevice()
     }
 
+    /// Starts mirror and presents UI in one step.
+    /// - Parameters:
+    ///   - mode: "device", "desktop", or "app" (optional)
+    ///   - package: Package name when mode == "app" (optional)
+    ///   - options: Additional options to merge (optional)
+    func startMirrorAndPresentUI(mode: String? = nil, package: String? = nil, options: [String: Any] = [:]) {
+        print("[mirror] 🎬 Starting mirror request...")
+        
+        // Mark mirror request as pending to disable the button
+        DispatchQueue.main.async {
+            AppState.shared.isMirrorRequestPending = true
+            AppState.shared.mirrorError = nil
+        }
+        
+        // Set timeout for mirror request (10 seconds)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) {
+            if AppState.shared.isMirrorRequestPending && !AppState.shared.isMirroring {
+                print("[mirror] ⏱️ Mirror request timed out - no response from Android")
+                AppState.shared.isMirrorRequestPending = false
+                AppState.shared.mirrorError = "Mirror request timed out. Please try again."
+            }
+        }
 
+        // 2) Send the mirrorRequest to Android with user-configured quality settings
+        var mergedOptions = options
+        if mergedOptions["transport"] == nil { mergedOptions["transport"] = "websocket" }
+        if mergedOptions["fps"] == nil { mergedOptions["fps"] = AppState.shared.mirrorFPS }
+        if mergedOptions["maxWidth"] == nil { mergedOptions["maxWidth"] = AppState.shared.mirrorMaxWidth }
+        if mergedOptions["quality"] == nil { mergedOptions["quality"] = AppState.shared.mirrorQuality }
+        if mergedOptions["bitrate"] == nil { mergedOptions["bitrate"] = AppState.shared.mirrorBitrate }
 
+        print("[mirror] 📤 Sending mirror request with options: fps=\(mergedOptions["fps"] ?? 0), maxWidth=\(mergedOptions["maxWidth"] ?? 0)")
+        self.sendMirrorRequest(action: "start", mode: mode, package: package, options: mergedOptions)
+    }
+    
+    /// Request app-specific mirroring via WebSocket
+    func requestAppMirror(packageName: String) {
+        print("[mirror] 📱 Requesting app-specific mirror for: \(packageName)")
+        
+        // Get the app name for display
+        let appName = AppState.shared.androidApps[packageName]?.name ?? packageName
+        
+        // Mark mirror request as pending
+        DispatchQueue.main.async {
+            AppState.shared.isMirrorRequestPending = true
+            AppState.shared.mirrorError = nil
+        }
+        
+        // Set timeout for mirror request (10 seconds)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) {
+            if AppState.shared.isMirrorRequestPending && !AppState.shared.isMirroring {
+                print("[mirror] ⏱️ App mirror request timed out for \(appName)")
+                AppState.shared.isMirrorRequestPending = false
+                AppState.shared.mirrorError = "Mirror request timed out. Please try again."
+            }
+        }
+        
+        // Send app-specific mirror request with package name
+        var options: [String: Any] = [:]
+        options["transport"] = "websocket"
+        options["fps"] = AppState.shared.mirrorFPS
+        options["maxWidth"] = AppState.shared.mirrorMaxWidth
+        options["quality"] = AppState.shared.mirrorQuality
+        options["bitrate"] = AppState.shared.mirrorBitrate
+        
+        print("[mirror] 📤 Sending app mirror request: app=\(appName), package=\(packageName)")
+        self.sendMirrorRequest(action: "start", mode: "app", package: packageName, options: options)
+    }
+    
+    func stopMirroring() {
+        // Guard against re-entrant teardown
+        guard !isStoppingMirror else {
+            print("[mirror] 🛑 Already stopping mirror, ignoring duplicate call")
+            return
+        }
+        isStoppingMirror = true
+        
+        print("[mirror] 🛑 Mac requesting to stop mirroring")
+        
+        // Stop processing decoded frames immediately (before any async work)
+        unifiedDecoder.onDecodedFrame = nil
+        
+        // Send stop message to Android
+        let message = """
+        {
+            "type": "stopMirroring",
+            "data": {}
+        }
+        """
+        sendToFirstAvailable(message: message)
+        
+        // Update state on main thread
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            AppState.shared.isMirrorRequestPending = false
+            AppState.shared.isMirroring = false
+            AppState.shared.isMirrorActive = false
+            AppState.shared.latestMirrorFrame = nil
+            
+            #if os(macOS)
+            // Safe window cleanup
+            if let window = self.mirrorWindow {
+                window.delegate = nil
+                self.mirrorWindowDelegate = nil
+                window.orderOut(nil)
+            }
+            self.mirrorWindow = nil
+            #endif
+            
+            print("[mirror] ✅ Stop mirroring completed")
+            
+            // Reset guard flag after cleanup
+            self.isStoppingMirror = false
+        }
+    }
+    
+    // Stop mirroring without closing window (called from window delegate)
+    func stopMirroringWithoutClosingWindow() {
+        // Guard against re-entrant teardown
+        guard !isStoppingMirror else {
+            print("[mirror] 🛑 Already stopping mirror, ignoring duplicate call")
+            return
+        }
+        isStoppingMirror = true
+        
+        print("[mirror] 🛑 Stopping mirroring (window already closing)")
+        
+        // Stop processing decoded frames immediately (before any async work)
+        unifiedDecoder.onDecodedFrame = nil
+        
+        // Send stop message to Android
+        let message = """
+        {
+            "type": "stopMirroring",
+            "data": {}
+        }
+        """
+        sendToFirstAvailable(message: message)
+        
+        // Update state on main thread
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            AppState.shared.isMirrorRequestPending = false
+            AppState.shared.isMirroring = false
+            AppState.shared.isMirrorActive = false
+            AppState.shared.latestMirrorFrame = nil
+            
+            print("[mirror] ✅ Stop mirroring without closing window completed")
+            
+            // Reset guard flag after cleanup
+            self.isStoppingMirror = false
+        }
+    }
+    
+    // MARK: - Mac Media Control
+    
+    private func executeMacMediaControl(action: String) {
+        #if os(macOS)
+        var success = false
+        
+        // Use system media keys to control the currently playing app (not just Music)
+        let keyCode: Int32
+        
+        switch action {
+        case "play", "pause", "playPause":
+            keyCode = NX_KEYTYPE_PLAY
+        case "next":
+            keyCode = NX_KEYTYPE_NEXT
+        case "previous":
+            keyCode = NX_KEYTYPE_PREVIOUS
+        default:
+            print("[websocket] ❌ Unknown Mac media control action: \(action)")
+            sendMacMediaControlResponse(action: action, success: false)
+            return
+        }
+        
+        // Send media key event
+        success = sendMediaKeyEvent(keyCode: keyCode)
+        
+        if success {
+            print("[websocket] ✅ Mac media control '\(action)' executed via system media keys")
+        } else {
+            print("[websocket] ❌ Failed to send media key event for '\(action)'")
+        }
+        
+        // Send response back to Android
+        sendMacMediaControlResponse(action: action, success: success)
+        #else
+        sendMacMediaControlResponse(action: action, success: false)
+        #endif
+    }
+    
+    private func sendMediaKeyEvent(keyCode: Int32) -> Bool {
+        #if os(macOS)
+        // Create NSEvent for media key
+        let flags: Int = 0xA00 // Key down flags
+        let data1: Int = ((Int(keyCode) << 16) | flags)
+        
+        // Key down event
+        if let downEvent = NSEvent.otherEvent(
+            with: .systemDefined,
+            location: NSPoint.zero,
+            modifierFlags: NSEvent.ModifierFlags(rawValue: 0),
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            subtype: 8, // Media key subtype
+            data1: data1,
+            data2: -1
+        ) {
+            downEvent.cgEvent?.post(tap: .cghidEventTap)
+        }
+        
+        // Key up event
+        let upFlags: Int = 0xB00 // Key up flags
+        let upData1: Int = ((Int(keyCode) << 16) | upFlags)
+        
+        if let upEvent = NSEvent.otherEvent(
+            with: .systemDefined,
+            location: NSPoint.zero,
+            modifierFlags: NSEvent.ModifierFlags(rawValue: 0),
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            subtype: 8, // Media key subtype
+            data1: upData1,
+            data2: -1
+        ) {
+            upEvent.cgEvent?.post(tap: .cghidEventTap)
+        }
+        
+        return true
+        #else
+        return false
+        #endif
+    }
+    
 }
+
+
+#if os(macOS)
+private class MirrorWindowDelegate: NSObject, NSWindowDelegate {
+    private weak var server: WebSocketServer?
+    
+    init(server: WebSocketServer) {
+        self.server = server
+        super.init()
+    }
+    
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        // Show confirmation dialog on main thread
+        guard let server = self.server else { return true }
+        
+        let alert = NSAlert()
+        alert.messageText = "Stop Screen Mirroring?"
+        alert.informativeText = "Do you want to stop mirroring your Android device?"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Stop Mirroring")
+        alert.addButton(withTitle: "Cancel")
+        
+        if alert.runModal() == .alertFirstButtonReturn {
+            // User confirmed - stop mirroring
+            server.stopMirroringWithoutClosingWindow()
+            return true
+        } else {
+            // User cancelled - keep window open
+            return false
+        }
+    }
+}
+#endif
+

@@ -63,6 +63,16 @@ struct MenubarView: View {
                     ) {
                         openAndFocusMainWindow()
                     }
+                    GlassButtonView(
+                        label: "Quick Connect",
+                        systemImage: "bolt.horizontal.circle",
+                        iconOnly: true,
+                        circleSize: toolButtonSize,
+                        action: {
+                            QuickConnectManager.shared.wakeUpLastConnectedDevice()
+                        }
+                    )
+                    .help("Reconnect to last device")
 
                     if (appState.device != nil){
                         GlassButtonView(
@@ -92,27 +102,34 @@ struct MenubarView: View {
                     }
 
 
-                    if appState.adbConnected{
-                        GlassButtonView(
-                            label: "Mirror",
-                            systemImage: "apps.iphone",
-                            iconOnly: true,
-                            circleSize: toolButtonSize,
-                            action: {
+                    // Mirror button - uses scrcpy when ADB connected, WebSocket mirror otherwise
+                    GlassButtonView(
+                        label: "Mirror",
+                        systemImage: "apps.iphone",
+                        iconOnly: true,
+                        circleSize: toolButtonSize,
+                        action: {
+                            if appState.adbConnected {
+                                // Use scrcpy when ADB is connected
                                 ADBConnector
                                     .startScrcpy(
                                         ip: appState.device?.ipAddress ?? "",
                                         port: appState.adbPort,
                                         deviceName: appState.device?.name ?? "My Phone"
                                     )
+                            } else {
+                                // Use WebSocket mirror when ADB is not connected
+                                WebSocketServer.shared.startMirrorAndPresentUI()
                             }
-                        )
-                        .transition(.identity)
-                        .keyboardShortcut(
-                            "p",
-                            modifiers: .command
-                        )
-                        .contextMenu {
+                        }
+                    )
+                    .transition(.identity)
+                    .keyboardShortcut(
+                        "p",
+                        modifiers: .command
+                    )
+                    .contextMenu {
+                        if appState.adbConnected {
                             Button("Desktop Mode") {
                                 ADBConnector.startScrcpy(
                                     ip: appState.device?.ipAddress ?? "",
@@ -122,10 +139,6 @@ struct MenubarView: View {
                                 )
                             }
                         }
-                        .keyboardShortcut(
-                            "p",
-                            modifiers: [.command, .shift]
-                        )
                     }
 
                     GlassButtonView(

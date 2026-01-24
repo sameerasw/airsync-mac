@@ -1,5 +1,5 @@
 {
-  "originHash" : "3c500c4ce472ac8b3dd53087c00603847ac91e45b0cd495b22e9ca791d4279a4",
+  "originHash" : "3d0a95d25b40344dda513a597e72864ce9bde70c860ab4abec12a4b91c93b2d7",
   "pins" : [
     {
       "identity" : "lottie-spm",
@@ -33,8 +33,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/sparkle-project/Sparkle",
       "state" : {
-        "revision" : "df074165274afaa39539c05d57b0832620775b11",
-        "version" : "2.7.1"
+        "revision" : "9a1d2a19d3595fcf8d9c447173f9a1687b3dcadb",
+        "version" : "2.8.0"
       }
     },
     {

@@ -11,6 +11,21 @@ internal import Combine
 import UserNotifications
 import AVFoundation
 
+// MARK: - Call Notification Mode
+enum CallNotificationMode: String, CaseIterable {
+    case popup = "popup"
+    case notification = "notification"
+    case none = "none"
+    
+    var displayName: String {
+        switch self {
+        case .popup: return "Popup"
+        case .notification: return "Notification"
+        case .none: return "None"
+        }
+    }
+}
+
 class AppState: ObservableObject {
     static let shared = AppState()
 
@@ -23,6 +38,7 @@ class AppState: ObservableObject {
 
     init() {
         self.isPlus = UserDefaults.standard.bool(forKey: "isPlus")
+        self.licenseCheck = UserDefaults.standard.object(forKey: "licenseCheck") as? Bool ?? true
 
         // Load from UserDefaults
         let name = UserDefaults.standard.string(forKey: "deviceName") ?? (Host.current().localizedName ?? "My Mac")
@@ -32,7 +48,6 @@ class AppState: ObservableObject {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
 
         self.adbPort = adbPortValue == 0 ? 5555 : UInt16(adbPortValue)
-        self.adbConnectedIP = UserDefaults.standard.string(forKey: "adbConnectedIP") ?? ""
         self.mirroringPlus = UserDefaults.standard.bool(forKey: "mirroringPlus")
         self.adbEnabled = UserDefaults.standard.bool(forKey: "adbEnabled")
         self.suppressAdbFailureAlerts = UserDefaults.standard.bool(forKey: "suppressAdbFailureAlerts")
@@ -42,6 +57,8 @@ class AppState: ObservableObject {
 
         self.showMenubarText = UserDefaults.standard.bool(forKey: "showMenubarText")
 
+        let savedDockSize = UserDefaults.standard.double(forKey: "dockSize")
+        self.dockSize = savedDockSize > 0 ? savedDockSize : 48.0
         // Default to true if not previously set
         let showNameObj = UserDefaults.standard.object(forKey: "showMenubarDeviceName")
         self.showMenubarDeviceName = showNameObj == nil
@@ -87,8 +104,13 @@ class AppState: ObservableObject {
         UserDefaults.standard.set(true, forKey: "isPlus")
         UserDefaults.standard.lastLicenseSuccessfulCheckDate = Date().addingTimeInterval(-(24 * 60 * 60))
         #else
-        Task {
-            await Gumroad().checkLicenseIfNeeded()
+        if licenseCheck {
+            Task {
+                await Gumroad().checkLicenseIfNeeded()
+            }
+        } else {
+            // When licenseCheck is disabled, grant Plus temporarily (without persisting)
+            setPlusTemporarily(true)
         }
         #endif
 
@@ -97,6 +119,19 @@ class AppState: ObservableObject {
 
         self.scrcpyResolution = UserDefaults.standard.integer(forKey: "scrcpyResolution")
         if self.scrcpyResolution == 0 { self.scrcpyResolution = 1200 }
+
+        // Load mirror quality settings
+        self.mirrorFPS = UserDefaults.standard.integer(forKey: "mirrorFPS")
+        if self.mirrorFPS == 0 { self.mirrorFPS = 60 }
+        
+        self.mirrorMaxWidth = UserDefaults.standard.integer(forKey: "mirrorMaxWidth")
+        if self.mirrorMaxWidth == 0 { self.mirrorMaxWidth = 1920 }
+        
+        self.mirrorQuality = UserDefaults.standard.integer(forKey: "mirrorQuality")
+        if self.mirrorQuality == 0 { self.mirrorQuality = 85 }
+        
+        self.mirrorBitrate = UserDefaults.standard.integer(forKey: "mirrorBitrate")
+        if self.mirrorBitrate == 0 { self.mirrorBitrate = 8000000 }
 
     // Initialize persisted UI toggles
     self.isMusicCardHidden = UserDefaults.standard.bool(forKey: "isMusicCardHidden")
@@ -142,16 +177,23 @@ class AppState: ObservableObject {
             } else {
                 selectedTab = .notifications
             }
+            
+            // When a device reconnects, restore last saved notifications if none in memory
+            if device != nil && self.notifications.isEmpty {
+                self.loadNotificationsFromDisk()
+            }
         }
     }
-    @Published var notifications: [Notification] = []
-    @Published var callEvents: [CallEvent] = []
-    @Published var activeCall: CallEvent? = nil
+    @Published var notifications: [Notification] = [] {
+        didSet {
+            saveNotificationsToDisk()
+        }
+    }
     @Published var status: DeviceStatus? = nil
     @Published var myDevice: Device? = nil
     @Published var port: UInt16 = Defaults.serverPort
     @Published var androidApps: [String: AndroidApp] = [:]
-
+    
     @Published var pinnedApps: [PinnedApp] = [] {
         didSet {
             savePinnedApps()
@@ -176,6 +218,10 @@ class AppState: ObservableObject {
     @Published var adbConnected: Bool = false
     @Published var adbConnecting: Bool = false
     @Published var currentDeviceWallpaperBase64: String? = nil
+
+    // Call events tracking
+    @Published var callEvents: [CallEvent] = []
+    @Published var activeCall: CallEvent? = nil
 
     // Audio player for ringtone
     private var ringtonePlayer: AVAudioPlayer?
@@ -212,6 +258,31 @@ class AppState: ObservableObject {
     @Published var scrcpyResolution: Int = 1200 {
         didSet {
             UserDefaults.standard.set(scrcpyResolution, forKey: "scrcpyResolution")
+        }
+    }
+
+    // Mirror quality settings
+    @Published var mirrorFPS: Int = 60 {
+        didSet {
+            UserDefaults.standard.set(mirrorFPS, forKey: "mirrorFPS")
+        }
+    }
+    
+    @Published var mirrorMaxWidth: Int = 1920 {
+        didSet {
+            UserDefaults.standard.set(mirrorMaxWidth, forKey: "mirrorMaxWidth")
+        }
+    }
+    
+    @Published var mirrorQuality: Int = 85 {
+        didSet {
+            UserDefaults.standard.set(mirrorQuality, forKey: "mirrorQuality")
+        }
+    }
+    
+    @Published var mirrorBitrate: Int = 8000000 {
+        didSet {
+            UserDefaults.standard.set(mirrorBitrate, forKey: "mirrorBitrate")
         }
     }
 
@@ -321,6 +392,19 @@ class AppState: ObservableObject {
         }
     }
 
+    // MARK: - ADB-less Mirroring State
+    @Published var isMirrorActive: Bool = false
+    @Published var latestMirrorFrame: NSImage? = nil
+    @Published var isMirroring: Bool = false
+    @Published var isMirrorRequestPending: Bool = false
+    @Published var mirrorError: String? = nil
+
+    @Published var dockSize: CGFloat {
+        didSet {
+            UserDefaults.standard.set(dockSize, forKey: "dockSize")
+        }
+    }
+
     @Published var isOnboardingActive: Bool = false {
         didSet {
             NotificationCenter.default.post(
@@ -335,7 +419,24 @@ class AppState: ObservableObject {
     @Published var transfers: [String: FileTransferSession] = [:]
 
     // Toggle licensing
-    let licenseCheck: Bool = true
+    @Published var licenseCheck: Bool {
+        didSet {
+            UserDefaults.standard.set(licenseCheck, forKey: "licenseCheck")
+            if !licenseCheck {
+                // When verification is disabled, treat user as Plus immediately (non-persistent)
+                setPlusTemporarily(true)
+            } else {
+                // When re-enabling verification, re-check license to restore correct state
+                #if !SELF_COMPILED
+                Task {
+                    await Gumroad().checkLicenseIfNeeded()
+                }
+                #else
+                setPlusTemporarily(true)
+                #endif
+            }
+        }
+    }
 
     @Published var isPlus: Bool {
         didSet {
@@ -480,6 +581,7 @@ class AppState: ObservableObject {
                 // Don't show anything
                 print("[state] No notification (user preference)")
             }
+            
         } else if callEvent.direction == .incoming && callEvent.state == .offhook {
             // Call has been answered (offhook state for incoming call)
             print("[state] Incoming call answered - stopping ringtone and updating popup")
@@ -487,6 +589,7 @@ class AppState: ObservableObject {
 
             // Update activeCall to show accepted state instead of ringing
             self.activeCall = callEvent
+            
             print("[state] Updated popup for accepted call")
         } else if callEvent.state == .ended || callEvent.state == .rejected || callEvent.state == .missed || callEvent.state == .idle {
             // Remove ALL call notifications when any call ends
@@ -578,7 +681,13 @@ class AppState: ObservableObject {
     }
 
     func sendCallAction(_ eventId: String, action: String) {
-        WebSocketServer.shared.sendCallAction(eventId: eventId, action: action)
+        // Send via WebSocket first (works without ADB)
+        WebSocketServer.shared.sendCallActionViaWebSocket(eventId: eventId, action: action)
+        
+        // Also send via ADB if connected (more reliable)
+        if adbConnected {
+            WebSocketServer.shared.sendCallAction(eventId: eventId, action: action)
+        }
     }
 
     func hideNotification(_ notif: Notification) {
@@ -612,6 +721,13 @@ class AppState: ObservableObject {
             self.status = nil
             self.currentDeviceWallpaperBase64 = nil
             self.transfers = [:]
+            
+            // Reset mirror state
+            self.isMirrorActive = false
+            self.latestMirrorFrame = nil
+            self.isMirroring = false
+            self.isMirrorRequestPending = false
+            self.mirrorError = nil
 
             if self.adbConnected {
                 ADBConnector.disconnectADB()
@@ -912,20 +1028,49 @@ class AppState: ObservableObject {
         }
     }
 
-    // MARK: - Pinned Apps Management
+    // MARK: - Notifications Persistence
+    private func notificationsFileURL() -> URL {
+        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        return dir.appendingPathComponent("notifications.json")
+    }
 
+    private func saveNotificationsToDisk() {
+        do {
+            let data = try JSONEncoder().encode(notifications)
+            try data.write(to: notificationsFileURL(), options: .atomic)
+        } catch {
+            print("[state] (notifications) Error saving notifications: \(error)")
+        }
+    }
+
+    func loadNotificationsFromDisk() {
+        let url = notificationsFileURL()
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        do {
+            let data = try Data(contentsOf: url)
+            let saved = try JSONDecoder().decode([Notification].self, from: data)
+            DispatchQueue.main.async {
+                self.notifications = saved
+            }
+        } catch {
+            print("[state] (notifications) Error loading notifications: \(error)")
+        }
+    }
+
+    // MARK: - Pinned Apps Management
+    
     func loadPinnedApps() {
         guard let data = UserDefaults.standard.data(forKey: "pinnedApps") else {
             return
         }
-
+        
         do {
             pinnedApps = try JSONDecoder().decode([PinnedApp].self, from: data)
         } catch {
             print("[state] (pinned) Error loading pinned apps: \(error)")
         }
     }
-
+    
     func savePinnedApps() {
         do {
             let data = try JSONEncoder().encode(pinnedApps)
@@ -934,27 +1079,27 @@ class AppState: ObservableObject {
             print("[state] (pinned) Error saving pinned apps: \(error)")
         }
     }
-
+    
     func addPinnedApp(_ app: AndroidApp) -> Bool {
         // Check if already pinned
         guard !pinnedApps.contains(where: { $0.packageName == app.packageName }) else {
             return false
         }
-
+        
         // Check if under the limit of 3 apps
         guard pinnedApps.count < 3 else {
             return false
         }
-
+        
         let pinnedApp = PinnedApp(packageName: app.packageName, appName: app.name, iconUrl: app.iconUrl)
         pinnedApps.append(pinnedApp)
         return true
     }
-
+    
     func removePinnedApp(_ packageName: String) {
         pinnedApps.removeAll { $0.packageName == packageName }
     }
-
+    
     func validatePinnedApps() {
         // Remove pinned apps that are no longer available
         pinnedApps.removeAll { pinnedApp in
