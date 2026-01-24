@@ -6,6 +6,7 @@
 //
 import SwiftUI
 import Cocoa
+import Foundation
 
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -20,10 +21,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         WebSocketServer.shared.stop()
     }
 
-    func applicationDidFinishLaunching() {
+    func applicationDidFinishLaunching(_ notification: Foundation.Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
         // Dock icon visibility is now controlled by AppState.hideDockIcon
         AppState.shared.updateDockIconVisibility()
+        
+        // Register Services Provider
+        NSApp.servicesProvider = self
+        NSUpdateDynamicServices()
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            print("[AppDelegate] Opening file: \(url.path)")
+            WebSocketServer.shared.sendFile(url: url)
+        }
+    }
+
+    @objc func handleServices(_ pboard: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
+        if let urls = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
+            for url in urls {
+                print("[AppDelegate] Services menu received file: \(url.path)")
+                WebSocketServer.shared.sendFile(url: url)
+            }
+        }
     }
 
     // Configure and retain main window when captured
@@ -33,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.delegate = self
         }
         window.isReleasedWhenClosed = false
-        window.collectionBehavior.insert(.moveToActiveSpace)
+        window.isReleasedWhenClosed = false
     }
 
 

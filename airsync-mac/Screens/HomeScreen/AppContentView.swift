@@ -152,6 +152,9 @@ struct AppContentView: View {
         .sheet(isPresented: $showHelpSheet) {
             HelpWebSheet(isPresented: $showHelpSheet)
         }
+        .sheet(isPresented: $appState.showFileBrowser) {
+            FileBrowserView(onClose: { appState.showFileBrowser = false })
+        }
         .alert(isPresented: $showDisconnectAlert) {
             Alert(
                 title: Text("Disconnect Device"),

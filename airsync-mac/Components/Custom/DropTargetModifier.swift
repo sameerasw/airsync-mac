@@ -53,12 +53,9 @@ struct DropTargetModifier: ViewModifier {
                 provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
                     guard let url = (item as? URL) ?? (item as? Data).flatMap({ URL(dataRepresentation: $0, relativeTo: nil) }) else { return }
 
-                    let textExtensions = ["txt", "md", "json", "xml", "html", "css", "js", "swift", "py"]
-                    let text = textExtensions.contains(url.pathExtension.lowercased()) ?
-                        (try? String(contentsOf: url, encoding: .utf8)) ?? url.path : url.path
-
+                    // Initiate file transfer
                     DispatchQueue.main.async {
-                        sendTextToDevice(text)
+                         WebSocketServer.shared.sendFile(url: url)
                     }
                 }
                 return
@@ -87,7 +84,7 @@ struct DropTargetOverlay: View {
                         .font(.system(size: 48))
                         .foregroundColor(.accentColor)
 
-                    Text("Drop text to send")
+                    Text("Drop text or files to send")
                         .font(.title2)
                         .fontWeight(.semibold)
                         .foregroundColor(.primary)

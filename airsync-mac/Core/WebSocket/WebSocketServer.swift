@@ -40,11 +40,14 @@ class WebSocketServer: ObservableObject {
     private var lastKnownIP: String?
     private var networkMonitorTimer: Timer?
     private let networkCheckInterval: TimeInterval = 10.0 // seconds
+    private let lock = NSRecursiveLock()
+    private let fileQueue = DispatchQueue(label: "com.airsync.fileio")
 
     // Incoming file transfers (Android -> Mac) — keep only IO here; state lives in AppState
     private struct IncomingFileIO {
         var tempUrl: URL
         var fileHandle: FileHandle?
+        var chunkSize: Int
     }
     private var incomingFiles: [String: IncomingFileIO] = [:]
     private var incomingFilesChecksum: [String: String] = [:]
@@ -76,7 +79,7 @@ class WebSocketServer: ObservableObject {
             AppState.shared.webSocketStatus = .starting
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+        DispatchQueue.global(qos: .userInitiated).async {
             do {
                 guard port > 0 && port <= 65_535 else {
                     let msg = "[websocket] Invalid port \(port). Must be in 1...65535."
@@ -115,7 +118,9 @@ class WebSocketServer: ObservableObject {
 
     func stop() {
         server.stop()
+        lock.lock()
         activeSessions.removeAll()
+        lock.unlock()
         DispatchQueue.main.async {
             AppState.shared.webSocketStatus = .stopped
         }
@@ -148,41 +153,54 @@ class WebSocketServer: ObservableObject {
                     decryptedText = text
                 }
 
-                let truncated = decryptedText.count > 300
-                ? decryptedText.prefix(300) + "..."
-                : decryptedText
-                print("[websocket] [received] \n\(truncated)")
+                // print("[websocket] [received] \n\(truncated)")
 
 
                 // Step 2: Decode JSON and handle
                 if let data = decryptedText.data(using: .utf8) {
                     do {
                         let message = try JSONDecoder().decode(Message.self, from: data)
-                        DispatchQueue.main.async {
-                            self.handleMessage(message)
+                        // For most messages, handle on main, but file chunks should be background
+                        if message.type == .fileChunk || message.type == .fileChunkAck || message.type == .fileTransferComplete || message.type == .fileTransferInit {
+                             self.handleMessage(message)
+                        } else {
+                            DispatchQueue.main.async {
+                                self.handleMessage(message)
+                            }
                         }
                     } catch {
                         print("[websocket] WebSocket JSON decode failed: \(error)")
+                        // If it was a file chunk, we effectively dropped it. Log this critical error.
+                         if let typeStr = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["type"] as? String, typeStr == "fileChunk" {
+                            print("[websocket] CRITICAL: Failed to decode FILE CHUNK. Data length: \(data.count)")
+                        }
                     }
                 }
             },
 
             connected: { [weak self] session in
                 print("[websocket] Device connected")
+                self?.lock.lock()
                 self?.activeSessions.append(session)
+                self?.lock.unlock()
             },
             disconnected: { [weak self] session in
                 guard let self = self else { return }
                 print("[websocket] Device disconnected")
 
+                self.lock.lock()
                 self.activeSessions.removeAll(where: { $0 === session })
+                let isEmpty = self.activeSessions.isEmpty
+                self.lock.unlock()
 
                 // Only call disconnectDevice if no other sessions remain
-                if self.activeSessions.isEmpty {
-                    DispatchQueue.main.async {
-                        AppState.shared.disconnectDevice()
+                    if isEmpty {
+                        DispatchQueue.main.async {
+                            AppState.shared.disconnectDevice()
+                            // Stop any ongoing transfers immediately
+                            AppState.shared.stopAllTransfers(reason: "Device disconnected")
+                        }
                     }
-                }
             }
         )
     }
@@ -558,6 +576,7 @@ class WebSocketServer: ObservableObject {
                let name = dict["name"] as? String,
                let size = dict["size"] as? Int,
                let mime = dict["mime"] as? String {
+                let chunkSize = dict["chunkSize"] as? Int ?? 64 * 1024
                 let checksum = dict["checksum"] as? String
 
                 let tempDir = FileManager.default.temporaryDirectory
@@ -566,94 +585,183 @@ class WebSocketServer: ObservableObject {
                 FileManager.default.createFile(atPath: tempFile.path, contents: nil, attributes: nil)
                 let handle = try? FileHandle(forWritingTo: tempFile)
 
-                let io = IncomingFileIO(tempUrl: tempFile, fileHandle: handle)
+                let io = IncomingFileIO(tempUrl: tempFile, fileHandle: handle, chunkSize: chunkSize)
+                lock.lock()
                 incomingFiles[id] = io
                 if let checksum = checksum {
                     incomingFilesChecksum[id] = checksum
                 }
+                lock.unlock()
                 // Start tracking incoming transfer in AppState
-                AppState.shared.startIncomingTransfer(id: id, name: name, size: size, mime: mime)
+                DispatchQueue.main.async {
+                    AppState.shared.startIncomingTransfer(id: id, name: name, size: size, mime: mime)
+                }
             }
 
         case .fileChunk:
             if let dict = message.data.value as? [String: Any],
                let id = dict["id"] as? String,
-               let chunkBase64 = dict["chunk"] as? String,
-               let io = incomingFiles[id],
-               let data = Data(base64Encoded: chunkBase64) {
+               let index = dict["index"] as? Int,
+               let chunkBase64 = dict["chunk"] as? String {
+                
+                lock.lock()
+                let io = incomingFiles[id]
+                lock.unlock()
 
-                io.fileHandle?.seekToEndOfFile()
-                io.fileHandle?.write(data)
-                // Update incoming progress in AppState (increment)
-                let prev = AppState.shared.transfers[id]?.bytesTransferred ?? 0
-                let newBytes = prev + data.count
-                AppState.shared.updateIncomingProgress(id: id, receivedBytes: newBytes)
+                // Use lenient decoding to handle potential line breaks or padding issues
+                if let io = io, let data = Data(base64Encoded: chunkBase64, options: .ignoreUnknownCharacters) {
+                    fileQueue.async {
+                        let offset = UInt64(index * io.chunkSize)
+                        if let fh = io.fileHandle {
+                            do {
+                                try fh.seek(toOffset: offset)
+                                try fh.write(contentsOf: data)
+                            } catch {
+                                print("[websocket] (file-transfer) Write failed for chunk \(index): \(error)")
+                            }
+                        }
+                    }
+                    // Update incoming progress in AppState
+                    DispatchQueue.main.async {
+                        let prev = AppState.shared.transfers[id]?.bytesTransferred ?? 0
+                        let newBytes = prev + data.count
+                        AppState.shared.updateIncomingProgress(id: id, receivedBytes: newBytes)
+                    }
+                } else {
+                     print("[websocket] (file-transfer) CRITICAL: Dropped chunk \(index) for id=\(id) - Base64 decode failed. Raw length: \(chunkBase64.count)")
+                }
+                
+                // Send ACK back to Android
+                let ackMsg = FileTransferProtocol.buildChunkAck(id: id, index: index)
+                self.sendToFirstAvailable(message: ackMsg)
             }
 
         case .fileChunkAck:
             if let dict = message.data.value as? [String: Any],
                let id = dict["id"] as? String,
                let index = dict["index"] as? Int {
-                var set = outgoingAcks[id] ?? []
-                set.insert(index)
-                outgoingAcks[id] = set
-                print("[websocket] (file-transfer) Received ack for id=\(id) index=\(index) totalAcked=\(set.count)")
+                lock.lock()
+                if var set = outgoingAcks[id] {
+                    set.insert(index)
+                    outgoingAcks[id] = set
+                }
+                lock.unlock()
+                // print("[websocket] (file-transfer) Received ack for id=\(id) index=\(index)")
             }
 
         case .fileTransferComplete:
                 if let dict = message.data.value as? [String: Any],
-                    let id = dict["id"] as? String,
-                    let state = incomingFiles[id] {
-                    state.fileHandle?.closeFile()
+                    let id = dict["id"] as? String {
+                    
+                    lock.lock()
+                    let state = incomingFiles[id]
+                    lock.unlock()
 
-                    // Resolve a name for notifications and final filename. Prefer AppState metadata; fall back to temp filename.
-                    let resolvedName = AppState.shared.transfers[id]?.name ?? state.tempUrl.lastPathComponent
-
-                    // Verify checksum if present
-                    if let expected = incomingFilesChecksum[id] {
-                        if let fileData = try? Data(contentsOf: state.tempUrl) {
-                            let computed = SHA256.hash(data: fileData).compactMap { String(format: "%02x", $0) }.joined()
-                            if computed != expected {
-                                print("[websocket] (file-transfer) Checksum mismatch for incoming file id=\(id), expected=\(expected), computed=\(computed)")
-                                // Post notification about checksum mismatch via AppState util
-                                AppState.shared.postNativeNotification(
-                                    id: "incoming_file_\(id)_mismatch",
-                                    appName: "AirSync",
-                                    title: "Received: \(resolvedName)",
-                                    body: "Saved to Downloads (checksum mismatch)"
-                                )
+                    if let state = state {
+                        fileQueue.async {
+                            // Close file safely on the serial queue
+                            state.fileHandle?.closeFile()
+                            
+                            // Validate size
+                            var totalBytes: UInt64 = 0
+                            do {
+                                let attr = try FileManager.default.attributesOfItem(atPath: state.tempUrl.path)
+                                totalBytes = attr[.size] as? UInt64 ?? 0
+                            } catch {
+                                print("[websocket] (file-transfer) Failed to get size for validation: \(error)")
                             }
-                        }
-                        incomingFilesChecksum.removeValue(forKey: id)
-                    }
-
-                    // Move to Downloads
-                    if let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
-                        do {
-                            let finalDest = downloads.appendingPathComponent(resolvedName)
-                            if FileManager.default.fileExists(atPath: finalDest.path) {
-                                try FileManager.default.removeItem(at: finalDest)
+                            
+                            // Check expected size from AppState (must access main thread safely or grab via sync)
+                            var expectedSize: Int = 0
+                            var resolvedName = state.tempUrl.lastPathComponent
+                            DispatchQueue.main.sync {
+                                 if let t = AppState.shared.transfers[id] {
+                                    expectedSize = t.size
+                                    resolvedName = t.name
+                                 }
                             }
-                            try FileManager.default.moveItem(at: state.tempUrl, to: finalDest)
-
-                            // Optionally: show a user notification (simple print for now)
-                            print("[websocket] (file-transfer) Saved incoming file to \(finalDest.path)")
-
-                            // Mark as completed in AppState and post notification via AppState util
-                            AppState.shared.completeIncoming(id: id, verified: nil)
-                            AppState.shared.postNativeNotification(
-                                id: "incoming_file_\(id)",
-                                appName: "AirSync",
-                                title: "Received: \(resolvedName)",
-                                body: "Saved to Downloads"
-                            )
-                        } catch {
-                            print("[websocket] (file-transfer) Failed to move incoming file: \(error)")
+                            
+                            if Int(totalBytes) != expectedSize {
+                                print("[websocket] (file-transfer) Size mismatch! Expected \(expectedSize), got \(totalBytes). Transfer incomplete.")
+                                DispatchQueue.main.async {
+                                    AppState.shared.failTransfer(id: id, reason: "Size mismatch: \(totalBytes)/\(expectedSize)")
+                                    AppState.shared.postNativeNotification(
+                                        id: "incoming_file_\(id)_mismatch",
+                                        appName: "AirSync",
+                                        title: "Transfer Failed",
+                                        body: "Incomplete file received."
+                                    )
+                                }
+                                // Clean up
+                                try? FileManager.default.removeItem(at: state.tempUrl)
+                                
+                                self.lock.lock()
+                                self.incomingFiles.removeValue(forKey: id)
+                                self.incomingFilesChecksum.removeValue(forKey: id)
+                                self.lock.unlock()
+                                return 
+                            }
+                            
+        
+                            // Verify checksum if present
+                            self.lock.lock()
+                            let expectedChecksum = self.incomingFilesChecksum[id]
+                            self.lock.unlock()
+    
+                            if let expected = expectedChecksum {
+                                if let fileData = try? Data(contentsOf: state.tempUrl) {
+                                    let computed = SHA256.hash(data: fileData).compactMap { String(format: "%02x", $0) }.joined()
+                                    if computed != expected {
+                                        print("[websocket] (file-transfer) Checksum mismatch for incoming file id=\(id), expected=\(expected), computed=\(computed)")
+                                        DispatchQueue.main.async {
+                                            AppState.shared.postNativeNotification(
+                                                id: "incoming_file_\(id)_mismatch",
+                                                appName: "AirSync",
+                                                title: "Received: \(resolvedName)",
+                                                body: "Saved to Downloads (checksum mismatch)"
+                                            )
+                                        }
+                                    }
+                                }
+                                self.lock.lock()
+                                self.incomingFilesChecksum.removeValue(forKey: id)
+                                self.lock.unlock()
+                            }
+        
+                            // Move to Downloads
+                            if let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
+                                do {
+                                    let finalDest = downloads.appendingPathComponent(resolvedName)
+                                    if FileManager.default.fileExists(atPath: finalDest.path) {
+                                        try FileManager.default.removeItem(at: finalDest)
+                                    }
+                                    try FileManager.default.moveItem(at: state.tempUrl, to: finalDest)
+        
+                                    // Optionally: show a user notification (simple print for now)
+                                    print("[websocket] (file-transfer) Saved incoming file to \(finalDest.path)")
+        
+                                    // Mark as completed in AppState and post notification via AppState util
+                                    DispatchQueue.main.async {
+                                        AppState.shared.completeIncoming(id: id, verified: nil)
+                                        AppState.shared.postNativeNotification(
+                                            id: "incoming_file_\(id)",
+                                            appName: "AirSync",
+                                            title: "Received: \(resolvedName)",
+                                            body: "Saved to Downloads"
+                                        )
+                                    }
+                                } catch {
+                                    print("[websocket] (file-transfer) Failed to move incoming file: \(error)")
+                                }
+                            }
+                            
+                            self.lock.lock()
+                            self.incomingFiles.removeValue(forKey: id)
+                            self.lock.unlock()
                         }
                     }
-
-                    incomingFiles.removeValue(forKey: id)
-            }
+    
+                }
         case .transferVerified:
             if let dict = message.data.value as? [String: Any],
                let id = dict["id"] as? String,
@@ -664,9 +772,18 @@ class WebSocketServer: ObservableObject {
                 AppState.shared.postNativeNotification(
                     id: "transfer_verified_\(id)",
                     appName: "AirSync",
-                    title: "Transfer verified",
-                    body: verified ? "Receiver verified the file checksum" : "Receiver reported checksum mismatch"
+                    title: "Transfer complete",
+                    body: verified ? "File sent successfully" : "File might be incomplete"
                 )
+            }
+            
+        case .fileTransferCancel:
+            if let dict = message.data.value as? [String: Any],
+               let id = dict["id"] as? String {
+                print("[websocket] (file-transfer) Received cancellation for id=\(id)")
+                DispatchQueue.main.async {
+                    AppState.shared.stopTransferRemote(id: id)
+                }
             }
 
         case .macMediaControl:
@@ -786,9 +903,46 @@ class WebSocketServer: ObservableObject {
                 }
             }
             
-        case .volumeControl, .macVolume, .toggleAppNotif:
+        case .volumeControl, .macVolume, .toggleAppNotif, .browseLs:
             // Outgoing messages from Mac, ignore if received
             break
+            
+        case .browseData:
+            if let dict = message.data.value as? [String: Any],
+               let path = dict["path"] as? String,
+               let itemsArray = dict["items"] as? [[String: Any]] {
+                
+                var items: [FileBrowserItem] = []
+                for itemDict in itemsArray {
+                    let name = itemDict["name"] as? String ?? ""
+                    let isDir = itemDict["isDir"] as? Bool ?? false
+                    
+                    let size = (itemDict["size"] as? NSNumber)?.int64Value ?? 
+                               (itemDict["size"] as? Int64) ?? 
+                               Int64(itemDict["size"] as? Int ?? 0)
+                               
+                    let timeValue = (itemDict["time"] as? NSNumber)?.int64Value ?? 
+                                    (itemDict["time"] as? Int64) ?? 
+                                    Int64(itemDict["time"] as? Int ?? 0)
+                    
+                    if !name.isEmpty {
+                        items.append(FileBrowserItem(name: name, isDir: isDir, size: size, time: timeValue))
+                    }
+                }
+                
+                DispatchQueue.main.async {
+                    AppState.shared.browsePath = path
+                    AppState.shared.browseItems = items
+                    AppState.shared.browseError = nil
+                    AppState.shared.isBrowsingLoading = false
+                }
+            } else if let error = (message.data.value as? [String: Any])?["error"] as? String {
+                print("[websocket] Browse error: \(error)")
+                DispatchQueue.main.async {
+                    AppState.shared.browseError = error
+                    AppState.shared.isBrowsingLoading = false
+                }
+            }
         }
 
 
@@ -889,14 +1043,20 @@ class WebSocketServer: ObservableObject {
     // MARK: - Sending Helpers
 
     private func broadcast(message: String) {
+        lock.lock()
+        defer { lock.unlock() }
         activeSessions.forEach { $0.writeText(message) }
     }
 
     private func sendToFirstAvailable(message: String) {
+        lock.lock()
+        let session = activeSessions.first
+        lock.unlock()
+        
         if let key = symmetricKey, let encrypted = encryptMessage(message, using: key) {
-            activeSessions.first?.writeText(encrypted)
+            session?.writeText(encrypted)
         } else {
-            activeSessions.first?.writeText(message)
+            session?.writeText(message)
         }
     }
 
@@ -1124,111 +1284,188 @@ class WebSocketServer: ObservableObject {
 
     // MARK: - File transfer (Mac -> Android)
     func sendFile(url: URL, chunkSize: Int = 64 * 1024) {
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
-        guard let data = try? Data(contentsOf: url) else { return }
-        // compute checksum
-        let checksum = FileTransferProtocol.sha256Hex(data)
-
-    let transferId = UUID().uuidString
-        let fileName = url.lastPathComponent
-        let totalSize = data.count
-        let mime = mimeType(for: url) ?? "application/octet-stream"
-
-    // Track in AppState
-    AppState.shared.startOutgoingTransfer(id: transferId, name: fileName, size: totalSize, mime: mime, chunkSize: chunkSize)
-
-    // Send init message
-    let initMessage = FileTransferProtocol.buildInit(id: transferId, name: fileName, size: totalSize, mime: mime, checksum: checksum)
-    sendToFirstAvailable(message: initMessage)
-
-        // Send chunks using a simple sliding window to allow multiple in-flight chunks
-        let windowSize = 8
-        let totalChunks = (totalSize + chunkSize - 1) / chunkSize
-        outgoingAcks[transferId] = []
-
-        // Keep a buffer of sent chunks for potential retransmit: index -> (payloadBase64, attempts, lastSent)
-        var sentBuffer: [Int: (payload: String, attempts: Int, lastSent: Date)] = [:]
-
-        var nextIndexToSend = 0
-        let startTime = Date()
-
-        func sendChunkAt(_ idx: Int) {
-            let start = idx * chunkSize
-            let end = min(start + chunkSize, totalSize)
-            let chunk = data.subdata(in: start..<end)
-            let base64 = chunk.base64EncodedString()
-            let chunkMessage = FileTransferProtocol.buildChunk(id: transferId, index: idx, base64Chunk: base64)
-            sendToFirstAvailable(message: chunkMessage)
-            sentBuffer[idx] = (payload: base64, attempts: 1, lastSent: Date())
-        }
-
-        // Prime the window
-        while nextIndexToSend < totalChunks && nextIndexToSend < windowSize {
-            sendChunkAt(nextIndexToSend)
-            nextIndexToSend += 1
-        }
-
-        // Loop until all chunks are acked
-        while true {
-            let acked = outgoingAcks[transferId] ?? []
-
-            // compute baseIndex = lowest unacked index (first missing starting from 0)
-            var baseIndex = 0
-            while acked.contains(baseIndex) {
-                // free memory for acknowledged chunks
-                sentBuffer.removeValue(forKey: baseIndex)
-                baseIndex += 1
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                print("[websocket] (file-transfer) File does not exist at \(url.path)")
+                return
             }
 
-            // Update progress in AppState
-            let bytesAcked = min(acked.count * chunkSize, totalSize)
-            AppState.shared.updateOutgoingProgress(id: transferId, bytesTransferred: bytesAcked)
-
-            // completion when baseIndex reached totalChunks
-            if baseIndex >= totalChunks {
-                break
+            let fileName = url.lastPathComponent
+            let mime = self.mimeType(for: url) ?? "application/octet-stream"
+            
+            guard let fileHandle = try? FileHandle(forReadingFrom: url) else {
+                print("[websocket] (file-transfer) Could not open file handle for \(url.path)")
+                return
             }
-
-            // send new chunks while window has space
-            while nextIndexToSend < totalChunks && (nextIndexToSend - baseIndex) < windowSize {
-                sendChunkAt(nextIndexToSend)
-                nextIndexToSend += 1
+            
+            let totalSize: Int
+            do {
+                let attr = try FileManager.default.attributesOfItem(atPath: url.path)
+                totalSize = attr[.size] as? Int ?? 0
+            } catch {
+                print("[websocket] (file-transfer) Could not get attributes for \(url.path)")
+                return
             }
+            
+            // compute checksum without loading whole file
+            print("[websocket] (file-transfer) Computing checksum for \(fileName)...")
+            var hasher = SHA256()
+            let hashBuffer = 1024 * 1024
+            while true {
+                let data = fileHandle.readData(ofLength: hashBuffer)
+                if data.isEmpty { break }
+                hasher.update(data: data)
+            }
+            let checksum = hasher.finalize().compactMap { String(format: "%02x", $0) }.joined()
+            try? fileHandle.seek(toOffset: 0)
 
-            // Retransmit chunks that haven't been acked and exceeded timeout
-            let now = Date()
-            for (idx, entry) in sentBuffer {
-                if acked.contains(idx) { continue }
-                let elapsedMs = now.timeIntervalSince(entry.lastSent) * 1000.0
-                if elapsedMs > Double(ackWaitMs) {
-                    if entry.attempts >= maxChunkRetries {
-                        print("[websocket] (file-transfer) Failed to get ack for chunk \(idx) after \(maxChunkRetries) attempts")
-                        outgoingAcks.removeValue(forKey: transferId)
-                        return
-                    }
-                    // retransmit
-                    let start = idx * chunkSize
-                    let end = min(start + chunkSize, totalSize)
-                    let chunk = data.subdata(in: start..<end)
+            let transferId = UUID().uuidString
+            print("[websocket] (file-transfer) Starting transfer id=\(transferId) name=\(fileName) size=\(totalSize)")
+
+            // Track in AppState
+            AppState.shared.startOutgoingTransfer(id: transferId, name: fileName, size: totalSize, mime: mime, chunkSize: chunkSize)
+
+            // Send init message
+            let initMessage = FileTransferProtocol.buildInit(
+                id: transferId,
+                name: fileName,
+                size: Int64(totalSize),
+                mime: mime,
+                chunkSize: chunkSize,
+                checksum: checksum
+            )
+            self.sendToFirstAvailable(message: initMessage)
+
+            // Send chunks using a simple sliding window
+            let windowSize = 8
+            let totalChunks = totalSize == 0 ? 1 : (totalSize + chunkSize - 1) / chunkSize
+            
+            self.lock.lock()
+            self.outgoingAcks[transferId] = []
+            self.lock.unlock()
+
+            // sentBuffer: index -> (payloadBase64, attempts, lastSent)
+            var sentBuffer: [Int: (payload: String, attempts: Int, lastSent: Date)] = [:]
+            var nextIndexToSend = 0
+            let startTime = Date()
+
+            func sendChunkAt(_ idx: Int) {
+                let offset = UInt64(idx * chunkSize)
+                do {
+                    try fileHandle.seek(toOffset: offset)
+                    let chunk = fileHandle.readData(ofLength: chunkSize)
                     let base64 = chunk.base64EncodedString()
                     let chunkMessage = FileTransferProtocol.buildChunk(id: transferId, index: idx, base64Chunk: base64)
-                    sendToFirstAvailable(message: chunkMessage)
-                    sentBuffer[idx] = (payload: base64, attempts: entry.attempts + 1, lastSent: Date())
+                    self.sendToFirstAvailable(message: chunkMessage)
+                    sentBuffer[idx] = (payload: base64, attempts: 1, lastSent: Date())
+                } catch {
+                    print("[websocket] (file-transfer) Seek/Read failed for chunk \(idx): \(error)")
                 }
             }
 
-            // brief sleep to avoid busy-looping
-            usleep(50_000) // 50ms
+            // Loop until all chunks are acked
+            var transferFailed = false
+            while !transferFailed {
+                self.lock.lock()
+                let acked = self.outgoingAcks[transferId] ?? []
+                self.lock.unlock()
+                
+                // compute baseIndex = lowest unacked index
+                var baseIndex = 0
+                while acked.contains(baseIndex) {
+                    sentBuffer.removeValue(forKey: baseIndex)
+                    baseIndex += 1
+                }
+
+                // Update progress in AppState
+                let bytesAcked = min(baseIndex * chunkSize, totalSize)
+                DispatchQueue.main.async {
+                    AppState.shared.updateOutgoingProgress(id: transferId, bytesTransferred: bytesAcked)
+                }
+
+                if baseIndex >= totalChunks {
+                    break
+                }
+
+                // send new chunks while window has space
+                while nextIndexToSend < totalChunks && (nextIndexToSend - baseIndex) < windowSize {
+                    
+                    // Check if transfer was cancelled externally (e.g. by user)
+                    var isCancelled = false
+                     DispatchQueue.main.sync {
+                        if let t = AppState.shared.transfers[transferId], t.status != .inProgress {
+                            isCancelled = true
+                        }
+                     }
+                    if isCancelled {
+                        transferFailed = true
+                        print("[websocket] (file-transfer) Transfer cancelled externally, stopping loop.")
+                        break
+                    }
+
+                    sendChunkAt(nextIndexToSend)
+                    nextIndexToSend += 1
+                }
+
+                // Retransmit logic
+                let now = Date()
+                for (idx, entry) in sentBuffer {
+                    if acked.contains(idx) { continue }
+                    let elapsedMs = now.timeIntervalSince(entry.lastSent) * 1000.0
+                    if elapsedMs > Double(self.ackWaitMs) {
+                        if entry.attempts >= self.maxChunkRetries {
+                            print("[websocket] (file-transfer) Failed to get ack for chunk \(idx) after \(self.maxChunkRetries) attempts")
+                             DispatchQueue.main.async {
+                                AppState.shared.failTransfer(id: transferId, reason: "Multiple retries failed for chunk \(idx)")
+                             }
+                            transferFailed = true
+                            break
+                        }
+                        // retransmit
+                        let chunkMessage = FileTransferProtocol.buildChunk(id: transferId, index: idx, base64Chunk: entry.payload)
+                        self.sendToFirstAvailable(message: chunkMessage)
+                        sentBuffer[idx] = (payload: entry.payload, attempts: entry.attempts + 1, lastSent: Date())
+                    }
+                }
+
+                usleep(20_000) // 20ms
+            }
+
+            try? fileHandle.close()
+            
+            if !transferFailed {
+                 DispatchQueue.main.async {
+                    AppState.shared.updateOutgoingProgress(id: transferId, bytesTransferred: totalSize)
+                 }
+                let elapsed = Date().timeIntervalSince(startTime)
+                print("[websocket] (file-transfer) Completed sending \(totalSize) bytes in \(String(format: "%.2f", elapsed)) s")
+
+                let completeMessage = FileTransferProtocol.buildComplete(
+                    id: transferId,
+                    name: fileName,
+                    size: Int64(totalSize),
+                    checksum: checksum
+                )
+                self.sendToFirstAvailable(message: completeMessage)
+            }
+            
+            self.lock.lock()
+            self.outgoingAcks.removeValue(forKey: transferId)
+            self.lock.unlock()
         }
+    }
 
-    // Ensure progress shows 100%
-    AppState.shared.updateOutgoingProgress(id: transferId, bytesTransferred: totalSize)
-    let elapsed = Date().timeIntervalSince(startTime)
-        print("[websocket] (file-transfer) Completed sending \(totalSize) bytes in \(elapsed) s")
-
-        // Send complete
-    let completeMessage = FileTransferProtocol.buildComplete(id: transferId, name: fileName, size: totalSize, checksum: checksum)
-        sendToFirstAvailable(message: completeMessage)
+    func sendTransferCancel(id: String) {
+        let message = """
+        {
+            "type": "fileTransferCancel",
+            "data": {
+                "id": "\(id)"
+            }
+        }
+        """
+        sendToFirstAvailable(message: message)
     }
 
     func toggleNotification(for package: String, to state: Bool) {
@@ -1248,6 +1485,25 @@ class WebSocketServer: ObservableObject {
             }
         }
         """
+        sendToFirstAvailable(message: message)
+    }
+
+    func sendBrowseRequest(path: String, showHidden: Bool = false) {
+        let message = """
+        {
+            "type": "browseLs",
+            "data": {
+                "path": "\(path)",
+                "showHidden": \(showHidden)
+            }
+        }
+        """
+        sendToFirstAvailable(message: message)
+    }
+
+    func sendPullRequest(path: String) {
+        let message = FileTransferProtocol.buildFilePull(path: path)
+        print("[websocket] Sending pull request for \(path)")
         sendToFirstAvailable(message: message)
     }
 

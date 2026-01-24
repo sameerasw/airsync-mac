@@ -152,6 +152,13 @@ struct SettingsView: View {
                             Toggle("", isOn: $appState.alwaysOpenWindow)
                                 .toggleStyle(.switch)
                         }
+
+                        HStack{
+                            Label("File Share Dialog", systemImage: "doc.on.doc")
+                            Spacer()
+                            Toggle("", isOn: $appState.showFileShareDialog)
+                                .toggleStyle(.switch)
+                        }
                     }
                     .padding()
                     .background(.background.opacity(0.3))

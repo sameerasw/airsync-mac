@@ -62,6 +62,10 @@ class AppState: ObservableObject {
             .string(forKey: "notificationSound") ?? "default"
         self.dismissNotif = UserDefaults.standard
             .bool(forKey: "dismissNotif")
+        
+        // File Share Dialog default true
+        let savedShowFileShareDialog = UserDefaults.standard.object(forKey: "showFileShareDialog")
+        self.showFileShareDialog = savedShowFileShareDialog == nil ? true : UserDefaults.standard.bool(forKey: "showFileShareDialog")
 
         let savedNotificationMode = UserDefaults.standard
             .string(forKey: "callNotificationMode") ?? CallNotificationMode.popup.rawValue
@@ -308,6 +312,12 @@ class AppState: ObservableObject {
         }
     }
 
+    @Published var showFileShareDialog: Bool {
+        didSet {
+            UserDefaults.standard.set(showFileShareDialog, forKey: "showFileShareDialog")
+        }
+    }
+
     @Published var sendNowPlayingStatus: Bool {
         didSet {
             UserDefaults.standard.set(sendNowPlayingStatus, forKey: "sendNowPlayingStatus")
@@ -331,8 +341,23 @@ class AppState: ObservableObject {
         }
     }
 
+    // File browser state
+    @Published var showFileBrowser: Bool = false
+    @Published var browsePath: String = "/sdcard/"
+    @Published var browseItems: [FileBrowserItem] = []
+    @Published var isBrowsingLoading: Bool = false
+    @Published var browseError: String? = nil
+    @Published var showHiddenFiles: Bool = false {
+        didSet {
+            // refresh current directory when hidden files toggle changes
+            fetchDirectory(path: browsePath)
+        }
+    }
+
     // File transfer tracking state
     @Published var transfers: [String: FileTransferSession] = [:]
+    @Published var activeTransferId: String? = nil
+    var transferDismissTimer: Timer?
 
     // Toggle licensing
     let licenseCheck: Bool = true
@@ -616,6 +641,44 @@ class AppState: ObservableObject {
             if self.adbConnected {
                 ADBConnector.disconnectADB()
             }
+            
+            self.showFileBrowser = false
+            self.browseItems.removeAll()
+        }
+    }
+
+    // MARK: - Remote File Browser
+    
+    func openFileBrowser() {
+        showFileBrowser = true
+        fetchDirectory(path: "/sdcard/")
+    }
+    
+    func fetchDirectory(path: String) {
+        // Only fetch if connected
+        guard device != nil else { return }
+        
+        isBrowsingLoading = true
+        // Keep the path updated immediately for UI responsiveness
+        browsePath = path
+        WebSocketServer.shared.sendBrowseRequest(path: path, showHidden: showHiddenFiles)
+    }
+
+    func pullFile(path: String) {
+        WebSocketServer.shared.sendPullRequest(path: path)
+    }
+    
+    func navigateUp() {
+        // Prevent going above /sdcard/
+        guard browsePath != "/sdcard/" && browsePath != "/sdcard" else { return }
+        
+        var components = browsePath.split(separator: "/").map(String.init)
+        if components.count > 1 {
+            components.removeLast()
+            let parent = "/" + components.joined(separator: "/") + "/"
+            fetchDirectory(path: parent)
+        } else {
+            fetchDirectory(path: "/sdcard/")
         }
     }
 
