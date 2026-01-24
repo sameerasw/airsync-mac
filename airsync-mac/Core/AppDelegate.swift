@@ -6,6 +6,7 @@
 //
 import SwiftUI
 import Cocoa
+import Foundation
 
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -20,10 +21,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         WebSocketServer.shared.stop()
     }
 
-    func applicationDidFinishLaunching() {
+    func applicationDidFinishLaunching(_ notification: Foundation.Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
         // Dock icon visibility is now controlled by AppState.hideDockIcon
         AppState.shared.updateDockIconVisibility()
+        
+        // Register Services Provider
+        NSApp.servicesProvider = self
+        NSUpdateDynamicServices()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -33,10 +38,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc func openFileService(_ pboard: NSPasteboard, userData: String, error: NSErrorPointer) {
+    @objc func handleServices(_ pboard: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
         if let urls = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
             for url in urls {
-                print("[AppDelegate] Service opening file: \(url.path)")
+                print("[AppDelegate] Services menu received file: \(url.path)")
                 WebSocketServer.shared.sendFile(url: url)
             }
         }

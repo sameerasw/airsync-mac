@@ -668,8 +668,8 @@ class WebSocketServer: ObservableObject {
                 AppState.shared.postNativeNotification(
                     id: "transfer_verified_\(id)",
                     appName: "AirSync",
-                    title: "Transfer verified",
-                    body: verified ? "Receiver verified the file checksum" : "Receiver reported checksum mismatch"
+                    title: "Transfer complete",
+                    body: verified ? "File sent successfully" : "File might be incomplete"
                 )
             }
 

@@ -71,7 +71,7 @@
 				<string>Send via AirSync</string>
 			</dict>
 			<key>NSMessage</key>
-			<string>openFileService</string>
+			<string>handleServices</string>
 			<key>NSPortName</key>
 			<string>AirSync</string>
 			<key>NSSendFileTypes</key>
