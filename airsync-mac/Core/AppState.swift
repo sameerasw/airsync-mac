@@ -149,6 +149,7 @@ class AppState: ObservableObject {
         }
     }
     @Published var notifications: [Notification] = []
+    @Published var activeMacIp: String? = nil
     @Published var callEvents: [CallEvent] = []
     @Published var activeCall: CallEvent? = nil
     @Published var status: DeviceStatus? = nil
@@ -633,6 +634,7 @@ class AppState: ObservableObject {
 
             // Then locally reset state
             self.device = nil
+            self.activeMacIp = nil
             self.notifications.removeAll()
             self.status = nil
             self.currentDeviceWallpaperBase64 = nil
