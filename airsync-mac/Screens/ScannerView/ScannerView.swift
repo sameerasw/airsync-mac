@@ -228,8 +228,8 @@ struct ScannerView: View {
             generateQRAsync()
         }
         .onChange(of: udpDiscovery.discoveredDevices) { oldDevices, newDevices in
-            if newDevices.count > oldDevices.count {
-                // New device discovered, collapse QR if it's showing
+            if oldDevices.isEmpty && !newDevices.isEmpty {
+                // First device discovered, collapse QR if it's showing
                 if showQR {
                     withAnimation(.spring()) {
                         showQR = false

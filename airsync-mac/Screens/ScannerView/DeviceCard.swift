@@ -24,12 +24,8 @@ struct DeviceCard: View {
                     }
                     
                     if !device.isActive {
-                        Text("Recently seen")
-                            .font(.system(size: 8, weight: .medium))
+                        Image(systemName: "clock")
                             .foregroundColor(.secondary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(.ultraThinMaterial, in: .capsule)
                             .transition(.opacity.combined(with: .scale(scale: 0.9)))
                     }
                     
@@ -48,14 +44,14 @@ struct DeviceCard: View {
                     if isLastConnected && device.isActive {
                         Image(systemName: "clock.arrow.circlepath")
                             .font(.caption2)
-                            .foregroundColor(.orange)
+                            .foregroundColor(.accentColor)
                             .matchedGeometryEffect(id: "status-\(device.id)", in: namespace)
                     }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .glassBoxIfAvailable(radius: 20)
-                .tint(isLastConnected && device.isActive ? Color.accentColor.opacity(0.2) : Color.clear)
+                .tint(isLastConnected && device.isActive ? Color.accentColor.opacity(0.5) : Color.clear)
                 .opacity(device.isActive ? 1.0 : 0.7)
                 .grayscale(device.isActive ? 0 : 0.4)
             }
@@ -102,10 +98,10 @@ struct DeviceCard: View {
                         Text("Last connected")
                     }
                     .font(.caption2)
-                    .foregroundColor(.orange)
+                    .foregroundColor(.accentColor)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
-                    .background(Color.orange.opacity(0.1), in: .capsule)
+                    .background(Color.accentColor.opacity(0.2), in: .capsule)
                     .matchedGeometryEffect(id: "status-\(device.id)", in: namespace)
                 }
                 
