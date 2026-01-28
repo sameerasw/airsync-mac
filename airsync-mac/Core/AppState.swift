@@ -142,9 +142,9 @@ class AppState: ObservableObject {
 
             // Automatically switch to the appropriate tab when device connection state changes
             if device == nil {
-                selectedTab = .qr
-            } else {
-                selectedTab = .notifications
+                self.selectedTab = .qr
+            } else if oldValue == nil {
+                self.selectedTab = .notifications
             }
         }
     }
@@ -180,6 +180,7 @@ class AppState: ObservableObject {
 
     @Published var adbConnected: Bool = false
     @Published var adbConnecting: Bool = false
+    @Published var manualAdbConnectionPending: Bool = false
     @Published var currentDeviceWallpaperBase64: String? = nil
 
     // Audio player for ringtone

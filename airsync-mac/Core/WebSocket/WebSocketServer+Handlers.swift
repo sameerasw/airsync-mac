@@ -120,8 +120,9 @@ extension WebSocketServer {
                 AppState.shared.currentDeviceWallpaperBase64 = base64
             }
 
-            if (!AppState.shared.adbConnected && AppState.shared.adbEnabled && AppState.shared.isPlus) {
+            if (!AppState.shared.adbConnected && (AppState.shared.adbEnabled || AppState.shared.manualAdbConnectionPending) && AppState.shared.isPlus) {
                 ADBConnector.connectToADB(ip: ip)
+                AppState.shared.manualAdbConnectionPending = false
             }
 
             if UserDefaults.standard.hasPairedDeviceOnce == false {

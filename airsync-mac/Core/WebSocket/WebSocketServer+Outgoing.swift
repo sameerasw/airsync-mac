@@ -57,6 +57,10 @@ extension WebSocketServer {
         sendMessage(type: "disconnectRequest", data: [:])
     }
 
+    func sendRefreshAdbPortsRequest() {
+        sendMessage(type: "refreshAdbPorts", data: [:])
+    }
+
     func sendTransferCancel(id: String) {
         sendMessage(type: "fileTransferCancel", data: ["id": id])
     }
