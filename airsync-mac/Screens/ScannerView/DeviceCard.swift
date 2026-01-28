@@ -23,6 +23,15 @@ struct DeviceCard: View {
                             .matchedGeometryEffect(id: "name-\(device.id)", in: namespace)
                     }
                     
+                    if !device.isActive {
+                        Text("Recently seen")
+                            .font(.system(size: 8, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.ultraThinMaterial, in: .capsule)
+                    }
+                    
                     HStack(spacing: 4) {
                         if device.ips.contains(where: { !$0.hasPrefix("100.") }) {
                             Image(systemName: "wifi")
@@ -35,7 +44,7 @@ struct DeviceCard: View {
                     }
                     .foregroundColor(.secondary)
                     
-                    if isLastConnected {
+                    if isLastConnected && device.isActive {
                         Image(systemName: "clock.arrow.circlepath")
                             .font(.caption2)
                             .foregroundColor(.orange)
@@ -45,7 +54,9 @@ struct DeviceCard: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .glassBoxIfAvailable(radius: 20)
-                .tint(isLastConnected ? Color.accentColor.opacity(0.2) : Color.clear)
+                .tint(isLastConnected && device.isActive ? Color.accentColor.opacity(0.2) : Color.clear)
+                .opacity(device.isActive ? 1.0 : 0.7)
+                .grayscale(device.isActive ? 0 : 0.4)
             }
             .buttonStyle(.plain)
         } else {
@@ -84,7 +95,7 @@ struct DeviceCard: View {
 
                 }
                 
-                if isLastConnected {
+                if isLastConnected && device.isActive {
                     HStack(spacing: 4) {
                         Image(systemName: "clock.arrow.circlepath")
                         Text("Last connected")
@@ -92,22 +103,33 @@ struct DeviceCard: View {
                     .font(.caption2)
                     .foregroundColor(.orange)
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 2)
                     .background(Color.orange.opacity(0.1), in: .capsule)
                     .matchedGeometryEffect(id: "status-\(device.id)", in: namespace)
                 }
                 
+                Spacer()
+                
                 GlassButtonView(
                     label: "Connect",
                     systemImage: "bolt.circle.fill",
-                    primary: true,
+                    primary: device.isActive,
                     action: connectAction
                 )
                 .frame(maxWidth: .infinity)
+                
+                if !device.isActive {
+                    Text("Recently seen")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .padding(.top, 2)
+                }
             }
             .padding(16)
-            .frame(width: 220, height: 220)
+            .frame(width: 220, height: 240)
             .glassBoxIfAvailable(radius: 20)
+            .opacity(device.isActive ? 1.0 : 0.7)
+            .grayscale(device.isActive ? 0 : 0.4)
         }
     }
 }

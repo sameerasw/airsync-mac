@@ -170,49 +170,23 @@ struct ScannerView: View {
                         
                         // Device List
                          ScrollView {
-                            if showQR {
-                                // Compact Mode
-                                HStack(spacing: 10) {
-                                    ForEach(udpDiscovery.discoveredDevices) { device in
-                                        let lastConnected = quickConnectManager.getLastConnectedDevice()
-                                        DeviceCard(
-                                            device: device,
-                                            isLastConnected: lastConnected?.name == device.name && (lastConnected != nil && device.ips.contains(lastConnected!.ipAddress)),
-                                            isCompact: true,
-                                            connectAction: {
-                                                 quickConnectManager.connect(to: device)
-                                            },
-                                            namespace: animation
-                                        )
-                                        .transition(.asymmetric(
-                                            insertion: .scale(scale: 0.8).combined(with: .opacity),
-                                            removal: .scale(scale: 0.8).combined(with: .opacity)
-                                        ))
-                                    }
-                                }
-                                .padding(.horizontal, 4)
-                            } else {
-                                // Expanded Mode
-                                HStack(spacing: 12) {
-                                    ForEach(udpDiscovery.discoveredDevices) { device in
-                                        let lastConnected = quickConnectManager.getLastConnectedDevice()
-                                        DeviceCard(
-                                            device: device,
-                                            isLastConnected: lastConnected?.name == device.name && (lastConnected != nil && device.ips.contains(lastConnected!.ipAddress)),
-                                            isCompact: false,
-                                            connectAction: {
-                                                 quickConnectManager.connect(to: device)
-                                            },
-                                            namespace: animation
-                                        )
-                                        .transition(.asymmetric(
-                                            insertion: .scale(scale: 0.8).combined(with: .opacity),
-                                            removal: .scale(scale: 0.8).combined(with: .opacity)
-                                        ))
-                                    }
-                                }
-                                .padding(.bottom, 16)
-                            }
+                             HStack(spacing: showQR ? 10 : 12) {
+                                 ForEach(udpDiscovery.discoveredDevices) { device in
+                                     let lastConnected = quickConnectManager.getLastConnectedDevice()
+                                     DeviceCard(
+                                         device: device,
+                                         isLastConnected: lastConnected?.name == device.name && (lastConnected != nil && device.ips.contains(lastConnected!.ipAddress)),
+                                         isCompact: showQR,
+                                         connectAction: {
+                                              quickConnectManager.connect(to: device)
+                                         },
+                                         namespace: animation
+                                     )
+                                     .transition(.scale.combined(with: .opacity))
+                                 }
+                             }
+                            .padding(.horizontal, 4)
+                            .padding(.bottom, showQR ? 0 : 16)
                         }
                         .animation(.spring(response: 0.4, dampingFraction: 0.7), value: udpDiscovery.discoveredDevices)
                         .frame(maxWidth: .infinity)
@@ -331,8 +305,6 @@ func generateQRText(ip: String?, port: UInt16?, name: String?, key: String) -> S
     let encodedName = name?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "My Mac"
     return "airsync://\(ip):\(port)?name=\(encodedName)?plus=\(AppState.shared.isPlus)?key=\(key)"
 }
-
-
 
 #Preview {
     ScannerView()

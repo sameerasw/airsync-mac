@@ -11,7 +11,11 @@ struct DiscoveredDevice: Identifiable, Equatable, Hashable {
     var lastSeen: Date
     
     var id: String {
-        return deviceId // Device ID is the unique identifier now
+        return deviceId
+    }
+    
+    var isActive: Bool {
+        return Date().timeIntervalSince(lastSeen) < 8
     }
     
     static func == (lhs: DiscoveredDevice, rhs: DiscoveredDevice) -> Bool {
@@ -32,7 +36,6 @@ class UDPDiscoveryManager: ObservableObject {
     private var connection: NWConnection?
     private let queue = DispatchQueue(label: "com.airsync.discovery")
     private let broadcastPort: NWEndpoint.Port = 8889
-    private let discoveryTimer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
     private var cancellables = Set<AnyCancellable>()
     private var isListening = false
     
@@ -224,12 +227,21 @@ class UDPDiscoveryManager: ObservableObject {
         guard let data = message.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = json["type"] as? String,
-              type == "presence",
               let deviceType = json["deviceType"] as? String,
               deviceType == "android"
         else { return }
         
         let id = json["id"] as? String ?? UUID().uuidString
+        
+        if type == "bye" {
+            DispatchQueue.main.async {
+                self.discoveredDevices.removeAll { $0.deviceId == id }
+            }
+            return
+        }
+        
+        guard type == "presence" else { return }
+        
         let name = json["name"] as? String ?? "Unknown Android"
         let port = json["port"] as? Int ?? 0
         
@@ -294,7 +306,8 @@ class UDPDiscoveryManager: ObservableObject {
     }
     
     private func startPruning() {
-        Timer.publish(every: 10, on: .main, in: .common)
+        // More frequent pruning for better UI responsiveness
+        Timer.publish(every: 2, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
                 self?.pruneStaleDevices()
@@ -304,7 +317,12 @@ class UDPDiscoveryManager: ObservableObject {
     
     private func pruneStaleDevices() {
         let now = Date()
+        let oldDevices = discoveredDevices
         discoveredDevices.removeAll { now.timeIntervalSince($0.lastSeen) > 20 }
+        
+        if oldDevices != discoveredDevices || oldDevices.contains(where: { $0.isActive != (now.timeIntervalSince($0.lastSeen) < 8) }) {
+            objectWillChange.send()
+        }
     }
     
     // Helper to get a stable ID for this Mac
