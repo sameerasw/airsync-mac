@@ -184,13 +184,15 @@ struct ScannerView: View {
                                      .transition(.scale.combined(with: .opacity))
                                  }
                              }
-                            .padding(.horizontal, 4)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
                             .padding(.bottom, showQR ? 0 : 16)
                         }
+                        .scrollClipDisabled()
                         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: udpDiscovery.discoveredDevices)
                         .frame(maxWidth: .infinity)
-                        .frame(height: showQR ? 70 : nil)
-                        .frame(maxHeight: showQR ? 70 : 400)
+                        .frame(height: showQR ? 100 : nil)
+                        .frame(maxHeight: showQR ? 100 : 400)
                     }
                     .padding(.top, 8)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
