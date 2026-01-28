@@ -16,7 +16,6 @@ struct ScannerView: View {
     @StateObject private var udpDiscovery = UDPDiscoveryManager.shared
     @State private var qrImage: CGImage?
     @State private var showQR = true
-    @State private var hasInitialDiscovery = false
     @State private var copyStatus: String?
     @State private var hasValidIP: Bool = true
     @State private var showConfirmReset = false
@@ -188,7 +187,7 @@ struct ScannerView: View {
                             .padding(.horizontal, 4)
                             .padding(.bottom, showQR ? 0 : 16)
                         }
-                        .animation(.spring(response: 0.4, dampingFraction: 0.7), value: udpDiscovery.discoveredDevices)
+                        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: udpDiscovery.discoveredDevices)
                         .frame(maxWidth: .infinity)
                         .frame(height: showQR ? 70 : nil)
                         .frame(maxHeight: showQR ? 70 : 400)
@@ -228,14 +227,17 @@ struct ScannerView: View {
             // Device name changed, regenerate QR
             generateQRAsync()
         }
-        .onChange(of: udpDiscovery.discoveredDevices) { _, newDevices in
-            if !newDevices.isEmpty && !hasInitialDiscovery {
-                withAnimation {
-                    showQR = false
+        .onChange(of: udpDiscovery.discoveredDevices) { oldDevices, newDevices in
+            if newDevices.count > oldDevices.count {
+                // New device discovered, collapse QR if it's showing
+                if showQR {
+                    withAnimation(.spring()) {
+                        showQR = false
+                    }
                 }
-                hasInitialDiscovery = true
             } else if newDevices.isEmpty {
-                 withAnimation {
+                 // All devices gone, show QR
+                 withAnimation(.spring()) {
                     showQR = true
                  }
             }

@@ -1,6 +1,7 @@
 import Foundation
 import Network
 internal import Combine
+import SwiftUI
 
 struct DiscoveredDevice: Identifiable, Equatable, Hashable {
     let deviceId: String
@@ -15,7 +16,7 @@ struct DiscoveredDevice: Identifiable, Equatable, Hashable {
     }
     
     var isActive: Bool {
-        return Date().timeIntervalSince(lastSeen) < 8
+        return Date().timeIntervalSince(lastSeen) < 15
     }
     
     static func == (lhs: DiscoveredDevice, rhs: DiscoveredDevice) -> Bool {
@@ -258,23 +259,25 @@ class UDPDiscoveryManager: ObservableObject {
         guard !validIps.isEmpty else { return }
         
         DispatchQueue.main.async {
-            if let index = self.discoveredDevices.firstIndex(where: { $0.deviceId == id }) {
-                // Merge into existing device
-                var device = self.discoveredDevices[index]
-                device.ips.formUnion(validIps)
-                device.lastSeen = Date()
-                self.discoveredDevices[index] = device
-            } else {
-                // New device
-                let device = DiscoveredDevice(
-                    deviceId: id,
-                    name: name,
-                    ips: validIps,
-                    port: port,
-                    type: deviceType,
-                    lastSeen: Date()
-                )
-                self.discoveredDevices.append(device)
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                if let index = self.discoveredDevices.firstIndex(where: { $0.deviceId == id }) {
+                    // Merge into existing device
+                    var device = self.discoveredDevices[index]
+                    device.ips.formUnion(validIps)
+                    device.lastSeen = Date()
+                    self.discoveredDevices[index] = device
+                } else {
+                    // New device
+                    let device = DiscoveredDevice(
+                        deviceId: id,
+                        name: name,
+                        ips: validIps,
+                        port: port,
+                        type: deviceType,
+                        lastSeen: Date()
+                    )
+                    self.discoveredDevices.append(device)
+                }
             }
         }
     }
@@ -318,10 +321,15 @@ class UDPDiscoveryManager: ObservableObject {
     private func pruneStaleDevices() {
         let now = Date()
         let oldDevices = discoveredDevices
-        discoveredDevices.removeAll { now.timeIntervalSince($0.lastSeen) > 20 }
         
-        if oldDevices != discoveredDevices || oldDevices.contains(where: { $0.isActive != (now.timeIntervalSince($0.lastSeen) < 8) }) {
-            objectWillChange.send()
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.6)) {
+                self.discoveredDevices.removeAll { now.timeIntervalSince($0.lastSeen) > 30 }
+                
+                if oldDevices.contains(where: { $0.isActive != (now.timeIntervalSince($0.lastSeen) < 15) }) {
+                    self.objectWillChange.send()
+                }
+            }
         }
     }
     

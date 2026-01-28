@@ -30,6 +30,7 @@ struct DeviceCard: View {
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(.ultraThinMaterial, in: .capsule)
+                            .transition(.opacity.combined(with: .scale(scale: 0.9)))
                     }
                     
                     HStack(spacing: 4) {
@@ -95,7 +96,7 @@ struct DeviceCard: View {
 
                 }
                 
-                if isLastConnected && device.isActive {
+                if isLastConnected {
                     HStack(spacing: 4) {
                         Image(systemName: "clock.arrow.circlepath")
                         Text("Last connected")
@@ -123,6 +124,7 @@ struct DeviceCard: View {
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.secondary)
                         .padding(.top, 2)
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 }
             }
             .padding(16)
