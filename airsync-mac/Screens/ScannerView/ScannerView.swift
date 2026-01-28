@@ -184,6 +184,10 @@ struct ScannerView: View {
                                             },
                                             namespace: animation
                                         )
+                                        .transition(.asymmetric(
+                                            insertion: .scale(scale: 0.8).combined(with: .opacity),
+                                            removal: .scale(scale: 0.8).combined(with: .opacity)
+                                        ))
                                     }
                                 }
                                 .padding(.horizontal, 4)
@@ -201,11 +205,16 @@ struct ScannerView: View {
                                             },
                                             namespace: animation
                                         )
+                                        .transition(.asymmetric(
+                                            insertion: .scale(scale: 0.8).combined(with: .opacity),
+                                            removal: .scale(scale: 0.8).combined(with: .opacity)
+                                        ))
                                     }
                                 }
                                 .padding(.bottom, 16)
                             }
                         }
+                        .animation(.spring(response: 0.4, dampingFraction: 0.7), value: udpDiscovery.discoveredDevices)
                         .frame(maxWidth: .infinity)
                         .frame(height: showQR ? 70 : nil)
                         .frame(maxHeight: showQR ? 70 : 400)

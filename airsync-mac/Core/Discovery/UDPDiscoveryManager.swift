@@ -294,7 +294,7 @@ class UDPDiscoveryManager: ObservableObject {
     }
     
     private func startPruning() {
-        Timer.publish(every: 5, on: .main, in: .common)
+        Timer.publish(every: 10, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
                 self?.pruneStaleDevices()
@@ -304,7 +304,7 @@ class UDPDiscoveryManager: ObservableObject {
     
     private func pruneStaleDevices() {
         let now = Date()
-        discoveredDevices.removeAll { now.timeIntervalSince($0.lastSeen) > 10 }
+        discoveredDevices.removeAll { now.timeIntervalSince($0.lastSeen) > 20 }
     }
     
     // Helper to get a stable ID for this Mac
