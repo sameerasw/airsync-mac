@@ -162,7 +162,7 @@ struct DeviceCard: View {
         .onAppear {
             loadWallpaper()
         }
-        .onChange(of: device.id) { _ in
+        .onChange(of: device.id) { _, _ in
             loadWallpaper()
         }
     }

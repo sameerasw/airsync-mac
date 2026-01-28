@@ -116,10 +116,8 @@ class UDPDiscoveryManager: ObservableObject {
         connection.stateUpdateHandler = { state in
             switch state {
             case .ready:
-                connection.send(content: message.data(using: .utf8), completion: .contentProcessed({ error in
-                    if let error = error {
-                        // print("[UDP] Broadcast send error (from \(sourceIP)): \(error)")
-                    }
+                connection.send(content: message.data(using: .utf8), completion: .contentProcessed({ _ in
+                    // Error ignored for broadcast
                     connection.cancel()
                 }))
             case .failed(_):
