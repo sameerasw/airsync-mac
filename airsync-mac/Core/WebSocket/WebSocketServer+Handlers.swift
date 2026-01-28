@@ -118,6 +118,27 @@ extension WebSocketServer {
 
             if let base64 = dict["wallpaper"] as? String {
                 AppState.shared.currentDeviceWallpaperBase64 = base64
+                
+                // Save wallpaper to disk for DeviceCard
+                if let id = dict["id"] as? String,
+                   let data = Data(base64Encoded: base64, options: .ignoreUnknownCharacters) {
+                    DispatchQueue.global(qos: .background).async {
+                        do {
+                            let fileManager = FileManager.default
+                            if let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+                                let wallpaperDir = appSupport.appendingPathComponent("Wallpapers")
+                                if !fileManager.fileExists(atPath: wallpaperDir.path) {
+                                    try fileManager.createDirectory(at: wallpaperDir, withIntermediateDirectories: true)
+                                }
+                                let fileURL = wallpaperDir.appendingPathComponent("\(id).jpg")
+                                try data.write(to: fileURL)
+                                print("[websocket] Saved wallpaper for device \(id)")
+                            }
+                        } catch {
+                            print("[websocket] Failed to save wallpaper: \(error)")
+                        }
+                    }
+                }
             }
 
             if (!AppState.shared.adbConnected && (AppState.shared.adbEnabled || AppState.shared.manualAdbConnectionPending) && AppState.shared.isPlus) {

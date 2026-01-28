@@ -16,7 +16,7 @@ struct DiscoveredDevice: Identifiable, Equatable, Hashable {
     }
     
     var isActive: Bool {
-        return Date().timeIntervalSince(lastSeen) < 15
+        return Date().timeIntervalSince(lastSeen) < 14
     }
     
     static func == (lhs: DiscoveredDevice, rhs: DiscoveredDevice) -> Bool {
@@ -41,7 +41,7 @@ class UDPDiscoveryManager: ObservableObject {
     private var isListening = false
     
     private init() {
-        startPruning()
+        // Init logic only
     }
     
     // MARK: - Lifecycle
@@ -49,6 +49,7 @@ class UDPDiscoveryManager: ObservableObject {
     func start() {
         if !isListening {
             startListening()
+            startPruning()
             isListening = true
         }
     }
@@ -310,7 +311,7 @@ class UDPDiscoveryManager: ObservableObject {
     
     private func startPruning() {
         // More frequent pruning for better UI responsiveness
-        Timer.publish(every: 2, on: .main, in: .common)
+        Timer.publish(every: 2.0, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
                 self?.pruneStaleDevices()
@@ -324,9 +325,21 @@ class UDPDiscoveryManager: ObservableObject {
         
         DispatchQueue.main.async {
             withAnimation(.easeInOut(duration: 0.6)) {
-                self.discoveredDevices.removeAll { now.timeIntervalSince($0.lastSeen) > 30 }
+                let initialCount = self.discoveredDevices.count
+                self.discoveredDevices = self.discoveredDevices.filter { 
+                    now.timeIntervalSince($0.lastSeen) <= 20
+                }
                 
-                if oldDevices.contains(where: { $0.isActive != (now.timeIntervalSince($0.lastSeen) < 15) }) {
+                let newCount = self.discoveredDevices.count
+                if newCount < initialCount {
+                   // print("[Discovery] Pruned \(initialCount - newCount) devices. Remaining: \(newCount)")
+                }
+                
+                if self.discoveredDevices.contains(where: { device in 
+                    let wasActive = oldDevices.first(where: { $0.id == device.id })?.isActive ?? false
+                    let isActive = device.isActive
+                    return wasActive != isActive
+                }) {
                     self.objectWillChange.send()
                 }
             }
