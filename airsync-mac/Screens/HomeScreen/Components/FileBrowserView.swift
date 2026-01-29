@@ -37,6 +37,7 @@ struct FileBrowserView: View {
 
                     Menu {
                         Toggle("Show hidden files", isOn: $appState.showHiddenFiles)
+                        Toggle("Use ADB when possible", isOn: $appState.useADBWhenPossible)
                     } label: {
                         GlassButtonView(
                             label: "More",
@@ -124,7 +125,8 @@ struct FileBrowserView: View {
 struct FileBrowserItemRow: View {
     let item: FileBrowserItem
     let onNavigate: () -> Void
-    
+    @ObservedObject var appState = AppState.shared
+
     var body: some View {
         HStack {
             Image(systemName: item.isDir ? "folder.fill" : fileIcon(for: item.name))
@@ -149,14 +151,27 @@ struct FileBrowserItemRow: View {
             Spacer()
             
             if item.isDir {
+                if appState.useADBWhenPossible && appState.adbConnected {
+                    Button(action: {
+                        let cleanPath = appState.browsePath.hasSuffix("/") ? appState.browsePath : appState.browsePath + "/"
+                        let fullPath = cleanPath + item.name
+                        appState.pullFolder(path: fullPath)
+                    }) {
+                        Image(systemName: "square.and.arrow.down")
+                            .foregroundColor(.accentColor)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 4)
+                }
+
                 Image(systemName: "chevron.right")
                     .font(.caption)
                     .foregroundColor(.secondary)
             } else {
                 Button(action: {
-                    let cleanPath = AppState.shared.browsePath.hasSuffix("/") ? AppState.shared.browsePath : AppState.shared.browsePath + "/"
+                    let cleanPath = appState.browsePath.hasSuffix("/") ? appState.browsePath : appState.browsePath + "/"
                     let fullPath = cleanPath + item.name
-                    AppState.shared.pullFile(path: fullPath)
+                    appState.pullFile(path: fullPath)
                 }) {
                     Image(systemName: "square.and.arrow.down")
                         .foregroundColor(.accentColor)

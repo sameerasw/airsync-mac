@@ -17,20 +17,14 @@ class AppState: ObservableObject {
     private var clipboardCancellable: AnyCancellable?
     private var lastClipboardValue: String? = nil
     private var shouldSkipSave = false
-    private let licenseDetailsKey = "licenseDetails"
+    private static let licenseDetailsKey = "licenseDetails"
 
     @Published var isOS26: Bool = true
 
     init() {
         self.isPlus = UserDefaults.standard.bool(forKey: "isPlus")
 
-        // Load from UserDefaults
-        let name = UserDefaults.standard.string(forKey: "deviceName") ?? (Host.current().localizedName ?? "My Mac")
-        let portString = UserDefaults.standard.string(forKey: "devicePort") ?? String(Defaults.serverPort)
-        let port = Int(portString) ?? Int(Defaults.serverPort)
         let adbPortValue = UserDefaults.standard.integer(forKey: "adbPort")
-        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
-
         self.adbPort = adbPortValue == 0 ? 5555 : UInt16(adbPortValue)
         self.adbConnectedIP = UserDefaults.standard.string(forKey: "adbConnectedIP") ?? ""
         self.mirroringPlus = UserDefaults.standard.bool(forKey: "mirroringPlus")
@@ -41,46 +35,57 @@ class AppState: ObservableObject {
         self.fallbackToMdns = savedFallbackToMdns == nil ? true : UserDefaults.standard.bool(forKey: "fallbackToMdns")
 
         self.showMenubarText = UserDefaults.standard.bool(forKey: "showMenubarText")
-
-        // Default to true if not previously set
-        let showNameObj = UserDefaults.standard.object(forKey: "showMenubarDeviceName")
-        self.showMenubarDeviceName = showNameObj == nil
-            ? true
-            : UserDefaults.standard.bool(forKey: "showMenubarDeviceName")
+        self.showMenubarDeviceName = UserDefaults.standard.object(forKey: "showMenubarDeviceName") == nil ? true : UserDefaults.standard.bool(forKey: "showMenubarDeviceName")
 
         let savedMaxLength = UserDefaults.standard.integer(forKey: "menubarTextMaxLength")
         self.menubarTextMaxLength = savedMaxLength > 0 ? savedMaxLength : 30
 
         self.isClipboardSyncEnabled = UserDefaults.standard.bool(forKey: "isClipboardSyncEnabled")
-        self.windowOpacity = UserDefaults.standard
-            .double(forKey: "windowOpacity")
-        self.hideDockIcon = UserDefaults.standard
-            .bool(forKey: "hideDockIcon")
-        self.alwaysOpenWindow = UserDefaults.standard
-            .bool(forKey: "alwaysOpenWindow")
-        self.notificationSound = UserDefaults.standard
-            .string(forKey: "notificationSound") ?? "default"
-        self.dismissNotif = UserDefaults.standard
-            .bool(forKey: "dismissNotif")
+        self.windowOpacity = UserDefaults.standard.double(forKey: "windowOpacity")
+        self.hideDockIcon = UserDefaults.standard.bool(forKey: "hideDockIcon")
+        self.alwaysOpenWindow = UserDefaults.standard.bool(forKey: "alwaysOpenWindow")
+        self.notificationSound = UserDefaults.standard.string(forKey: "notificationSound") ?? "default"
+        self.dismissNotif = UserDefaults.standard.bool(forKey: "dismissNotif")
         
-        // File Share Dialog default true
-        let savedShowFileShareDialog = UserDefaults.standard.object(forKey: "showFileShareDialog")
-        self.showFileShareDialog = savedShowFileShareDialog == nil ? true : UserDefaults.standard.bool(forKey: "showFileShareDialog")
+        self.showFileShareDialog = UserDefaults.standard.object(forKey: "showFileShareDialog") == nil ? true : UserDefaults.standard.bool(forKey: "showFileShareDialog")
 
-        let savedNotificationMode = UserDefaults.standard
-            .string(forKey: "callNotificationMode") ?? CallNotificationMode.popup.rawValue
+        let savedNotificationMode = UserDefaults.standard.string(forKey: "callNotificationMode") ?? CallNotificationMode.popup.rawValue
         self.callNotificationMode = CallNotificationMode(rawValue: savedNotificationMode) ?? .popup
 
-        // Default to true for ring for calls
-        let savedRingForCalls = UserDefaults.standard.object(forKey: "ringForCalls")
-        self.ringForCalls = savedRingForCalls == nil ? true : UserDefaults.standard.bool(forKey: "ringForCalls")
-
-        // Default to true for backward compatibility - existing behavior should continue
-        let savedNowPlayingStatus = UserDefaults.standard.object(forKey: "sendNowPlayingStatus")
-        self.sendNowPlayingStatus = savedNowPlayingStatus == nil ? true : UserDefaults.standard.bool(forKey: "sendNowPlayingStatus")
-
-        // Auto-open links defaults to false
+        self.ringForCalls = UserDefaults.standard.object(forKey: "ringForCalls") == nil ? true : UserDefaults.standard.bool(forKey: "ringForCalls")
+        self.sendNowPlayingStatus = UserDefaults.standard.object(forKey: "sendNowPlayingStatus") == nil ? true : UserDefaults.standard.bool(forKey: "sendNowPlayingStatus")
         self.autoOpenLinks = UserDefaults.standard.bool(forKey: "autoOpenLinks")
+
+        var bRate = UserDefaults.standard.integer(forKey: "scrcpyBitrate")
+        if bRate == 0 { bRate = 4 }
+        self.scrcpyBitrate = bRate
+
+        var res = UserDefaults.standard.integer(forKey: "scrcpyResolution")
+        if res == 0 { res = 1200 }
+        self.scrcpyResolution = res
+
+        self.useADBWhenPossible = UserDefaults.standard.object(forKey: "useADBWhenPossible") == nil ? true : UserDefaults.standard.bool(forKey: "useADBWhenPossible")
+        self.isMusicCardHidden = UserDefaults.standard.bool(forKey: "isMusicCardHidden")
+
+        let savedAdapterName = UserDefaults.standard.string(forKey: "selectedNetworkAdapterName")
+        let validatedAdapter = AppState.validateAndGetNetworkAdapter(savedName: savedAdapterName)
+        self.selectedNetworkAdapterName = validatedAdapter
+        
+        let adapterIP = WebSocketServer.shared.getLocalIPAddress(adapterName: validatedAdapter) ?? "N/A"
+        let deviceName = UserDefaults.standard.string(forKey: "deviceName") ?? (Host.current().localizedName ?? "My Mac")
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
+        let portNumStr = UserDefaults.standard.string(forKey: "devicePort") ?? String(Defaults.serverPort)
+        let portNum = Int(portNumStr) ?? Int(Defaults.serverPort)
+
+        self.myDevice = Device(
+            name: deviceName,
+            ipAddress: adapterIP,
+            port: portNum,
+            version: appVersion,
+            adbPorts: []
+        )
+        
+        self.licenseDetails = AppState.loadLicenseDetailsFromUserDefaults()
 
         if isClipboardSyncEnabled {
             startClipboardMonitoring()
@@ -96,37 +101,8 @@ class AppState: ObservableObject {
         }
         #endif
 
-        self.scrcpyBitrate = UserDefaults.standard.integer(forKey: "scrcpyBitrate")
-        if self.scrcpyBitrate == 0 { self.scrcpyBitrate = 4 }
-
-        self.scrcpyResolution = UserDefaults.standard.integer(forKey: "scrcpyResolution")
-        if self.scrcpyResolution == 0 { self.scrcpyResolution = 1200 }
-
-    // Initialize persisted UI toggles
-    self.isMusicCardHidden = UserDefaults.standard.bool(forKey: "isMusicCardHidden")
-
-
-        // Load and validate saved network adapter
-        let savedAdapterName = UserDefaults.standard.string(forKey: "selectedNetworkAdapterName")
-        self.selectedNetworkAdapterName = validateAndGetNetworkAdapter(savedName: savedAdapterName)
-
-        self.myDevice = Device(
-            name: name,
-            ipAddress: WebSocketServer.shared
-                .getLocalIPAddress(
-                    adapterName: selectedNetworkAdapterName
-                ) ?? "N/A",
-            port: port,
-            version:appVersion,
-            adbPorts: []
-        )
-        self.licenseDetails = loadLicenseDetailsFromUserDefaults()
-
         loadAppsFromDisk()
         loadPinnedApps()
-        // QuickConnectManager handles its own initialization
-
-//        postNativeNotification(id: "test_notification", appName: "AirSync Beta", title: "Hi there! (っ◕‿◕)っ", body: "Welcome to and thanks for testing out the app. Please don't forget to report issues to mail@sameerasw.com or any other community you prefer. <3", appIcon: nil)
     }
 
     @Published var minAndroidVersion = Bundle.main.infoDictionary?["AndroidVersion"] as? String ?? "2.0.0"
@@ -323,6 +299,12 @@ class AppState: ObservableObject {
     @Published var sendNowPlayingStatus: Bool {
         didSet {
             UserDefaults.standard.set(sendNowPlayingStatus, forKey: "sendNowPlayingStatus")
+        }
+    }
+
+    @Published var useADBWhenPossible: Bool {
+        didSet {
+            UserDefaults.standard.set(useADBWhenPossible, forKey: "useADBWhenPossible")
         }
     }
 
@@ -668,7 +650,17 @@ class AppState: ObservableObject {
     }
 
     func pullFile(path: String) {
-        WebSocketServer.shared.sendPullRequest(path: path)
+        if useADBWhenPossible && adbConnected {
+            ADBConnector.pull(remotePath: path)
+        } else {
+            WebSocketServer.shared.sendPullRequest(path: path)
+        }
+    }
+
+    func pullFolder(path: String) {
+        if useADBWhenPossible && adbConnected {
+            ADBConnector.pull(remotePath: path)
+        }
     }
     
     func navigateUp() {
@@ -924,19 +916,19 @@ class AppState: ObservableObject {
 
     private func saveLicenseDetailsToUserDefaults() {
         guard let details = licenseDetails else {
-            UserDefaults.standard.removeObject(forKey: licenseDetailsKey)
+            UserDefaults.standard.removeObject(forKey: AppState.licenseDetailsKey)
             return
         }
 
         do {
             let data = try JSONEncoder().encode(details)
-            UserDefaults.standard.set(data, forKey: licenseDetailsKey)
+            UserDefaults.standard.set(data, forKey: AppState.licenseDetailsKey)
         } catch {
             print("[state] (license) Failed to encode license details: \(error)")
         }
     }
 
-    private func loadLicenseDetailsFromUserDefaults() -> LicenseDetails? {
+    private static func loadLicenseDetailsFromUserDefaults() -> LicenseDetails? {
         guard let data = UserDefaults.standard.data(forKey: licenseDetailsKey) else {
             return nil
         }
@@ -1041,7 +1033,7 @@ class AppState: ObservableObject {
     /// Revalidates the current network adapter selection and falls back to auto if no longer valid
     func revalidateNetworkAdapter() {
         let currentSelection = selectedNetworkAdapterName
-        let validated = validateAndGetNetworkAdapter(savedName: currentSelection)
+        let validated = AppState.validateAndGetNetworkAdapter(savedName: currentSelection)
 
         if currentSelection != validated {
             print("[state] Network adapter changed from '\(currentSelection ?? "auto")' to '\(validated ?? "auto")'")
@@ -1051,7 +1043,7 @@ class AppState: ObservableObject {
     }
 
     /// Validates a saved network adapter name and returns it if available with valid IP, otherwise returns nil (auto)
-    private func validateAndGetNetworkAdapter(savedName: String?) -> String? {
+    private static func validateAndGetNetworkAdapter(savedName: String?) -> String? {
         guard let savedName = savedName else {
             print("[state] No saved network adapter, using auto selection")
             return nil // Auto mode

@@ -565,6 +565,50 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
             }
         }
     }
+    static func pull(remotePath: String, completion: ((Bool) -> Void)? = nil) {
+        guard let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) else {
+            completion?(false)
+            return
+        }
+
+        DispatchQueue.main.async {
+            let panel = NSOpenPanel()
+            panel.canChooseFiles = false
+            panel.canChooseDirectories = true
+            panel.allowsMultipleSelection = false
+            panel.canCreateDirectories = true
+            panel.message = "Select destination for download"
+            panel.prompt = "Download"
+
+            panel.begin { response in
+                if response == .OK, let destinationURL = panel.url {
+                    let adbIP = AppState.shared.adbConnectedIP
+                    let adbPort = AppState.shared.adbPort
+                    let fullAddress = "\(adbIP):\(adbPort)"
+
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        let args = ["-s", fullAddress, "pull", remotePath, destinationURL.path]
+                        logBinaryDetection("Pulling: \(adbPath) \(args.joined(separator: " "))")
+                        
+                        runADBCommand(adbPath: adbPath, arguments: args) { output in
+                            logBinaryDetection("ADB Pull Output: \(output)")
+                            let success = !output.lowercased().contains("error") && !output.lowercased().contains("failed")
+                            
+                            DispatchQueue.main.async {
+                                if success {
+                                    // Open the destination folder in Finder
+                                    NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: destinationURL.path)
+                                }
+                                completion?(success)
+                            }
+                        }
+                    }
+                } else {
+                    completion?(false)
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Alert Helper
