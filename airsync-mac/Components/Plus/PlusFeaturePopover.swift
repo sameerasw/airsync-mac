@@ -9,6 +9,9 @@ import SwiftUI
 
 struct PlusFeaturePopover: View {
     var message: String = "Available with AirSync+"
+    @StateObject private var trialManager = TrialManager.shared
+    @ObservedObject var appState = AppState.shared
+    @State private var showTrialSheet = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -16,17 +19,31 @@ struct PlusFeaturePopover: View {
                 .font(.headline)
                 .padding(.bottom, 4)
 
-            HStack{
-                Spacer()
-                GlassButtonView(label: "See more", action: {
+            HStack {
+                GlassButtonView(label: "Get +", systemImage: "link", primary: true, action: {
                     if let url = URL(string: "https://store.sameerasw.com") {
                         NSWorkspace.shared.open(url)
                     }
                 })
-                Spacer()
+
+                if appState.licenseDetails == nil && !trialManager.isTrialActive {
+                    GlassButtonView(label: "Try for free", systemImage: "play.circle", action: {
+                        trialManager.clearError()
+                        showTrialSheet = true
+                    })
+                    .disabled(trialManager.isPerformingRequest || !trialManager.hasSecretConfigured)
+                }
             }
         }
         .padding()
-        .frame(width: 250)
+        .frame(width: 280)
+        .sheet(isPresented: $showTrialSheet) {
+            TrialActivationSheet(
+                manager: trialManager,
+                onActivated: {
+                    showTrialSheet = false
+                }
+            )
+        }
     }
 }
