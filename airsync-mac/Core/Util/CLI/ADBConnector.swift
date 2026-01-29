@@ -609,6 +609,31 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
             }
         }
     }
+
+    static func push(localPath: String, remotePath: String, completion: ((Bool) -> Void)? = nil) {
+        guard let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) else {
+            completion?(false)
+            return
+        }
+
+        let adbIP = AppState.shared.adbConnectedIP
+        let adbPort = AppState.shared.adbPort
+        let fullAddress = "\(adbIP):\(adbPort)"
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let args = ["-s", fullAddress, "push", localPath, remotePath]
+            logBinaryDetection("Pushing: \(adbPath) \(args.joined(separator: " "))")
+            
+            runADBCommand(adbPath: adbPath, arguments: args) { output in
+                logBinaryDetection("ADB Push Output: \(output)")
+                let success = !output.lowercased().contains("error") && !output.lowercased().contains("failed")
+                
+                DispatchQueue.main.async {
+                    completion?(success)
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Alert Helper

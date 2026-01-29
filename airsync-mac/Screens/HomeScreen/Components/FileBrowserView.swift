@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct FileBrowserView: View {
     @ObservedObject var appState = AppState.shared
@@ -113,6 +114,10 @@ struct FileBrowserView: View {
                     .scrollContentBackground(.hidden)
                     .background(.clear)
                     .listStyle(.sidebar)
+                    .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                        handleDrop(providers: providers, targetPath: appState.browsePath)
+                        return true
+                    }
                 }
             }
         }
@@ -120,12 +125,25 @@ struct FileBrowserView: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .shadow(radius: 20)
     }
+
+    private func handleDrop(providers: [NSItemProvider], targetPath: String) {
+        for provider in providers {
+            _ = provider.loadObject(ofClass: URL.self) { url, error in
+                if let url = url {
+                    DispatchQueue.main.async {
+                        appState.pushItem(at: url, to: targetPath)
+                    }
+                }
+            }
+        }
+    }
 }
 
 struct FileBrowserItemRow: View {
     let item: FileBrowserItem
     let onNavigate: () -> Void
     @ObservedObject var appState = AppState.shared
+    @State private var isTargeted = false
 
     var body: some View {
         HStack {
@@ -180,6 +198,9 @@ struct FileBrowserItemRow: View {
             }
         }
         .padding(.vertical, 4)
+        .padding(.horizontal, 8)
+        .background(isTargeted && item.isDir ? Color.accentColor.opacity(0.15) : Color.clear)
+        .cornerRadius(8)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
             onNavigate()
@@ -189,6 +210,23 @@ struct FileBrowserItemRow: View {
             if item.isDir {
                 onNavigate()
             }
+        }
+        .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
+            guard item.isDir else { return false }
+            
+            let cleanPath = appState.browsePath.hasSuffix("/") ? appState.browsePath : appState.browsePath + "/"
+            let targetPath = cleanPath + item.name + "/"
+            
+            for provider in providers {
+                _ = provider.loadObject(ofClass: URL.self) { url, error in
+                    if let url = url {
+                        DispatchQueue.main.async {
+                            appState.pushItem(at: url, to: targetPath)
+                        }
+                    }
+                }
+            }
+            return true
         }
         .listRowSeparator(.hidden)
     }

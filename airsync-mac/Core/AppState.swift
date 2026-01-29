@@ -662,6 +662,25 @@ class AppState: ObservableObject {
             ADBConnector.pull(remotePath: path)
         }
     }
+
+    func pushItem(at url: URL, to remotePath: String) {
+        let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+        
+        if useADBWhenPossible && adbConnected {
+            ADBConnector.push(localPath: url.path, remotePath: remotePath) { success in
+                if success {
+                    // Refresh current directory
+                    self.fetchDirectory(path: self.browsePath)
+                }
+            }
+        } else {
+            if isDirectory {
+                print("[state] Network transfer does not support folders.")
+            } else {
+                WebSocketServer.shared.sendFile(url: url)
+            }
+        }
+    }
     
     func navigateUp() {
         // Prevent going above /sdcard/
