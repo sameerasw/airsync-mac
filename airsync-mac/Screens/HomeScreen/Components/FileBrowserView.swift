@@ -168,12 +168,16 @@ struct FileBrowserItemRow: View {
             
             Spacer()
             
-            if item.isDir {
+            let fullItemPath = (appState.browsePath.hasSuffix("/") ? appState.browsePath : appState.browsePath + "/") + item.name
+            let isItemADBTransferring = appState.isADBTransferring && appState.adbTransferringFilePath == fullItemPath
+            
+            if isItemADBTransferring {
+                ProgressView()
+                    .controlSize(.small)
+            } else if item.isDir {
                 if appState.useADBWhenPossible && appState.adbConnected {
                     Button(action: {
-                        let cleanPath = appState.browsePath.hasSuffix("/") ? appState.browsePath : appState.browsePath + "/"
-                        let fullPath = cleanPath + item.name
-                        appState.pullFolder(path: fullPath)
+                        appState.pullFolder(path: fullItemPath)
                     }) {
                         Image(systemName: "square.and.arrow.down")
                             .foregroundColor(.accentColor)
@@ -187,9 +191,7 @@ struct FileBrowserItemRow: View {
                     .foregroundColor(.secondary)
             } else {
                 Button(action: {
-                    let cleanPath = appState.browsePath.hasSuffix("/") ? appState.browsePath : appState.browsePath + "/"
-                    let fullPath = cleanPath + item.name
-                    appState.pullFile(path: fullPath)
+                    appState.pullFile(path: fullItemPath)
                 }) {
                     Image(systemName: "square.and.arrow.down")
                         .foregroundColor(.accentColor)

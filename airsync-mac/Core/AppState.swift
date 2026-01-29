@@ -331,6 +331,11 @@ class AppState: ObservableObject {
     @Published var browseItems: [FileBrowserItem] = []
     @Published var isBrowsingLoading: Bool = false
     @Published var browseError: String? = nil
+    
+    // ADB Transfer Progress
+    @Published var isADBTransferring: Bool = false
+    @Published var adbTransferringFilePath: String? = nil
+
     @Published var showHiddenFiles: Bool = false {
         didSet {
             // refresh current directory when hidden files toggle changes
