@@ -706,20 +706,23 @@ class AppState: ObservableObject {
             withAnimation {
                 self.notifications.insert(notif, at: 0)
             }
-            // Trigger native macOS notification
-            var appIcon: NSImage? = nil
-            if let iconPath = self.androidApps[notif.package]?.iconUrl {
-                appIcon = NSImage(contentsOfFile: iconPath)
+            // Trigger native macOS notification if not silent
+            // Default to alerting if priority is missing (backwards compatibility)
+            if notif.priority != "silent" {
+                var appIcon: NSImage? = nil
+                if let iconPath = self.androidApps[notif.package]?.iconUrl {
+                    appIcon = NSImage(contentsOfFile: iconPath)
+                }
+                self.postNativeNotification(
+                    id: notif.nid,
+                    appName: notif.app,
+                    title: notif.title,
+                    body: notif.body,
+                    appIcon: appIcon,
+                    package: notif.package,
+                    actions: notif.actions
+                )
             }
-            self.postNativeNotification(
-                id: notif.nid,
-                appName: notif.app,
-                title: notif.title,
-                body: notif.body,
-                appIcon: appIcon,
-                package: notif.package,
-                actions: notif.actions
-            )
         }
     }
 
@@ -838,8 +841,9 @@ class AppState: ObservableObject {
             let systemNIDs = Set(systemNotifs.map { $0.request.identifier })
 
             DispatchQueue.main.async {
-                let currentNIDs = Set(self.notifications.map { $0.nid })
-                let removedNIDs = currentNIDs.subtracting(systemNIDs)
+                // Only sync notifications that were actually posted to system (non-silent)
+                let currentSystemNIDs = Set(self.notifications.filter { $0.priority != "silent" }.map { $0.nid })
+                let removedNIDs = currentSystemNIDs.subtracting(systemNIDs)
 
                 for nid in removedNIDs {
                     print("[state] (notification) System notification \(nid) was dismissed manually.")
