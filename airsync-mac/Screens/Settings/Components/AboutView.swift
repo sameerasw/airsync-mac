@@ -17,7 +17,9 @@ struct AboutView: View {
 
             VStack {
                 ScrollView {
-                    VStack(spacing: 16) {
+                    VStack(spacing: 12) {
+                        Spacer()
+
                         Text("About AirSync")
                             .font(.title2)
                             .bold()
@@ -29,7 +31,7 @@ struct AboutView: View {
                             .resizable()
                             .aspectRatio(contentMode: .fill)
                             .frame(width: 100, height: 100)
-                            .clipShape(Circle())
+                            .clipShape(RoundedRectangle(cornerRadius: 20))
                             .padding()
 
                         Text("Developed by Sameera Wijerathna")
@@ -39,9 +41,11 @@ struct AboutView: View {
                             .font(.callout)
                             .multilineTextAlignment(.center)
 
-                        Text("AirSync helps you achieving Apple continuity features of mac with Android. This is the macOS client which handles the server. It will utilize a websocket for connectivity between the Android device(s) in the local network.")
+                        Text("AirSync - The forbidden continuity for your Android and mac to work together seamlessly. Keep your phone aside, focus on your work with less distractions.\n\nApps use a secure, encrypted connection to ensure your data stays safe. By default, your connection is limited to your local network, but it can easily be expanded to your private Tailscale or similar secure private network. \n\nMade by a developer who was bored and decided the best way to learn Swift was to build the one app he wished already existed.")
                             .multilineTextAlignment(.leading)
                             .padding(.horizontal)
+
+                        Spacer()
 
                         HStack{
 
@@ -87,9 +91,8 @@ struct AboutView: View {
                             )
                         }
 
-                        Divider()
-
                         LicenseView()
+                            .padding()
 
                     }
                     .padding()

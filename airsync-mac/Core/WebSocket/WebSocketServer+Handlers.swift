@@ -686,6 +686,7 @@ extension WebSocketServer {
         let categoryType = categoryTypeRaw.isEmpty ? "Mac" : categoryTypeRaw
         let exactDeviceName = exactDeviceNameRaw.isEmpty ? categoryType : exactDeviceNameRaw
         let isPlusSubscription = AppState.shared.isPlus
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
         let savedAppPackages = Array(AppState.shared.androidApps.keys)
 
         let macInfo = MacInfo(
@@ -693,6 +694,7 @@ extension WebSocketServer {
             categoryType: categoryType,
             exactDeviceName: exactDeviceName,
             isPlusSubscription: isPlusSubscription,
+            version: appVersion,
             savedAppPackages: savedAppPackages
         )
 

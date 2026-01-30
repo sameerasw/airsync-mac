@@ -37,7 +37,6 @@ struct PlusUnlockedSheet: View {
                             featureRow(icon: "desktopcomputer", title: "Wireless Desktop Mode", description: "Use the phone in a familiar way, with full desktop controls")
                             featureRow(icon: "phone", title: "Call controls", description: "Accept, decline, or end calls directly from your Mac")
                             featureRow(icon: "folder", title: "File Browser", description: "Browse and manage files on your Android device from your Mac")
-                            featureRow(icon: "app.grid", title: "Custom App Icons", description: "Match your device, Make it personal")
                     }
                     .listStyle(.sidebar)
                     .scrollContentBackground(.hidden)

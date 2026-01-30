@@ -33,331 +33,338 @@ struct SettingsFeaturesView: View {
     @State var isExpanded = false
 
     var body: some View {
-        VStack{
-            ZStack{
-                HStack {
-                    Label("Auto connect ADB", systemImage: "bolt.horizontal.circle")
-                    Spacer()
-
-                    if appState.adbConnected {
-                        GlassButtonView(
-                            label: "Disconnect ADB",
-                            systemImage: "stop.circle",
-                            action: {
-                                ADBConnector.disconnectADB()
-                                appState.adbConnected = false
-                            }
-                        )
-
-                    } else {
-                        GlassButtonView(
-                            label: appState.adbConnecting ? "Connecting..." : "Connect ADB",
-                            systemImage: appState.adbConnecting ? "hourglass" : "play.circle",
-                            action: {
-                                if !appState.adbConnecting {
-                                    appState.adbConnectionResult = "" // Clear console
-                                    appState.manualAdbConnectionPending = true
-                                    WebSocketServer.shared.sendRefreshAdbPortsRequest()
-                                    appState.adbConnectionResult = "Refreshing latest ADB ports from device..."
-                                }
-                            }
-                        )
-                        .disabled(
-                            appState.device == nil || appState.adbConnecting || !AppState.shared.isPlus
-                        )
-                    }
-
-
-                    ZStack {
-                        Toggle(
-                            "",
-                            isOn: $appState.adbEnabled
-                        )
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                        .disabled(!AppState.shared.isPlus && AppState.shared.licenseCheck)
-
-                    }
-                    .frame(width: 55)
-
-                }
-
-                // Transparent tap area on top to show popover even if disabled
-                if !AppState.shared.isPlus && AppState.shared.licenseCheck {
-                    HStack{
+        VStack(spacing: 16) {
+            // Wireless ADB
+            VStack {
+                ZStack{
+                    HStack {
+                        Label("Auto connect ADB", systemImage: "bolt.horizontal.circle")
                         Spacer()
-                        Rectangle()
-                            .fill(Color.clear)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                showingPlusPopover = true
-                            }
-                            .frame(width: 500)
+
+                        if appState.adbConnected {
+                            GlassButtonView(
+                                label: "Disconnect ADB",
+                                systemImage: "stop.circle",
+                                action: {
+                                    ADBConnector.disconnectADB()
+                                    appState.adbConnected = false
+                                }
+                            )
+
+                        } else {
+                            GlassButtonView(
+                                label: appState.adbConnecting ? "Connecting..." : "Connect ADB",
+                                systemImage: appState.adbConnecting ? "hourglass" : "play.circle",
+                                action: {
+                                    if !appState.adbConnecting {
+                                        appState.adbConnectionResult = "" // Clear console
+                                        appState.manualAdbConnectionPending = true
+                                        WebSocketServer.shared.sendRefreshAdbPortsRequest()
+                                        appState.adbConnectionResult = "Refreshing latest ADB ports from device..."
+                                    }
+                                }
+                            )
+                            .disabled(
+                                appState.device == nil || appState.adbConnecting || !AppState.shared.isPlus
+                            )
+                        }
+
+
+                        ZStack {
+                            Toggle(
+                                "",
+                                isOn: $appState.adbEnabled
+                            )
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .disabled(!AppState.shared.isPlus && AppState.shared.licenseCheck)
+
+                        }
+                        .frame(width: 55)
+
+                    }
+
+                    if !AppState.shared.isPlus && AppState.shared.licenseCheck {
+                        HStack{
+                            Spacer()
+                            Rectangle()
+                                .fill(Color.clear)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    showingPlusPopover = true
+                                }
+                                .frame(width: 500)
+                        }
                     }
                 }
-            }
-            .popover(isPresented: $showingPlusPopover, arrowEdge: .bottom) {
-                PlusFeaturePopover(message: "Wireless ADB features are available in AirSync+")
-                    .onTapGesture {
-                        showingPlusPopover = false
-                    }
-            }
-
-
-            if let result = appState.adbConnectionResult {
-                VStack(alignment: .leading, spacing: 6) {
-                    ExpandableLicenseSection(title: "ADB Console", content: "[" + (UserDefaults.standard.lastADBCommand ?? "[]") + "] " + result)
+                .popover(isPresented: $showingPlusPopover, arrowEdge: .bottom) {
+                    PlusFeaturePopover(message: "Wireless ADB features are available in AirSync+")
+                        .onTapGesture {
+                            showingPlusPopover = false
+                        }
                 }
-                .transition(.opacity)
-            }
 
-            HStack {
-                Label("Suppress failed messages", systemImage: "bell.slash")
-                Spacer()
-                Toggle("", isOn: $appState.suppressAdbFailureAlerts)
-                    .toggleStyle(.switch)
-            }
 
-            // Show port field if ADB toggle is on
-            if appState.isPlus, (appState.adbEnabled || appState.adbConnected){
+                if let result = appState.adbConnectionResult {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ExpandableLicenseSection(title: "ADB Console", content: "[" + (UserDefaults.standard.lastADBCommand ?? "[]") + "] " + result)
+                    }
+                    .transition(.opacity)
+                }
 
-                Spacer()
-
-                HStack{
-                    Label("App Mirroring", systemImage: "apps.iphone.badge.plus")
+                HStack {
+                    Label("Suppress failed messages", systemImage: "bell.slash")
                     Spacer()
-                    Toggle("", isOn: $appState.mirroringPlus)
+                    Toggle("", isOn: $appState.suppressAdbFailureAlerts)
                         .toggleStyle(.switch)
                 }
 
+                // Show port field if ADB toggle is on
+                if appState.isPlus, (appState.adbEnabled || appState.adbConnected){
 
-                VStack{
-                    DisclosureGroup(isExpanded: $isExpanded) {
-                        VStack(spacing: 10){
-                            Spacer()
+                    Spacer()
 
-                            HStack {
-                                Text("Video bitrate")
+                    HStack{
+                        Label("App Mirroring", systemImage: "apps.iphone.badge.plus")
+                        Spacer()
+                        Toggle("", isOn: $appState.mirroringPlus)
+                            .toggleStyle(.switch)
+                    }
+
+
+                    VStack{
+                        DisclosureGroup(isExpanded: $isExpanded) {
+                            VStack(spacing: 10){
                                 Spacer()
 
-                                Slider(
-                                    value: $tempBitrate,
-                                    in: 1...12,
-                                    step: 1,
-                                    onEditingChanged: { editing in
-                                        if !editing {
-                                            AppState.shared.scrcpyBitrate = Int(tempBitrate)
+                                HStack {
+                                    Text("Video bitrate")
+                                    Spacer()
+
+                                    Slider(
+                                        value: $tempBitrate,
+                                        in: 1...12,
+                                        step: 1,
+                                        onEditingChanged: { editing in
+                                            if !editing {
+                                                AppState.shared.scrcpyBitrate = Int(tempBitrate)
+                                            }
+                                            isDragging = editing
                                         }
-                                        isDragging = editing
-                                    }
-                                )
-                                .focusable(false)
-                                .frame(maxWidth: 150)
+                                    )
+                                    .focusable(false)
+                                    .frame(maxWidth: 150)
 
-                                Text("\(AppState.shared.scrcpyBitrate) Mbps")
-                                    .monospacedDigit()
-                                    .foregroundColor(isDragging ? .accentColor : .secondary)
-                                    .frame(width: 60, alignment: .leading)
-                            }
-
-                            HStack {
-                                Text("Max size")
-                                Spacer()
-
-                                Slider(
-                                    value: $tempResolution,
-                                    in: 800...2600,
-                                    step: 200,
-                                    onEditingChanged: { editing in
-                                        if !editing {
-                                            AppState.shared.scrcpyResolution = Int(
-                                                tempResolution
-                                            )
-                                        }
-                                        isDragging = editing
-                                    }
-                                )
-                                .focusable(false)
-                                .frame(maxWidth: 150)
-
-                                Text("\(AppState.shared.scrcpyResolution)")
-                                    .monospacedDigit()
-                                    .foregroundColor(isDragging ? .accentColor : .secondary)
-                                    .frame(width: 60, alignment: .leading)
-                            }
-
-                            SettingsToggleView(name: "Stay on top", icon: "inset.filled.toptrailing.rectangle.portrait", isOn: $scrcpyOnTop)
-
-                            SettingsToggleView(name: "Stay awake (charging)", icon: "cup.and.heat.waves", isOn: $stayAwake)
-
-                            SettingsToggleView(name: "Blank display", icon: "iphone.gen3.slash", isOn: $turnScreenOff)
-
-                            SettingsToggleView(name: "No audio", icon: "speaker.slash", isOn: $noAudio)
-
-                            SettingsToggleView(name: "Continue app after closing", icon: "arrow.turn.up.forward.iphone", isOn: $continueApp)
-
-                            SettingsToggleView(name: "Direct keyboard input", icon: "keyboard.chevron.compact.down", isOn: $directKeyInput)
-
-                            SettingsToggleView(name: "Apps & Desktop mode shared resolution", icon: "ipad.sizes", isOn: $scrcpyShareRes)
-
-                            HStack {
-                                Text(UserDefaults.standard.scrcpyShareRes ? "Desktop and App mirroring" :"Desktop mode")
-                                Spacer()
-
-                                Picker("", selection: Binding(
-                                    get: { UserDefaults.standard.scrcpyDesktopMode },
-                                    set: { UserDefaults.standard.scrcpyDesktopMode = $0 }
-                                )) {
-                                    Text("2560x1440").tag("2560x1440")
-                                    Text("2560x1600").tag("2560x1600")
-                                    Text("2000x1800").tag("2000x1800")
+                                    Text("\(AppState.shared.scrcpyBitrate) Mbps")
+                                        .monospacedDigit()
+                                        .foregroundColor(isDragging ? .accentColor : .secondary)
+                                        .frame(width: 60, alignment: .leading)
                                 }
-                                .pickerStyle(MenuPickerStyle())
+
+                                HStack {
+                                    Text("Max size")
+                                    Spacer()
+
+                                    Slider(
+                                        value: $tempResolution,
+                                        in: 800...2600,
+                                        step: 200,
+                                        onEditingChanged: { editing in
+                                            if !editing {
+                                                AppState.shared.scrcpyResolution = Int(
+                                                    tempResolution
+                                                )
+                                            }
+                                            isDragging = editing
+                                        }
+                                    )
+                                    .focusable(false)
+                                    .frame(maxWidth: 150)
+
+                                    Text("\(AppState.shared.scrcpyResolution)")
+                                        .monospacedDigit()
+                                        .foregroundColor(isDragging ? .accentColor : .secondary)
+                                        .frame(width: 60, alignment: .leading)
+                                }
+
+                                SettingsToggleView(name: "Stay on top", icon: "inset.filled.toptrailing.rectangle.portrait", isOn: $scrcpyOnTop)
+
+                                SettingsToggleView(name: "Stay awake (charging)", icon: "cup.and.heat.waves", isOn: $stayAwake)
+
+                                SettingsToggleView(name: "Blank display", icon: "iphone.gen3.slash", isOn: $turnScreenOff)
+
+                                SettingsToggleView(name: "No audio", icon: "speaker.slash", isOn: $noAudio)
+
+                                SettingsToggleView(name: "Continue app after closing", icon: "arrow.turn.up.forward.iphone", isOn: $continueApp)
+
+                                SettingsToggleView(name: "Direct keyboard input", icon: "keyboard.chevron.compact.down", isOn: $directKeyInput)
+
+                                SettingsToggleView(name: "Apps & Desktop mode shared resolution", icon: "ipad.sizes", isOn: $scrcpyShareRes)
+
+                                HStack {
+                                    Text(UserDefaults.standard.scrcpyShareRes ? "Desktop and App mirroring" :"Desktop mode")
+                                    Spacer()
+
+                                    Picker("", selection: Binding(
+                                        get: { UserDefaults.standard.scrcpyDesktopMode },
+                                        set: { UserDefaults.standard.scrcpyDesktopMode = $0 }
+                                    )) {
+                                        Text("2560x1440").tag("2560x1440")
+                                        Text("2560x1600").tag("2560x1600")
+                                        Text("2000x1800").tag("2000x1800")
+                                    }
+                                    .pickerStyle(MenuPickerStyle())
+                                }
+
+                                HStack{
+                                    Text("Manual launch position (x,y)")
+                                    Spacer()
+
+                                    TextField("x", text: $xCoords)
+                                        .textFieldStyle(.roundedBorder)
+                                        .onChange(of: xCoords) { oldValue, newValue in
+                                            xCoords = newValue.filter { "0123456789".contains($0) }
+                                        }
+                                        .disabled(
+                                            !manualPosition
+                                        )
+
+                                    TextField("y", text: $yCoords)
+                                        .textFieldStyle(.roundedBorder)
+                                        .onChange(of: yCoords) { oldValue, newValue in
+                                            yCoords = newValue.filter { "0123456789".contains($0) }
+                                        }
+                                        .disabled(
+                                            !manualPosition
+                                        )
+
+                                    GlassButtonView(
+                                        label: "Set",
+                                        action: {
+                                            UserDefaults.standard.manualPositionCoords = [xCoords, yCoords]
+                                        }
+                                    )
+                                    .disabled(
+                                        xCoords.isEmpty || yCoords.isEmpty || !manualPosition
+                                    )
+
+                                    Toggle("", isOn: $manualPosition)
+                                        .toggleStyle(.switch)
+                                }
                             }
+                        } label: {
+                            Label("Mirroring Settings", systemImage: "gear")
+                                .font(.subheadline)
+                                .bold()
+                        }
+                        .onAppear {
+                            tempBitrate = Double(AppState.shared.scrcpyBitrate)
+                            tempResolution = Double(AppState.shared.scrcpyResolution)
+                        }
+                        .focusEffectDisabled()
 
-                            HStack{
-                                Text("Manual launch position (x,y)")
-                                Spacer()
+                    }
+                }
 
-                                TextField("x", text: $xCoords)
-                                    .textFieldStyle(.roundedBorder)
-                                    .onChange(of: xCoords) { oldValue, newValue in
-                                        xCoords = newValue.filter { "0123456789".contains($0) }
-                                    }
-                                    .disabled(
-                                        !manualPosition
-                                    )
+            }
+            .padding()
+            .background(.background.opacity(0.3))
+            .cornerRadius(12.0)
+            .onAppear{
+                xCoords = UserDefaults.standard.manualPositionCoords[0]
+                yCoords = UserDefaults.standard.manualPositionCoords[1]
+            }
 
-                                TextField("y", text: $yCoords)
-                                    .textFieldStyle(.roundedBorder)
-                                    .onChange(of: yCoords) { oldValue, newValue in
-                                        yCoords = newValue.filter { "0123456789".contains($0) }
-                                    }
-                                    .disabled(
-                                        !manualPosition
-                                    )
+            // Clipboard Sync
+            VStack{
+                SettingsToggleView(name: "Sync clipboard", icon: "clipboard", isOn: $appState.isClipboardSyncEnabled)
 
-                                GlassButtonView(
-                                    label: "Set",
-                                    action: {
-                                        UserDefaults.standard.manualPositionCoords = [xCoords, yCoords]
-                                    }
-                                )
-                                .disabled(
-                                    xCoords.isEmpty || yCoords.isEmpty || !manualPosition
-                                )
+                HStack {
+                    Label("Auto-open shared links", systemImage: "link")
+                    Spacer()
+                    Toggle("", isOn: $appState.autoOpenLinks)
+                        .toggleStyle(.switch)
+                        .disabled(!appState.isClipboardSyncEnabled)
+                }
+                .opacity(appState.isClipboardSyncEnabled ? 1.0 : 0.5)
+            }
+            .padding()
+            .background(.background.opacity(0.3))
+            .cornerRadius(12.0)
 
-                                Toggle("", isOn: $manualPosition)
-                                    .toggleStyle(.switch)
+            // Notifications
+            VStack{
+                SettingsToggleView(name: "Sync notification dismissals", icon: "bell.badge", isOn: $appState.dismissNotif)
+
+                HStack {
+                    Label("System Notifications", systemImage: "bell.badge")
+
+                    Spacer()
+
+                    if notificationsGranted {
+                        // Show sound picker when notifications are enabled
+                        Picker("", selection: $appState.notificationSound) {
+                            Text("Default").tag("default")
+                            ForEach(SystemSounds.availableSounds, id: \.self) { sound in
+                                Text(sound).tag(sound)
                             }
                         }
-                    } label: {
-                        Label("Mirroring Settings", systemImage: "gear")
-                            .font(.subheadline)
-                            .bold()
-                    }
-                    .onAppear {
-                        tempBitrate = Double(AppState.shared.scrcpyBitrate)
-                        tempResolution = Double(AppState.shared.scrcpyResolution)
-                    }
-                    .focusEffectDisabled()
+                        .pickerStyle(MenuPickerStyle())
+                        .frame(minWidth: 100)
 
+                        Button(action: {
+                            SystemSounds.playSound(appState.notificationSound)
+                        }) {
+                            Image(systemName: "play.circle")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Test notification sound")
+                    } else {
+                        // Show enable button when notifications are not granted
+                        GlassButtonView(
+                            label: "Grant Permission",
+                            systemImage: "bell.badge",
+                            primary: true,
+                            action: {
+                                openNotificationSettings()
+                            }
+                        )
+                    }
                 }
+
+                SettingsToggleView(name: "Send now playing status", icon: "play.circle", isOn: $appState.sendNowPlayingStatus)
+            }
+            .padding()
+            .background(.background.opacity(0.3))
+            .cornerRadius(12.0)
+            .onAppear{
+                checkNotificationPermissions()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                checkNotificationPermissions()
             }
 
-        }
-        .padding()
-        .onAppear{
-            xCoords = UserDefaults.standard.manualPositionCoords[0]
-            yCoords = UserDefaults.standard.manualPositionCoords[1]
-        }
+            // Call Alerts
+            VStack{
+                HStack {
+                    Label("Call Alert", systemImage: "phone")
+                    Spacer()
 
-
-        VStack{
-
-            SettingsToggleView(name: "Sync clipboard", icon: "clipboard", isOn: $appState.isClipboardSyncEnabled)
-
-            HStack {
-                Label("Auto-open shared links", systemImage: "link")
-                Spacer()
-                Toggle("", isOn: $appState.autoOpenLinks)
-                    .toggleStyle(.switch)
-                    .disabled(!appState.isClipboardSyncEnabled)
-            }
-            .opacity(appState.isClipboardSyncEnabled ? 1.0 : 0.5)
-        }
-        .padding()
-
-        VStack{
-
-            SettingsToggleView(name: "Sync notification dismissals", icon: "bell.badge", isOn: $appState.dismissNotif)
-
-            HStack {
-                Label("System Notifications", systemImage: "bell.badge")
-
-                Spacer()
-
-                if notificationsGranted {
-                    // Show sound picker when notifications are enabled
-                    Picker("", selection: $appState.notificationSound) {
-                        Text("Default").tag("default")
-                        ForEach(SystemSounds.availableSounds, id: \.self) { sound in
-                            Text(sound).tag(sound)
+                    Picker("", selection: $appState.callNotificationMode) {
+                        ForEach(CallNotificationMode.allCases, id: \.self) { mode in
+                            Text(mode.displayName).tag(mode)
                         }
                     }
                     .pickerStyle(MenuPickerStyle())
-                    .frame(minWidth: 100)
-
-                    Button(action: {
-                        SystemSounds.playSound(appState.notificationSound)
-                    }) {
-                        Image(systemName: "play.circle")
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Test notification sound")
-                } else {
-                    // Show enable button when notifications are not granted
-                    GlassButtonView(
-                        label: "Grant Permission",
-                        systemImage: "bell.badge",
-                        primary: true,
-                        action: {
-                            openNotificationSettings()
-                        }
-                    )
+                    .frame(minWidth: 120)
                 }
+
+                SettingsToggleView(name: "Ring for calls", icon: "speaker.wave.3", isOn: $appState.ringForCalls)
             }
-
-            SettingsToggleView(name: "Send now playing status", icon: "play.circle", isOn: $appState.sendNowPlayingStatus)
+            .padding()
+            .background(.background.opacity(0.3))
+            .cornerRadius(12.0)
         }
-        .padding()
-        .onAppear{
-            checkNotificationPermissions()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            // Refresh notification permissions when app becomes active
-            // This helps update the UI when user returns from System Preferences
-            checkNotificationPermissions()
-        }
-
-        VStack{
-
-            HStack {
-                Label("Call Alert", systemImage: "phone")
-                Spacer()
-
-                Picker("", selection: $appState.callNotificationMode) {
-                    ForEach(CallNotificationMode.allCases, id: \.self) { mode in
-                        Text(mode.displayName).tag(mode)
-                    }
-                }
-                .pickerStyle(MenuPickerStyle())
-                .frame(minWidth: 120)
-            }
-
-            SettingsToggleView(name: "Ring for calls", icon: "speaker.wave.3", isOn: $appState.ringForCalls)
-        }
-        .padding()
     }
 
     // MARK: - Notification Permission Helpers

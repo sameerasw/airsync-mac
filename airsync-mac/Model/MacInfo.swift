@@ -12,5 +12,6 @@ struct MacInfo: Codable {
     let categoryType: String
     let exactDeviceName: String
     let isPlusSubscription: Bool
+    let version: String
     let savedAppPackages: [String]
 }
