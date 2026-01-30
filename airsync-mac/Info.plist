@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>AndroidVersion</key>
-	<string>2.4.0</string>
+	<string>2.5.0</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -40,7 +40,12 @@
 		</dict>
 	</dict>
 	<key>ForceUpdateKey</key>
-	<string>003</string>
+	<string>004</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>NSAppleScriptEnabled</key>
 	<true/>
 	<key>NSServices</key>
@@ -80,10 +85,5 @@
 	<string>$(TRIAL_SECRET)</string>
 	<key>UpdateFeedURL</key>
 	<string>https://sameerasw.github.io/airsync-mac/releases/latest</string>
-    <key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSAllowsArbitraryLoads</key>
-        <true/>
-    </dict>
 </dict>
 </plist>
