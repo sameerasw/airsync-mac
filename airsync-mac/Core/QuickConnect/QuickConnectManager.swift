@@ -59,6 +59,28 @@ class QuickConnectManager: ObservableObject {
         print("[quick-connect] Cleared last connected device for network \(currentMacIP)")
     }
     
+    /// Attempts to wake up and reconnect to a specific discovered device
+    func connect(to discoveredDevice: DiscoveredDevice) {
+        // Pick best IP: prefer local (non-100.x) over VPN
+        let bestIP = discoveredDevice.ips.first(where: { !$0.hasPrefix("100.") }) ?? discoveredDevice.ips.first ?? ""
+        
+        // Convert DiscoveredDevice to Device model
+        let device = Device(
+            name: discoveredDevice.name,
+            ipAddress: bestIP,
+            port: discoveredDevice.port,
+            version: "Unknown",
+            adbPorts: []
+        )
+        
+        saveLastConnectedDevice(device)
+        
+        print("[quick-connect] Initiating connection to discovered device: \(device.name) at \(device.ipAddress)")
+        Task {
+            await sendWakeUpRequest(to: device)
+        }
+    }
+
     /// Attempts to wake up and reconnect to the last connected device
     func wakeUpLastConnectedDevice() {
         guard let lastDevice = getLastConnectedDevice() else {
@@ -112,7 +134,7 @@ class QuickConnectManager: ObservableObject {
     
     private func sendWakeUpRequest(to device: Device) async {
         // Get current connection info to send in wake-up request
-        guard let currentIP = getCurrentMacIP(),
+        guard let currentIP = getBestLocalIP(for: device.ipAddress),
               let currentPort = getCurrentMacPort() else {
             print("[quick-connect] Cannot wake up device - no current connection info available")
             return
@@ -135,6 +157,42 @@ class QuickConnectManager: ObservableObject {
         
         // Try to send HTTP POST request to the Android device
         await sendHTTPWakeUpRequest(to: device, message: wakeUpMessage)
+    }
+    
+    /// Selects the best local IP to present to the target device
+    /// Prioritizes IPs that match the target's subnet/prefix (e.g. Tailscale 100.x)
+    private func getBestLocalIP(for targetIP: String) -> String? {
+        let adapters = WebSocketServer.shared.getAvailableNetworkAdapters()
+        let allIPs = adapters.map { $0.address }
+        
+        // 1. If user manually selected an adapter, MUST use that
+        if let selected = AppState.shared.selectedNetworkAdapterName {
+            if let match = adapters.first(where: { $0.name == selected }) {
+                return match.address
+            }
+        }
+        
+        // 2. If valid target IP, try to match prefix
+        if !targetIP.isEmpty {
+            // Check for Tailscale (100.x)
+            if targetIP.hasPrefix("100.") {
+                if let tailscaleIP = allIPs.first(where: { $0.hasPrefix("100.") }) {
+                    return tailscaleIP
+                }
+            }
+            
+            // Check for other common prefixes (subnet match)
+            let parts = targetIP.split(separator: ".")
+            if let firstOctet = parts.first {
+                let prefix = "\(firstOctet)."
+                if let match = allIPs.first(where: { $0.hasPrefix(prefix) }) {
+                    return match
+                }
+            }
+        }
+        
+        // 3. Fallback: Use the first available IP 
+        return allIPs.first
     }
     
     private func sendHTTPWakeUpRequest(to device: Device, message: String) async {

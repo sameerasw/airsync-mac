@@ -9,6 +9,8 @@ import SwiftUI
 
 struct ScreenView: View {
     @ObservedObject var appState = AppState.shared
+    @State private var showingPlusPopover = false
+
     var body: some View {
         VStack{
             ConnectionStateView()
@@ -53,7 +55,11 @@ struct ScreenView: View {
                         systemImage: "folder",
                         iconOnly: true,
                         action: {
-                            appState.openFileBrowser()
+                            if appState.isPlus && appState.licenseCheck {
+                                appState.openFileBrowser()
+                            } else {
+                                showingPlusPopover = true
+                            }
                         }
                     )
                     .transition(.identity)
@@ -61,6 +67,9 @@ struct ScreenView: View {
                         "b",
                         modifiers: .command
                     )
+                    .popover(isPresented: $showingPlusPopover, arrowEdge: .bottom) {
+                        PlusFeaturePopover(message: "Browse files with AirSync+")
+                    }
 
 
                     if appState.adbConnected{

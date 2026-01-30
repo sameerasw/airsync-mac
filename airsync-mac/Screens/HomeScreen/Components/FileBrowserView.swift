@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct FileBrowserView: View {
     @ObservedObject var appState = AppState.shared
@@ -37,6 +38,7 @@ struct FileBrowserView: View {
 
                     Menu {
                         Toggle("Show hidden files", isOn: $appState.showHiddenFiles)
+                        Toggle("Use ADB when possible", isOn: $appState.useADBWhenPossible)
                     } label: {
                         GlassButtonView(
                             label: "More",
@@ -112,6 +114,10 @@ struct FileBrowserView: View {
                     .scrollContentBackground(.hidden)
                     .background(.clear)
                     .listStyle(.sidebar)
+                    .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                        handleDrop(providers: providers, targetPath: appState.browsePath)
+                        return true
+                    }
                 }
             }
         }
@@ -119,12 +125,26 @@ struct FileBrowserView: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .shadow(radius: 20)
     }
+
+    private func handleDrop(providers: [NSItemProvider], targetPath: String) {
+        for provider in providers {
+            _ = provider.loadObject(ofClass: URL.self) { url, error in
+                if let url = url {
+                    DispatchQueue.main.async {
+                        appState.pushItem(at: url, to: targetPath)
+                    }
+                }
+            }
+        }
+    }
 }
 
 struct FileBrowserItemRow: View {
     let item: FileBrowserItem
     let onNavigate: () -> Void
-    
+    @ObservedObject var appState = AppState.shared
+    @State private var isTargeted = false
+
     var body: some View {
         HStack {
             Image(systemName: item.isDir ? "folder.fill" : fileIcon(for: item.name))
@@ -148,15 +168,30 @@ struct FileBrowserItemRow: View {
             
             Spacer()
             
-            if item.isDir {
+            let fullItemPath = (appState.browsePath.hasSuffix("/") ? appState.browsePath : appState.browsePath + "/") + item.name
+            let isItemADBTransferring = appState.isADBTransferring && appState.adbTransferringFilePath == fullItemPath
+            
+            if isItemADBTransferring {
+                ProgressView()
+                    .controlSize(.small)
+            } else if item.isDir {
+                if appState.useADBWhenPossible && appState.adbConnected {
+                    Button(action: {
+                        appState.pullFolder(path: fullItemPath)
+                    }) {
+                        Image(systemName: "square.and.arrow.down")
+                            .foregroundColor(.accentColor)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 4)
+                }
+
                 Image(systemName: "chevron.right")
                     .font(.caption)
                     .foregroundColor(.secondary)
             } else {
                 Button(action: {
-                    let cleanPath = AppState.shared.browsePath.hasSuffix("/") ? AppState.shared.browsePath : AppState.shared.browsePath + "/"
-                    let fullPath = cleanPath + item.name
-                    AppState.shared.pullFile(path: fullPath)
+                    appState.pullFile(path: fullItemPath)
                 }) {
                     Image(systemName: "square.and.arrow.down")
                         .foregroundColor(.accentColor)
@@ -165,6 +200,9 @@ struct FileBrowserItemRow: View {
             }
         }
         .padding(.vertical, 4)
+        .padding(.horizontal, 8)
+        .background(isTargeted && item.isDir ? Color.accentColor.opacity(0.15) : Color.clear)
+        .cornerRadius(8)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
             onNavigate()
@@ -174,6 +212,23 @@ struct FileBrowserItemRow: View {
             if item.isDir {
                 onNavigate()
             }
+        }
+        .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
+            guard item.isDir else { return false }
+            
+            let cleanPath = appState.browsePath.hasSuffix("/") ? appState.browsePath : appState.browsePath + "/"
+            let targetPath = cleanPath + item.name + "/"
+            
+            for provider in providers {
+                _ = provider.loadObject(ofClass: URL.self) { url, error in
+                    if let url = url {
+                        DispatchQueue.main.async {
+                            appState.pushItem(at: url, to: targetPath)
+                        }
+                    }
+                }
+            }
+            return true
         }
         .listRowSeparator(.hidden)
     }

@@ -11,6 +11,7 @@ struct NotificationView: View {
     @ObservedObject var appState = AppState.shared
     @AppStorage("notificationStacks") private var notificationStacks = true
     @State private var expandedPackages: Set<String> = []
+    @State private var isSilentExpanded: Bool = false
 
     @ViewBuilder
     var body: some View {
@@ -38,21 +39,55 @@ struct NotificationView: View {
 
     // MARK: - Flat List
     private var flatList: some View {
-        List(appState.notifications.prefix(20), id: \.id) { notif in
-            notificationRow(for: notif)
-                .onTapGesture {
-                    if appState.device != nil && appState.adbConnected &&
-                        notif.package != "" &&
-                        notif.package != "com.sameerasw.airsync" &&
-                        appState.mirroringPlus {
-                        ADBConnector.startScrcpy(
-                            ip: appState.device?.ipAddress ?? "",
-                            port: appState.adbPort,
-                            deviceName: appState.device?.name ?? "My Phone",
-                            package: notif.package
-                        )
+        List {
+            let alertingNotifs = appState.notifications.prefix(20).filter { $0.priority != "silent" }
+            let silentNotifs = appState.notifications.prefix(20).filter { $0.priority == "silent" }
+
+            // Alerting Notifications
+            ForEach(alertingNotifs) { notif in
+                notificationRowWithTap(for: notif)
+            }
+
+            // Silent Notifications (Mimics App Stack)
+            if !silentNotifs.isEmpty {
+                Section {
+                    let visibleSilentNotifs: [Notification] = {
+                        if isSilentExpanded {
+                            return Array(silentNotifs)
+                        } else {
+                            return silentNotifs.first.map { [$0] } ?? []
+                        }
+                    }()
+                    
+                    ForEach(visibleSilentNotifs) { notif in
+                        notificationRowWithTap(for: notif)
                     }
+                    
+                    if silentNotifs.count > 1 {
+                        Button {
+                            withAnimation(.spring) {
+                                isSilentExpanded.toggle()
+                            }
+                        } label: {
+                            Label(
+                                isSilentExpanded ? "Show Less" : "Show \(silentNotifs.count - 1) More",
+                                systemImage: isSilentExpanded ? "chevron.up" : "chevron.down"
+                            )
+                            .font(.caption)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                } header: {
+                    HStack {
+                        Image(systemName: "bell.slash.fill")
+                            .font(.caption)
+                        Text("Silent Notifications")
+                    }
+                    .font(.caption.bold())
+                    .foregroundColor(.secondary)
+                    .padding(4)
                 }
+            }
         }
         .scrollContentBackground(.hidden)
         .background(.clear)
@@ -77,20 +112,7 @@ struct NotificationView: View {
                     }()
 
                     ForEach(visibleNotifs) { notif in
-                        notificationRow(for: notif)
-                            .onTapGesture {
-                                if appState.device != nil && appState.adbConnected &&
-                                    notif.package != "" &&
-                                    notif.package != "com.sameerasw.airsync" &&
-                                    appState.mirroringPlus {
-                                    ADBConnector.startScrcpy(
-                                        ip: appState.device?.ipAddress ?? "",
-                                        port: appState.adbPort,
-                                        deviceName: appState.device?.name ?? "My Phone",
-                                        package: notif.package
-                                    )
-                                }
-                            }
+                        notificationRowWithTap(for: notif)
                     }
 
                     if packageNotifs.count > 1 {
@@ -137,6 +159,28 @@ struct NotificationView: View {
             hideNotification: { appState.hideNotification(notif) }
         )
         .applyGlassViewIfAvailable()
+    }
+
+    @ViewBuilder
+    private func notificationRowWithTap(for notif: Notification) -> some View {
+        notificationRow(for: notif)
+            .onTapGesture {
+                handleNotificationTap(notif)
+            }
+    }
+
+    private func handleNotificationTap(_ notif: Notification) {
+        if appState.device != nil && appState.adbConnected &&
+           notif.package != "" &&
+           notif.package != "com.sameerasw.airsync" &&
+           appState.mirroringPlus {
+            ADBConnector.startScrcpy(
+                ip: appState.device?.ipAddress ?? "",
+                port: appState.adbPort,
+                deviceName: appState.device?.name ?? "My Phone",
+                package: notif.package
+            )
+        }
     }
 }
 

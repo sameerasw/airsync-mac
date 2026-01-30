@@ -55,13 +55,15 @@ struct SettingsFeaturesView: View {
                             systemImage: appState.adbConnecting ? "hourglass" : "play.circle",
                             action: {
                                 if !appState.adbConnecting {
-                                    let ip = appState.device?.ipAddress ?? ""
-                                    ADBConnector.connectToADB(ip: ip)
+                                    appState.adbConnectionResult = "" // Clear console
+                                    appState.manualAdbConnectionPending = true
+                                    WebSocketServer.shared.sendRefreshAdbPortsRequest()
+                                    appState.adbConnectionResult = "Refreshing latest ADB ports from device..."
                                 }
                             }
                         )
                         .disabled(
-                            appState.device == nil || (appState.device?.adbPorts.isEmpty ?? true) || appState.adbConnecting || !AppState.shared.isPlus
+                            appState.device == nil || appState.adbConnecting || !AppState.shared.isPlus
                         )
                     }
 

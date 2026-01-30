@@ -312,12 +312,30 @@ struct ConnectionInfoText: View {
     var label: String
     var icon: String
     var text: String
+    var activeIp: String? = nil
 
     var body: some View {
         HStack{
             Label(label, systemImage: icon)
             Spacer()
-            Text(text)
+            
+            if label == "IP Address" {
+                let ips = text.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+                HStack(spacing: 6) {
+                    ForEach(ips, id: \.self) { ip in
+                        let isActive = (activeIp != nil && ip == activeIp)
+                        Text(ip)
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(isActive ? Color.accentColor : Color.secondary.opacity(0.1))
+                            .foregroundColor(isActive ? .white : .primary)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+            } else {
+                Text(text)
+            }
         }
         .padding(1)
     }

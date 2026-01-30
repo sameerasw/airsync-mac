@@ -13,10 +13,13 @@ import CryptoKit
 struct ScannerView: View {
     @ObservedObject var appState = AppState.shared
     @StateObject private var quickConnectManager = QuickConnectManager.shared
+    @StateObject private var udpDiscovery = UDPDiscoveryManager.shared
     @State private var qrImage: CGImage?
+    @State private var showQR = true
     @State private var copyStatus: String?
     @State private var hasValidIP: Bool = true
     @State private var showConfirmReset = false
+    @Namespace private var animation
 
     private func statusInfo(for status: WebSocketStatus) -> (text: String, icon: String, color: Color) {
         switch status {
@@ -51,140 +54,157 @@ struct ScannerView: View {
                 }
                 .frame(width: 250, height: 250)
                 .padding()
-            } else if let qrImage = qrImage {
-                HStack{
-                    Text("Scan to connect")
-                        .font(.title)
-                        .padding()
-
-                    if !UIStyle.pretendOlderOS, #available(macOS 26.0, *) {
-                        Label {
-                            Text(info.text)
-                                .foregroundColor(info.color)
-                        } icon: {
-                            Image(systemName: info.icon)
-                                .foregroundColor(info.color)
-                        }
-                        .padding(10)
-                        .background(.clear)
-                        .glassEffect(in: .rect(cornerRadius: 20))
-                    } else {
-                        Label {
-                            Text(info.text)
-                                .foregroundColor(info.color)
-                        } icon: {
-                            Image(systemName: info.icon)
-                                .foregroundColor(info.color)
-                        }
-                        .padding(10)
-                        .background(.thinMaterial, in: .rect(cornerRadius: 20))
-                    }
-                }
-                .padding(.bottom, 8)
-
-                Image(decorative: qrImage, scale: 1.0)
-                    .resizable()
-                    .interpolation(.none)
-                    .frame(width: 250, height: 250)
-                    .accessibilityLabel("QR Code")
-                    .shadow(radius: 20)
-                    .padding()
-                    .background(.black.opacity(0.6), in: .rect(cornerRadius: 30))
             } else {
-                ProgressView("Generating QR…")
-                    .frame(width: 100, height: 100)
-            }
+                
+                // --- QR Code & Encryption Key Section ---
+                if showQR {
+                    VStack {
+                        if let qrImage = qrImage {
+                            HStack{
+                                Text("Scan to connect")
+                                    .font(.title3)
+                                    .padding()
 
-            // --- Copy Key Button ---
-            if hasValidIP,
-               let key = WebSocketServer.shared.getSymmetricKeyBase64(),
-               !key.isEmpty {
-                HStack {
-                    GlassButtonView(
-                        label: "Copy Key",
-                        systemImage: "key",
-                        action: {
-                            copyToClipboard(key)
-                        }
-                    )
+                                    Label {
+                                        Text(info.text)
+                                            .foregroundColor(info.color)
+                                    } icon: {
+                                        Image(systemName: info.icon)
+                                            .foregroundColor(info.color)
+                                    }
+                                    .padding(6)
+                                    .glassBoxIfAvailable(radius: 20)
 
-                    GlassButtonView(
-                        label: "Re-generate key",
-                        systemImage: "repeat.badge.xmark",
-                        iconOnly: true,
-                        action: {
-                            showConfirmReset = true
-                        }
-                    )
-                }
-                .padding(.top, 8)
-
-                // Confirmation popup
-                .confirmationDialog(
-                    "Are you sure you want to reset the key? You will have to re-auth all the devices.",
-                    isPresented: $showConfirmReset
-                ) {
-                    Button("Reset key", role: .destructive) {
-                        WebSocketServer.shared.resetSymmetricKey()
-                        generateQRAsync()
-                    }
-                    Button("Cancel", role: .cancel) { }
-                }
-
-                if let status = copyStatus {
-                    Text(status)
-                        .font(.caption)
-                        .foregroundColor(.green)
-                        .transition(.opacity)
-                }
-            }
-
-            Spacer()
-
-            // --- Quick Connect Button ---
-            if let lastDevice = quickConnectManager.getLastConnectedDevice() {
-                VStack(spacing: 8) {
-                    Text("Last connected device:")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(lastDevice.name)
-                                .font(.system(size: 14, weight: .medium))
-                            Text("\(lastDevice.ipAddress)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.trailing, 16)
-
-                        GlassButtonView(
-                            label: "Reconnect",
-                            systemImage: "bolt.circle",
-                            action: {
-                                quickConnectManager.wakeUpLastConnectedDevice()
                             }
-                        )
+                            .padding(.bottom, 4)
 
-                        GlassButtonView(
-                            label: "Clear",
-                            systemImage: "xmark.circle",
-                            iconOnly: true,
-                            action: {
-                                quickConnectManager.clearLastConnectedDevice()
+                            Image(decorative: qrImage, scale: 1.0)
+                                .resizable()
+                                .interpolation(.none)
+                                .frame(width: 240, height: 240)
+                                .accessibilityLabel("QR Code")
+                                .shadow(radius: 20)
+                                .padding()
+                                .background(.black.opacity(0.6), in: .rect(cornerRadius: 30))
+                        } else {
+                            ProgressView("Generating QR…")
+                                .frame(width: 100, height: 100)
+                        }
+
+                        // Copy Key Button
+                        if let key = WebSocketServer.shared.getSymmetricKeyBase64(), !key.isEmpty {
+                            HStack {
+                                GlassButtonView(
+                                    label: "Copy Key",
+                                    systemImage: "key",
+                                    action: {
+                                        copyToClipboard(key)
+                                    }
+                                )
+
+                                GlassButtonView(
+                                    label: "Re-generate key",
+                                    systemImage: "repeat.badge.xmark",
+                                    iconOnly: true,
+                                    action: {
+                                        showConfirmReset = true
+                                    }
+                                )
                             }
-                        )
+                            .padding(.top, 8)
+                            .confirmationDialog(
+                                "Are you sure you want to reset the key? You will have to re-auth all the devices.",
+                                isPresented: $showConfirmReset
+                            ) {
+                                Button("Reset key", role: .destructive) {
+                                    WebSocketServer.shared.resetSymmetricKey()
+                                    generateQRAsync()
+                                }
+                                Button("Cancel", role: .cancel) { }
+                            }
+
+                            if let status = copyStatus {
+                                Text(status)
+                                    .font(.caption)
+                                    .foregroundColor(.green)
+                                    .transition(.opacity)
+                            }
+                        }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(.thinMaterial, in: .rect(cornerRadius: 16))
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                } else {
+                     Spacer()
                 }
-                .padding(.top, 12)
-            }
+
                 Spacer()
+
+                // --- Nearby Devices (UDP Discovery) ---
+                if !udpDiscovery.discoveredDevices.isEmpty {
+                     VStack(spacing: 12) {
+                        // Toggle Button
+                        HStack {
+                            Spacer()
+                            GlassButtonView(
+                                label: showQR ? "Hide QR Code" : "Show QR Code",
+                                systemImage: showQR ? "chevron.up" : "chevron.down",
+                                action: {
+                                    withAnimation(.spring()) {
+                                        showQR.toggle()
+                                    }
+                                }
+                            )
+                            Spacer()
+                        }
+                        .padding(.horizontal, 16)
+
+                        // Title
+                        HStack {
+                            Spacer()
+                            Text("Available Devices")
+                                .font(.headline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 16)
+                        
+                        // Device List
+                         ScrollView {
+                             HStack(spacing: showQR ? 10 : 12) {
+                                 ForEach(udpDiscovery.discoveredDevices) { device in
+                                     let lastConnected = quickConnectManager.getLastConnectedDevice()
+                                     DeviceCard(
+                                         device: device,
+                                         isLastConnected: lastConnected?.name == device.name && (lastConnected != nil && device.ips.contains(lastConnected!.ipAddress)),
+                                         isCompact: showQR,
+                                         connectAction: {
+                                              quickConnectManager.connect(to: device)
+                                         },
+                                         namespace: animation
+                                     )
+                                     .transition(.scale.combined(with: .opacity))
+                                 }
+                             }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .padding(.bottom, showQR ? 0 : 16)
+                        }
+                        .scrollClipDisabled()
+                        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: udpDiscovery.discoveredDevices)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: showQR ? 100 : nil)
+                        .frame(maxHeight: showQR ? 100 : 400)
+                    }
+                    .padding(.top, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
         }
         .onAppear {
             generateQRAsync()
+            udpDiscovery.start()
+        }
+        .onDisappear {
+            udpDiscovery.stop()
         }
         .onTapGesture {
             generateQRAsync()
@@ -208,6 +228,21 @@ struct ScannerView: View {
         .onChange(of: appState.myDevice?.name) { _, _ in
             // Device name changed, regenerate QR
             generateQRAsync()
+        }
+        .onChange(of: udpDiscovery.discoveredDevices) { oldDevices, newDevices in
+            if oldDevices.isEmpty && !newDevices.isEmpty {
+                // First device discovered, collapse QR if it's showing
+                if showQR {
+                    withAnimation(.spring()) {
+                        showQR = false
+                    }
+                }
+            } else if newDevices.isEmpty {
+                 // All devices gone, show QR
+                 withAnimation(.spring()) {
+                    showQR = true
+                 }
+            }
         }
 
     }
@@ -274,8 +309,6 @@ func generateQRText(ip: String?, port: UInt16?, name: String?, key: String) -> S
     let encodedName = name?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "My Mac"
     return "airsync://\(ip):\(port)?name=\(encodedName)?plus=\(AppState.shared.isPlus)?key=\(key)"
 }
-
-
 
 #Preview {
     ScannerView()

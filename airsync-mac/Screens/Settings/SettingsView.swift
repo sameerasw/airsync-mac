@@ -58,7 +58,8 @@ struct SettingsView: View {
                         ConnectionInfoText(
                             label: "IP Address",
                             icon: "wifi",
-                            text: currentIPAddress
+                            text: currentIPAddress,
+                            activeIp: appState.activeMacIp
                         )
 
                         HStack {
@@ -106,9 +107,6 @@ struct SettingsView: View {
                         .cornerRadius(12.0)
 
                     Spacer(minLength: 32)
-
-                    // App icons
-                    AppIconView()
 
                     VStack {
                         HStack {

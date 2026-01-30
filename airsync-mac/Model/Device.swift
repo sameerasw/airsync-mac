@@ -36,6 +36,7 @@ struct MockData{
         app: "AirSync",
         nid: "23987423984789234",
         package: "sameerasw.airsync",
+        priority: "",
         actions: []
     )
 

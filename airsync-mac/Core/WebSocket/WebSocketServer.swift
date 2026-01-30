@@ -6,65 +6,51 @@
 //
 
 import Foundation
-import UniformTypeIdentifiers
-#if canImport(MobileCoreServices)
-import MobileCoreServices
-#endif
-import UserNotifications
 import Swifter
-internal import Combine
 import CryptoKit
-import CoreGraphics
-
-enum WebSocketStatus {
-    case stopped
-    case starting
-    case started(port: UInt16, ip: String?)
-    case failed(error: String)
-}
+import UserNotifications
+internal import Combine
 
 class WebSocketServer: ObservableObject {
     static let shared = WebSocketServer()
     
-    private var server = HttpServer()
-    private var activeSessions: [WebSocketSession] = []
+    internal var server = HttpServer()
+    internal var activeSessions: [WebSocketSession] = []
+    internal var primarySessionID: ObjectIdentifier?
+    internal var pingTimer: Timer?
+    internal let pingInterval: TimeInterval = 5.0
+    internal var lastActivity: [ObjectIdentifier: Date] = [:]
+    internal let activityTimeout: TimeInterval = 6.0
+    
     @Published var symmetricKey: SymmetricKey?
-
     @Published var localPort: UInt16?
     @Published var localIPAddress: String?
-
     @Published var connectedDevice: Device?
     @Published var notifications: [Notification] = []
     @Published var deviceStatus: DeviceStatus?
 
-    private var lastKnownIP: String?
-    private var networkMonitorTimer: Timer?
-    private let networkCheckInterval: TimeInterval = 10.0 // seconds
-    private let lock = NSRecursiveLock()
-    private let fileQueue = DispatchQueue(label: "com.airsync.fileio")
+    internal var lastKnownIP: String?
+    internal var networkMonitorTimer: Timer?
+    internal let networkCheckInterval: TimeInterval = 10.0
+    internal let lock = NSRecursiveLock()
+    internal let fileQueue = DispatchQueue(label: "com.airsync.fileio")
+    
+    internal var servers: [String: HttpServer] = [:]
+    internal var isListeningOnAll = false
 
-    // Incoming file transfers (Android -> Mac) — keep only IO here; state lives in AppState
-    private struct IncomingFileIO {
-        var tempUrl: URL
-        var fileHandle: FileHandle?
-        var chunkSize: Int
-    }
-    private var incomingFiles: [String: IncomingFileIO] = [:]
-    private var incomingFilesChecksum: [String: String] = [:]
-    // Outgoing transfer ack tracking
-    private var outgoingAcks: [String: Set<Int>] = [:]
+    internal var incomingFiles: [String: IncomingFileIO] = [:]
+    internal var incomingFilesChecksum: [String: String] = [:]
+    internal var outgoingAcks: [String: Set<Int>] = [:]
 
-    private let maxChunkRetries = 3
-    private let ackWaitMs: UInt16 = 2000 // 2s
+    internal let maxChunkRetries = 3
+    internal let ackWaitMs: UInt16 = 2000
 
-    private var lastKnownAdapters: [(name: String, address: String)] = []
-    // Track last adapter selection we logged to avoid repetitive logs
-    private var lastLoggedSelectedAdapter: (name: String, address: String)? = nil
+    internal var lastKnownAdapters: [(name: String, address: String)] = []
+    internal var lastLoggedSelectedAdapter: (name: String, address: String)? = nil
 
     init() {
         loadOrGenerateSymmetricKey()
-        setupWebSocket()
-        // Request notification permission so we can show incoming file alerts
+        setupWebSocket(for: server)
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
             if let err = error {
                 print("[websocket] Notification auth error: \(err)")
@@ -74,78 +60,107 @@ class WebSocketServer: ObservableObject {
         }
     }
 
+    /// Starts the WebSocket server on the specified port.
+    /// Handles binding to a specific network adapter or all available interfaces if "auto" is selected.
     func start(port: UInt16 = Defaults.serverPort) {
         DispatchQueue.main.async {
             AppState.shared.webSocketStatus = .starting
         }
 
-        DispatchQueue.global(qos: .userInitiated).async {
+        let adapterName = AppState.shared.selectedNetworkAdapterName
+        let adapters = getAvailableNetworkAdapters()
+        
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
             do {
                 guard port > 0 && port <= 65_535 else {
-                    let msg = "[websocket] Invalid port \(port). Must be in 1...65535."
-                    DispatchQueue.main.async {
-                        AppState.shared.webSocketStatus = .failed(error: msg)
-                    }
-                    print(msg)
+                    let msg = "[websocket] Invalid port \(port)."
+                    DispatchQueue.main.async { AppState.shared.webSocketStatus = .failed(error: msg) }
                     return
                 }
 
-                try self.server.start(in_port_t(port))
-                let ip = self.getLocalIPAddress(adapterName: AppState.shared.selectedNetworkAdapterName)
-
-                DispatchQueue.main.async {
-                    self.localPort = port
-                    self.localIPAddress = ip
-                    AppState.shared.webSocketStatus = .started(port: port, ip: ip)
-
-                    self.lastKnownIP = ip
+                self.lock.lock()
+                self.stopAllServers()
+                
+                if let specificAdapter = adapterName {
+                    self.isListeningOnAll = false
+                    let server = HttpServer()
+                    self.setupWebSocket(for: server)
+                    try server.start(in_port_t(port))
+                    self.servers[specificAdapter] = server
+                    
+                    let ip = self.getLocalIPAddress(adapterName: specificAdapter)
+                    DispatchQueue.main.async {
+                        self.localPort = port
+                        self.localIPAddress = ip
+                        AppState.shared.webSocketStatus = .started(port: port, ip: ip)
+                        self.lastKnownIP = ip
+                    }
+                    print("[websocket] WebSocket server started at ws://\(ip ?? "unknown"):\(port)/socket on \(specificAdapter)")
+                } else {
+                    self.isListeningOnAll = true
+                    var startedAny = false
+                    for adapter in adapters {
+                        do {
+                            let server = HttpServer()
+                            self.setupWebSocket(for: server)
+                            if !startedAny {
+                                try server.start(in_port_t(port))
+                                self.servers["any"] = server
+                                startedAny = true
+                            }
+                        } catch {
+                            print("[websocket] Failed to start on \(adapter.name): \(error)")
+                        }
+                    }
+                    
+                    if startedAny {
+                        let ipList = self.getLocalIPAddress(adapterName: nil)
+                        DispatchQueue.main.async {
+                            self.localPort = port
+                            self.localIPAddress = "Multiple"
+                            AppState.shared.webSocketStatus = .started(port: port, ip: "Multiple")
+                            self.lastKnownIP = ipList
+                        }
+                        print("[websocket] WebSocket server started on all available adapters at port \(port)")
+                    }
                 }
-                print("[websocket] WebSocket server started at ws://\(ip ?? "unknown"):\(port)/socket)")
+                self.lock.unlock()
 
                 self.startNetworkMonitoring()
+                self.startPing()
             } catch {
-                DispatchQueue.main.async {
-                    AppState.shared.webSocketStatus = .failed(error: "\(error)")
-                }
-                print("[websocket] Failed to start WebSocket server: \(error)")
+                self.lock.unlock()
+                DispatchQueue.main.async { AppState.shared.webSocketStatus = .failed(error: "\(error)") }
             }
         }
     }
 
-
-
-
+    internal func stopAllServers() {
+        for (_, server) in servers {
+            server.stop()
+        }
+        servers.removeAll()
+    }
 
     func stop() {
-        server.stop()
         lock.lock()
+        stopAllServers()
         activeSessions.removeAll()
+        primarySessionID = nil
+        stopPing()
         lock.unlock()
-        DispatchQueue.main.async {
-            AppState.shared.webSocketStatus = .stopped
-        }
+        DispatchQueue.main.async { AppState.shared.webSocketStatus = .stopped }
         stopNetworkMonitoring()
     }
 
-
-
-    func sendDisconnectRequest() {
-        let message = """
-    {
-        "type": "disconnectRequest",
-        "data": {}
-    }
-    """
-        sendToFirstAvailable(message: message)
-    }
-
-
-    private func setupWebSocket() {
+    /// Configures WebSocket routes and event callbacks.
+    /// Handles message decryption before passing payload to the message router.
+    private func setupWebSocket(for server: HttpServer) {
         server["/socket"] = websocket(
             text: { [weak self] session, text in
                 guard let self = self else { return }
-
-                // Step 1: Decrypt the message
                 let decryptedText: String
                 if let key = self.symmetricKey {
                     decryptedText = decryptMessage(text, using: key) ?? ""
@@ -153,1376 +168,77 @@ class WebSocketServer: ObservableObject {
                     decryptedText = text
                 }
 
-                // print("[websocket] [received] \n\(truncated)")
+                if decryptedText.contains("\"type\":\"pong\"") {
+                    self.lock.lock()
+                    self.lastActivity[ObjectIdentifier(session)] = Date()
+                    self.lock.unlock()
+                    return
+                }
 
-
-                // Step 2: Decode JSON and handle
                 if let data = decryptedText.data(using: .utf8) {
                     do {
                         let message = try JSONDecoder().decode(Message.self, from: data)
-                        // For most messages, handle on main, but file chunks should be background
+                        self.lock.lock()
+                        self.lastActivity[ObjectIdentifier(session)] = Date()
+                        self.lock.unlock()
+                        
                         if message.type == .fileChunk || message.type == .fileChunkAck || message.type == .fileTransferComplete || message.type == .fileTransferInit {
-                             self.handleMessage(message)
+                             self.handleMessage(message, session: session)
                         } else {
-                            DispatchQueue.main.async {
-                                self.handleMessage(message)
-                            }
+                            DispatchQueue.main.async { self.handleMessage(message, session: session) }
                         }
                     } catch {
-                        print("[websocket] WebSocket JSON decode failed: \(error)")
-                        // If it was a file chunk, we effectively dropped it. Log this critical error.
-                         if let typeStr = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["type"] as? String, typeStr == "fileChunk" {
-                            print("[websocket] CRITICAL: Failed to decode FILE CHUNK. Data length: \(data.count)")
-                        }
+                        print("[websocket] JSON decode failed: \(error)")
                     }
                 }
             },
-
-            connected: { [weak self] session in
-                print("[websocket] Device connected")
+            binary: { [weak self] session, _ in
                 self?.lock.lock()
-                self?.activeSessions.append(session)
+                self?.lastActivity[ObjectIdentifier(session)] = Date()
                 self?.lock.unlock()
+            },
+            connected: { [weak self] session in
+                guard let self = self else { return }
+                self.lock.lock()
+                let sessionId = ObjectIdentifier(session)
+                self.lastActivity[sessionId] = Date()
+                self.activeSessions.append(session)
+                self.lock.unlock()
+                print("[websocket] Session \(sessionId) connected.")
             },
             disconnected: { [weak self] session in
                 guard let self = self else { return }
-                print("[websocket] Device disconnected")
-
                 self.lock.lock()
                 self.activeSessions.removeAll(where: { $0 === session })
-                let isEmpty = self.activeSessions.isEmpty
+                let wasPrimary = (ObjectIdentifier(session) == self.primarySessionID)
+                if wasPrimary { self.primarySessionID = nil }
                 self.lock.unlock()
-
-                // Only call disconnectDevice if no other sessions remain
-                    if isEmpty {
-                        DispatchQueue.main.async {
-                            AppState.shared.disconnectDevice()
-                            // Stop any ongoing transfers immediately
-                            AppState.shared.stopAllTransfers(reason: "Device disconnected")
-                        }
+                
+                if wasPrimary {
+                    DispatchQueue.main.async {
+                        AppState.shared.disconnectDevice()
+                        ADBConnector.disconnectADB()
+                        AppState.shared.adbConnected = false
+                        self.stop()
+                        self.start(port: self.localPort ?? Defaults.serverPort)
                     }
+                }
             }
         )
     }
 
-
-    // MARK: - Local IP handling
-
-    func getLocalIPAddress(adapterName: String?) -> String? {
-        let adapters = getAvailableNetworkAdapters()
-
-        if let adapterName = adapterName {
-            if let exact = adapters.first(where: { $0.name == adapterName }) {
-                // Log only when selection changes
-                if lastLoggedSelectedAdapter?.name != exact.name || lastLoggedSelectedAdapter?.address != exact.address {
-                    print("[websocket] Selected adapter match: \(exact.name) -> \(exact.address)")
-                    lastLoggedSelectedAdapter = (exact.name, exact.address)
-                }
-                return exact.address
-            }
-            // [quiet] adapter not found can be noisy; keep for debugging
-            // print("[websocket] Adapter \(adapterName) not found, falling back")
-        }
-
-        // Auto mode
-        if adapterName == nil {
-            // Priority 1: Wi-Fi/Ethernet (en0, en1, en2…)
-            if let primary = adapters.first(where: { $0.name.hasPrefix("en") }) {
-                // Log only when selection changes
-                if lastLoggedSelectedAdapter?.name != primary.name || lastLoggedSelectedAdapter?.address != primary.address {
-                    print("[websocket] Auto-selected network adapter: \(primary.name) -> \(primary.address)")
-                    lastLoggedSelectedAdapter = (primary.name, primary.address)
-                }
-                return primary.address
-            }
-            // Priority 2: Standard private ranges (192.168, 10.x, 172.16–31)
-            if let privateIP = adapters.first(where: { ipIsPrivatePreferred($0.address) }) {
-                if lastLoggedSelectedAdapter?.name != privateIP.name || lastLoggedSelectedAdapter?.address != privateIP.address {
-                    print("[websocket] Auto-selected private adapter: \(privateIP.name) -> \(privateIP.address)")
-                    lastLoggedSelectedAdapter = (privateIP.name, privateIP.address)
-                }
-                return privateIP.address
-            }
-            // Priority 3: Any other adapter
-            if let any = adapters.first {
-                if lastLoggedSelectedAdapter?.name != any.name || lastLoggedSelectedAdapter?.address != any.address {
-                    print("[websocket] Auto-selected fallback adapter: \(any.name) -> \(any.address)")
-                    lastLoggedSelectedAdapter = (any.name, any.address)
-                }
-                return any.address
-            }
-        }
-
-        return nil
-    }
-
-    func getAvailableNetworkAdapters() -> [(name: String, address: String)] {
-        var adapters: [(String, String)] = []
-        var ifaddr: UnsafeMutablePointer<ifaddrs>? = nil
-
-        if getifaddrs(&ifaddr) == 0, let firstAddr = ifaddr {
-            for ptr in sequence(first: firstAddr, next: { $0.pointee.ifa_next }) {
-                let interface = ptr.pointee
-                let addrFamily = interface.ifa_addr.pointee.sa_family
-
-                if addrFamily == UInt8(AF_INET),
-                   let name = String(validatingUTF8: interface.ifa_name) {
-                    var addr = interface.ifa_addr.pointee
-                    var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-                    let result = getnameinfo(&addr,
-                                             socklen_t(interface.ifa_addr.pointee.sa_len),
-                                             &hostname,
-                                             socklen_t(hostname.count),
-                                             nil,
-                                             socklen_t(0),
-                                             NI_NUMERICHOST)
-                    if result == 0 {
-                        let address = String(cString: hostname)
-                        if address != "127.0.0.1" {
-                            adapters.append((name, address))
-                        }
-                    }
-                }
-            }
-            freeifaddrs(ifaddr)
-        }
-
-        return adapters
-    }
-
-    private func ipIsPrivatePreferred(_ ip: String) -> Bool {
-        if ip.hasPrefix("192.168.") { return true }
-        if ip.hasPrefix("10.") { return true }
-        if ip.hasPrefix("172.") {
-            let parts = ip.split(separator: ".")
-            if parts.count > 1, let second = Int(parts[1]), (16...31).contains(second) {
-                return true
-            }
-        }
-        return false
-    }
-
-
-
-    // MARK: - Message Handling
-
-    func handleMessage(_ message: Message) {
-        switch message.type {
-        case .device:
-            if let dict = message.data.value as? [String: Any],
-               let name = dict["name"] as? String,
-               let ip = dict["ipAddress"] as? String,
-               let port = dict["port"] as? Int {
-
-                let version = dict["version"] as? String ?? "2.0.0"
-                let adbPorts = dict["adbPorts"] as? [String] ?? []
-
-                AppState.shared.device = Device(
-                    name: name,
-                    ipAddress: ip,
-                    port: port,
-                    version: version,
-                    adbPorts: adbPorts
-                )
-
-                if let base64 = dict["wallpaper"] as? String {
-                    AppState.shared.currentDeviceWallpaperBase64 = base64
-                }
-
-                if (!AppState.shared.adbConnected && AppState.shared.adbEnabled && AppState.shared.isPlus) {
-                    ADBConnector.connectToADB(ip: ip)
-                }
-
-				// mark first-time pairing
-                if UserDefaults.standard.hasPairedDeviceOnce == false {
-                    UserDefaults.standard.hasPairedDeviceOnce = true
-                }
-                
-                // Send Mac info response to Android
-                sendMacInfoResponse()
-               }
-
-
-        case .notification:
-            if let dict = message.data.value as? [String: Any],
-               let nid = dict["id"] as? String,
-               let title = dict["title"] as? String,
-               let body = dict["body"] as? String,
-               let app = dict["app"] as? String,
-               let package = dict["package"] as? String {
-                var actions: [NotificationAction] = []
-                if let arr = dict["actions"] as? [[String: Any]] {
-                    for a in arr {
-                        if let name = a["name"] as? String, let typeStr = a["type"] as? String,
-                           let t = NotificationAction.ActionType(rawValue: typeStr) {
-                            actions.append(NotificationAction(name: name, type: t))
-                        }
-                    }
-                }
-                let notif = Notification(title: title, body: body, app: app, nid: nid, package: package, actions: actions)
-                DispatchQueue.main.async {
-                    AppState.shared.addNotification(notif)
-                }
-            }
-        
-        case .callEvent:
-            if let dict = message.data.value as? [String: Any],
-               let eventId = dict["eventId"] as? String,
-               let number = dict["number"] as? String,
-               let normalizedNumber = dict["normalizedNumber"] as? String,
-               let directionStr = dict["direction"] as? String,
-               let direction = CallDirection(rawValue: directionStr),
-               let stateStr = dict["state"] as? String,
-               let state = CallState(rawValue: stateStr) {
-                
-                // contactName is optional - fallback to normalizedNumber if missing
-                let contactName = (dict["contactName"] as? String) ?? normalizedNumber
-                
-                // Handle timestamp as either Int or Int64
-                var timestamp: Int64 = 0
-                if let ts = dict["timestamp"] as? Int64 {
-                    timestamp = ts
-                } else if let ts = dict["timestamp"] as? Int {
-                    timestamp = Int64(ts)
-                } else if let ts = dict["timestamp"] as? NSNumber {
-                    timestamp = ts.int64Value
-                }
-                
-                let deviceId = dict["deviceId"] as? String ?? ""
-                let contactPhoto = dict["contactPhoto"] as? String
-                
-                print("[websocket] Raw normalizedNumber: '\(normalizedNumber)' (length: \(normalizedNumber.count))")
-                print("[websocket] Raw number: '\(number)' (length: \(number.count))")
-                print("[websocket] Decoded call event - name: \(contactName), state: \(state), phone: \(normalizedNumber)")
-                
-                let callEvent = CallEvent(
-                    eventId: eventId,
-                    contactName: contactName,
-                    number: number,
-                    normalizedNumber: normalizedNumber,
-                    direction: direction,
-                    state: state,
-                    timestamp: timestamp,
-                    deviceId: deviceId,
-                    contactPhoto: contactPhoto
-                )
-                print("[websocket] CallEvent created - normalizedNumber: '\(callEvent.normalizedNumber)' (length: \(callEvent.normalizedNumber.count))")
-                print("[websocket] Call event: \(contactName) - \(state.rawValue)")
-                DispatchQueue.main.async {
-                    AppState.shared.updateCallEvent(callEvent)
-                }
-            } else {
-                print("[websocket] Failed to decode call event - missing or invalid fields")
-                if let dict = message.data.value as? [String: Any] {
-                    print("[websocket] Available fields: \(dict.keys.joined(separator: ", "))")
-                }
-            }
-        
-        case .notificationActionResponse:
-            if let dict = message.data.value as? [String: Any],
-               let id = dict["id"] as? String,
-               let action = dict["action"] as? String,
-               let success = dict["success"] as? Bool {
-                let msg = dict["message"] as? String ?? ""
-                print("[websocket] Notification action response id=\(id) action=\(action) success=\(success) message=\(msg)")
-            }
-        case .notificationAction:
-            print("[websocket] Warning: received 'notificationAction' from remote (ignored).")
-        case .notificationUpdate:
-            if let dict = message.data.value as? [String: Any],
-               let nid = dict["id"] as? String {
-                if let action = dict["action"] as? String, action.lowercased() == "dismiss" || dict["dismissed"] as? Bool == true {
-                    DispatchQueue.main.async {
-                        // Remove from in-memory list if present; ignore if not found.
-                        let existed = AppState.shared.notifications.contains { $0.nid == nid }
-                        if existed {
-                            AppState.shared.removeNotificationById(nid)
-                        }
-                        // Ensure system notification also removed.
-                        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [nid])
-                    }
-                }
-            }
-
-        case .status:
-            if let dict = message.data.value as? [String: Any],
-               let battery = dict["battery"] as? [String: Any],
-               let level = battery["level"] as? Int,
-               let isCharging = battery["isCharging"] as? Bool,
-               let paired = dict["isPaired"] as? Bool,
-               let music = dict["music"] as? [String: Any],
-               let playing = music["isPlaying"] as? Bool,
-               let title = music["title"] as? String,
-               let artist = music["artist"] as? String,
-               let volume = music["volume"] as? Int,
-               let isMuted = music["isMuted"] as? Bool
-            {
-                let albumArt = (music["albumArt"] as? String) ?? ""
-                let likeStatus = (music["likeStatus"] as? String) ?? "none"
-
-                AppState.shared.status = DeviceStatus(
-                    battery: .init(level: level, isCharging: isCharging),
-                    isPaired: paired,
-                    music: .init(
-                        isPlaying: playing,
-                        title: title,
-                        artist: artist,
-                        volume: volume,
-                        isMuted: isMuted,
-                        albumArt: albumArt,
-                        likeStatus: likeStatus
-                    )
-                )
-            }
-
-
-        case .dismissalResponse:
-            if let dict = message.data.value as? [String: Any],
-               let id = dict["id"] as? String,
-               let success = dict["success"] as? Bool {
-                print("[websocket] Dismissal \(success ? "succeeded" : "failed") for notification id: \(id)")
-            }
-
-        case .mediaControlResponse:
-            if let dict = message.data.value as? [String: Any],
-               let action = dict["action"] as? String,
-               let success = dict["success"] as? Bool {
-                print("[websocket] Media control \(action) \(success ? "succeeded" : "failed")")
-            }
-
-        case .appIcons:
-            if let dict = message.data.value as? [String: [String: Any]] {
-                DispatchQueue.global(qos: .background).async {
-                    let incomingPackages = Set(dict.keys)
-                    let existingPackages = Set(AppState.shared.androidApps.keys)
-
-                    // Decode & write/update icons
-                    for (package, details) in dict {
-                        guard let name = details["name"] as? String,
-                              let iconBase64 = details["icon"] as? String,
-                              let systemApp = details["systemApp"] as? Bool,
-                              let listening = details["listening"] as? Bool else { continue }
-
-                        var cleaned = iconBase64
-                        if let range = cleaned.range(of: "base64,") { cleaned = String(cleaned[range.upperBound...]) }
-
-                        var iconPath: String? = nil
-                        if let data = Data(base64Encoded: cleaned), !cleaned.isEmpty {
-                            let fileURL = appIconsDirectory().appendingPathComponent("\(package).png")
-                            do {
-                                try data.write(to: fileURL, options: .atomic)
-                                iconPath = fileURL.path
-                            } catch {
-                                print("[websocket] Failed to write icon for \(package): \(error)")
-                            }
-                        }
-
-                        DispatchQueue.main.async {
-                            // Check for existing app to preserve icon if not provided
-                            if var existingApp = AppState.shared.androidApps[package] {
-                                // Update properties
-                                existingApp.listening = listening
-                                // Update icon only if we got a new one
-                                if let newIconPath = iconPath {
-                                    existingApp.iconUrl = newIconPath
-                                }
-                                // Ideally update name/systemApp if changed, though less critical
-                                AppState.shared.androidApps[package] = existingApp
-                            } else {
-                                // Create new app
-                                let app = AndroidApp(
-                                    packageName: package,
-                                    name: name,
-                                    iconUrl: iconPath,
-                                    listening: listening,
-                                    systemApp: systemApp
-                                )
-                                AppState.shared.androidApps[package] = app
-                            }
-                        }
-                    }
-
-                    // Remove apps (and their icon files) that are no longer present on the device
-                    let toRemove = existingPackages.subtracting(incomingPackages)
-                    if !toRemove.isEmpty {
-                        DispatchQueue.main.async {
-                            for pkg in toRemove {
-                                if let iconPath = AppState.shared.androidApps[pkg]?.iconUrl {
-                                    try? FileManager.default.removeItem(atPath: iconPath)
-                                }
-                                AppState.shared.androidApps.removeValue(forKey: pkg)
-                            }
-                        }
-                    }
-
-                    // Persist updated snapshot
-                    DispatchQueue.main.async {
-                        AppState.shared.saveAppsToDisk()
-                    }
-                }
-            }
-
-
-        case .clipboardUpdate:
-            if let dict = message.data.value as? [String: Any],
-               let text = dict["text"] as? String {
-                AppState.shared.updateClipboardFromAndroid(text)
-            }
-
-        // File transfer messages (Android -> Mac)
-        case .fileTransferInit:
-            if let dict = message.data.value as? [String: Any],
-               let id = dict["id"] as? String,
-               let name = dict["name"] as? String,
-               let size = dict["size"] as? Int,
-               let mime = dict["mime"] as? String {
-                let chunkSize = dict["chunkSize"] as? Int ?? 64 * 1024
-                let checksum = dict["checksum"] as? String
-
-                let tempDir = FileManager.default.temporaryDirectory
-                let safeName = name.replacingOccurrences(of: "/", with: "_")
-                let tempFile = tempDir.appendingPathComponent("incoming_\(id)_\(safeName)")
-                FileManager.default.createFile(atPath: tempFile.path, contents: nil, attributes: nil)
-                let handle = try? FileHandle(forWritingTo: tempFile)
-
-                let io = IncomingFileIO(tempUrl: tempFile, fileHandle: handle, chunkSize: chunkSize)
-                lock.lock()
-                incomingFiles[id] = io
-                if let checksum = checksum {
-                    incomingFilesChecksum[id] = checksum
-                }
-                lock.unlock()
-                // Start tracking incoming transfer in AppState
-                DispatchQueue.main.async {
-                    AppState.shared.startIncomingTransfer(id: id, name: name, size: size, mime: mime)
-                }
-            }
-
-        case .fileChunk:
-            if let dict = message.data.value as? [String: Any],
-               let id = dict["id"] as? String,
-               let index = dict["index"] as? Int,
-               let chunkBase64 = dict["chunk"] as? String {
-                
-                lock.lock()
-                let io = incomingFiles[id]
-                lock.unlock()
-
-                // Use lenient decoding to handle potential line breaks or padding issues
-                if let io = io, let data = Data(base64Encoded: chunkBase64, options: .ignoreUnknownCharacters) {
-                    fileQueue.async {
-                        let offset = UInt64(index * io.chunkSize)
-                        if let fh = io.fileHandle {
-                            do {
-                                try fh.seek(toOffset: offset)
-                                try fh.write(contentsOf: data)
-                            } catch {
-                                print("[websocket] (file-transfer) Write failed for chunk \(index): \(error)")
-                            }
-                        }
-                    }
-                    // Update incoming progress in AppState
-                    DispatchQueue.main.async {
-                        let prev = AppState.shared.transfers[id]?.bytesTransferred ?? 0
-                        let newBytes = prev + data.count
-                        AppState.shared.updateIncomingProgress(id: id, receivedBytes: newBytes)
-                    }
-                } else {
-                     print("[websocket] (file-transfer) CRITICAL: Dropped chunk \(index) for id=\(id) - Base64 decode failed. Raw length: \(chunkBase64.count)")
-                }
-                
-                // Send ACK back to Android
-                let ackMsg = FileTransferProtocol.buildChunkAck(id: id, index: index)
-                self.sendToFirstAvailable(message: ackMsg)
-            }
-
-        case .fileChunkAck:
-            if let dict = message.data.value as? [String: Any],
-               let id = dict["id"] as? String,
-               let index = dict["index"] as? Int {
-                lock.lock()
-                if var set = outgoingAcks[id] {
-                    set.insert(index)
-                    outgoingAcks[id] = set
-                }
-                lock.unlock()
-                // print("[websocket] (file-transfer) Received ack for id=\(id) index=\(index)")
-            }
-
-        case .fileTransferComplete:
-                if let dict = message.data.value as? [String: Any],
-                    let id = dict["id"] as? String {
-                    
-                    lock.lock()
-                    let state = incomingFiles[id]
-                    lock.unlock()
-
-                    if let state = state {
-                        fileQueue.async {
-                            // Close file safely on the serial queue
-                            state.fileHandle?.closeFile()
-                            
-                            // Validate size
-                            var totalBytes: UInt64 = 0
-                            do {
-                                let attr = try FileManager.default.attributesOfItem(atPath: state.tempUrl.path)
-                                totalBytes = attr[.size] as? UInt64 ?? 0
-                            } catch {
-                                print("[websocket] (file-transfer) Failed to get size for validation: \(error)")
-                            }
-                            
-                            // Check expected size from AppState (must access main thread safely or grab via sync)
-                            var expectedSize: Int = 0
-                            var resolvedName = state.tempUrl.lastPathComponent
-                            DispatchQueue.main.sync {
-                                 if let t = AppState.shared.transfers[id] {
-                                    expectedSize = t.size
-                                    resolvedName = t.name
-                                 }
-                            }
-                            
-                            if Int(totalBytes) != expectedSize {
-                                print("[websocket] (file-transfer) Size mismatch! Expected \(expectedSize), got \(totalBytes). Transfer incomplete.")
-                                DispatchQueue.main.async {
-                                    AppState.shared.failTransfer(id: id, reason: "Size mismatch: \(totalBytes)/\(expectedSize)")
-                                    AppState.shared.postNativeNotification(
-                                        id: "incoming_file_\(id)_mismatch",
-                                        appName: "AirSync",
-                                        title: "Transfer Failed",
-                                        body: "Incomplete file received."
-                                    )
-                                }
-                                // Clean up
-                                try? FileManager.default.removeItem(at: state.tempUrl)
-                                
-                                self.lock.lock()
-                                self.incomingFiles.removeValue(forKey: id)
-                                self.incomingFilesChecksum.removeValue(forKey: id)
-                                self.lock.unlock()
-                                return 
-                            }
-                            
-        
-                            // Verify checksum if present
-                            self.lock.lock()
-                            let expectedChecksum = self.incomingFilesChecksum[id]
-                            self.lock.unlock()
+    // MARK: - Crypto Helpers
     
-                            if let expected = expectedChecksum {
-                                if let fileData = try? Data(contentsOf: state.tempUrl) {
-                                    let computed = SHA256.hash(data: fileData).compactMap { String(format: "%02x", $0) }.joined()
-                                    if computed != expected {
-                                        print("[websocket] (file-transfer) Checksum mismatch for incoming file id=\(id), expected=\(expected), computed=\(computed)")
-                                        DispatchQueue.main.async {
-                                            AppState.shared.postNativeNotification(
-                                                id: "incoming_file_\(id)_mismatch",
-                                                appName: "AirSync",
-                                                title: "Received: \(resolvedName)",
-                                                body: "Saved to Downloads (checksum mismatch)"
-                                            )
-                                        }
-                                    }
-                                }
-                                self.lock.lock()
-                                self.incomingFilesChecksum.removeValue(forKey: id)
-                                self.lock.unlock()
-                            }
-        
-                            // Move to Downloads
-                            if let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
-                                do {
-                                    let finalDest = downloads.appendingPathComponent(resolvedName)
-                                    if FileManager.default.fileExists(atPath: finalDest.path) {
-                                        try FileManager.default.removeItem(at: finalDest)
-                                    }
-                                    try FileManager.default.moveItem(at: state.tempUrl, to: finalDest)
-        
-                                    // Optionally: show a user notification (simple print for now)
-                                    print("[websocket] (file-transfer) Saved incoming file to \(finalDest.path)")
-        
-                                    // Mark as completed in AppState and post notification via AppState util
-                                    DispatchQueue.main.async {
-                                        AppState.shared.completeIncoming(id: id, verified: nil)
-                                        AppState.shared.postNativeNotification(
-                                            id: "incoming_file_\(id)",
-                                            appName: "AirSync",
-                                            title: "Received: \(resolvedName)",
-                                            body: "Saved to Downloads"
-                                        )
-                                    }
-                                } catch {
-                                    print("[websocket] (file-transfer) Failed to move incoming file: \(error)")
-                                }
-                            }
-                            
-                            self.lock.lock()
-                            self.incomingFiles.removeValue(forKey: id)
-                            self.lock.unlock()
-                        }
-                    }
-    
-                }
-        case .transferVerified:
-            if let dict = message.data.value as? [String: Any],
-               let id = dict["id"] as? String,
-               let verified = dict["verified"] as? Bool {
-                print("[websocket] (file-transfer) Received transferVerified for id=\(id) verified=\(verified)")
-                // Update AppState and show a confirmation notification via AppState util
-                AppState.shared.completeOutgoingVerified(id: id, verified: verified)
-                AppState.shared.postNativeNotification(
-                    id: "transfer_verified_\(id)",
-                    appName: "AirSync",
-                    title: "Transfer complete",
-                    body: verified ? "File sent successfully" : "File might be incomplete"
-                )
-            }
-            
-        case .fileTransferCancel:
-            if let dict = message.data.value as? [String: Any],
-               let id = dict["id"] as? String {
-                print("[websocket] (file-transfer) Received cancellation for id=\(id)")
-                DispatchQueue.main.async {
-                    AppState.shared.stopTransferRemote(id: id)
-                }
-            }
-
-        case .macMediaControl:
-            if let dict = message.data.value as? [String: Any],
-               let action = dict["action"] as? String {
-                print("[websocket] Received Mac media control: \(action)")
-                handleMacMediaControl(action: action)
-            }
-
-        case .callControl:
-            // This case handles call control messages from Android to Mac
-            // Currently not expected as Mac sends call control to Android, not vice versa
-            print("[websocket] Received callControl from Android (not typically expected)")
-
-        case .callControlResponse:
-            if let dict = message.data.value as? [String: Any],
-               let action = dict["action"] as? String,
-               let success = dict["success"] as? Bool {
-                let message = dict["message"] as? String ?? ""
-                print("[websocket] Call control \(action) \(success ? "succeeded" : "failed"): \(message)")
-                if !message.isEmpty {
-                    print("[websocket] Call control warning/info: \(message)")
-                }
-            }
-
-        case .macMediaControlResponse:
-            // This case handles responses from Android to Mac media control responses
-            // Currently not needed as Mac sends responses to Android, not vice versa
-            print("[websocket] Received macMediaControlResponse (not typically expected)")
-
-        case .macInfo:
-            // This case handles macInfo messages from Android to Mac
-            // Currently not expected as Mac sends macInfo to Android, not vice versa
-            print("[websocket] Received macInfo message from Android (not typically expected)")
-            
-        case .wakeUpRequest:
-            // This case handles wake-up requests from Android to Mac
-            // Currently not expected as Mac sends wake-up requests to Android, not vice versa
-            print("[websocket] Received wakeUpRequest from Android (not typically expected)")
-
-        case .remoteControl:
-            if let dict = message.data.value as? [String: Any],
-               let action = dict["action"] as? String {
-                
-                print("[websocket] Remote control action: \(action)")
-                
-                switch action {
-                case "keypress":
-                    let modifiers = dict["modifiers"] as? [String] ?? []
-                    print("[WebSocketServer] keypress: \(dict["keycode"] ?? ""), modifiers: \(modifiers)")
-                    if let code = dict["keycode"] as? Int {
-                        MacRemoteManager.shared.simulateKeyCode(code, modifiers: modifiers)
-                    }
-                case "type":
-                    let modifiers = dict["modifiers"] as? [String] ?? []
-                    print("[WebSocketServer] type: \(dict["text"] ?? ""), modifiers: \(modifiers)")
-                    if let text = dict["text"] as? String {
-                        MacRemoteManager.shared.simulateText(text, modifiers: modifiers)
-                    }
-                    
-                case "arrow_up":
-                    MacRemoteManager.shared.simulateKey(.upArrow)
-                case "arrow_down":
-                    MacRemoteManager.shared.simulateKey(.downArrow)
-                case "arrow_left":
-                    MacRemoteManager.shared.simulateKey(.leftArrow)
-                case "arrow_right":
-                    MacRemoteManager.shared.simulateKey(.rightArrow)
-                case "enter":
-                    MacRemoteManager.shared.simulateKey(.enter)
-                case "space":
-                    MacRemoteManager.shared.simulateKey(.space)
-                case "escape":
-                    MacRemoteManager.shared.simulateKey(.escape)
-                
-                case "vol_up":
-                    MacRemoteManager.shared.increaseVolume()
-                case "vol_down":
-                    MacRemoteManager.shared.decreaseVolume()
-                case "vol_mute":
-                    MacRemoteManager.shared.toggleMute()
-                case "vol_set":
-                    if let value = dict["value"] as? Int {
-                        MacRemoteManager.shared.setVolume(value)
-                    }
-                
-                // Media keys via remote manager (redundant but explicit)
-                case "media_play_pause":
-                    MacRemoteManager.shared.simulateMediaKey(.playPause)
-                case "media_next":
-                    MacRemoteManager.shared.simulateMediaKey(.next)
-                case "media_prev":
-                    MacRemoteManager.shared.simulateMediaKey(.previous)
-                
-                case "mouse_move":
-                    if let dx = dict["dx"] as? Double, let dy = dict["dy"] as? Double {
-                        MacRemoteManager.shared.simulateMouseRelativeMove(dx: CGFloat(dx), dy: CGFloat(dy))
-                    }
-                case "mouse_click":
-                    if let buttonStr = dict["button"] as? String, let isDown = dict["isDown"] as? Bool {
-                        let button: CGMouseButton
-                        switch buttonStr {
-                        case "right": button = .right
-                        case "center": button = .center
-                        default: button = .left
-                        }
-                        MacRemoteManager.shared.simulateMouseClick(button: button, isDown: isDown)
-                    }
-                
-                case "mouse_scroll":
-                    if let dx = dict["dx"] as? Double, let dy = dict["dy"] as? Double {
-                        MacRemoteManager.shared.simulateMouseScroll(dx: CGFloat(dx), dy: CGFloat(dy))
-                    }
-                
-                default:
-                    print("[websocket] Unknown remote control action: \(action)")
-                }
-            }
-            
-        case .volumeControl, .macVolume, .toggleAppNotif, .browseLs:
-            // Outgoing messages from Mac, ignore if received
-            break
-            
-        case .browseData:
-            if let dict = message.data.value as? [String: Any],
-               let path = dict["path"] as? String,
-               let itemsArray = dict["items"] as? [[String: Any]] {
-                
-                var items: [FileBrowserItem] = []
-                for itemDict in itemsArray {
-                    let name = itemDict["name"] as? String ?? ""
-                    let isDir = itemDict["isDir"] as? Bool ?? false
-                    
-                    let size = (itemDict["size"] as? NSNumber)?.int64Value ?? 
-                               (itemDict["size"] as? Int64) ?? 
-                               Int64(itemDict["size"] as? Int ?? 0)
-                               
-                    let timeValue = (itemDict["time"] as? NSNumber)?.int64Value ?? 
-                                    (itemDict["time"] as? Int64) ?? 
-                                    Int64(itemDict["time"] as? Int ?? 0)
-                    
-                    if !name.isEmpty {
-                        items.append(FileBrowserItem(name: name, isDir: isDir, size: size, time: timeValue))
-                    }
-                }
-                
-                DispatchQueue.main.async {
-                    AppState.shared.browsePath = path
-                    AppState.shared.browseItems = items
-                    AppState.shared.browseError = nil
-                    AppState.shared.isBrowsingLoading = false
-                }
-            } else if let error = (message.data.value as? [String: Any])?["error"] as? String {
-                print("[websocket] Browse error: \(error)")
-                DispatchQueue.main.async {
-                    AppState.shared.browseError = error
-                    AppState.shared.isBrowsingLoading = false
-                }
-            }
-        }
-
-
-    }
-
-    // MARK: - Mac Media Control Handler
-    private func handleMacMediaControl(action: String) {
-        // Get reference to the NowPlayingViewModel from the app
-        // We'll access it through the main app or AppState if needed
-
-        switch action {
-        case "play":
-            NowPlayingCLI.shared.play()
-            print("[websocket] Mac media control: play")
-
-        case "pause":
-            NowPlayingCLI.shared.pause()
-            print("[websocket] Mac media control: pause")
-
-        case "previous":
-            NowPlayingCLI.shared.previous()
-            print("[websocket] Mac media control: previous")
-
-        case "next":
-            NowPlayingCLI.shared.next()
-            print("[websocket] Mac media control: next")
-
-        case "stop":
-            NowPlayingCLI.shared.stop()
-            print("[websocket] Mac media control: stop")
-            
-        default:
-            print("[websocket] Unknown Mac media control action: \(action)")
-        }
-
-        // Send response back to Android
-        sendMacMediaControlResponse(action: action, success: true)
-    }
-
-    private func sendMacMediaControlResponse(action: String, success: Bool) {
-        let message = """
-        {
-            "type": "macMediaControlResponse",
-            "data": {
-                "action": "\(action)",
-                "success": \(success)
-            }
-        }
-        """
-        sendToFirstAvailable(message: message)
-    }
-
-    private func sendMacInfoResponse() {
-        // Gather Mac info with robust fallbacks
-        let macName = AppState.shared.myDevice?.name ?? (Host.current().localizedName ?? "My Mac")
-        let categoryTypeRaw = DeviceTypeUtil.deviceTypeDescription()
-        let exactDeviceNameRaw = DeviceTypeUtil.deviceFullDescription()
-        let categoryType = categoryTypeRaw.isEmpty ? "Mac" : categoryTypeRaw
-        let exactDeviceName = exactDeviceNameRaw.isEmpty ? categoryType : exactDeviceNameRaw
-        let isPlusSubscription = AppState.shared.isPlus
-
-        // Saved app packages
-        let savedAppPackages = Array(AppState.shared.androidApps.keys)
-
-        // Base macInfo model (for forward compatibility / decoding symmetry)
-        let macInfo = MacInfo(
-            name: macName,
-            categoryType: categoryType,
-            exactDeviceName: exactDeviceName,
-            isPlusSubscription: isPlusSubscription,
-            savedAppPackages: savedAppPackages
-        )
-
-        do {
-            let jsonData = try JSONEncoder().encode(macInfo)
-            if var jsonDict = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
-                // Enrich with legacy / explicit keys Android may expect
-                jsonDict["model"] = exactDeviceName   // Full marketing name
-                jsonDict["type"] = categoryType       // Broad category
-                jsonDict["isPlus"] = isPlusSubscription // Alias for existing isPlusSubscription
-
-                let messageDict: [String: Any] = [
-                    "type": "macInfo",
-                    "data": jsonDict
-                ]
-
-                let messageJsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
-                if let messageJsonString = String(data: messageJsonData, encoding: .utf8) {
-                    sendToFirstAvailable(message: messageJsonString)
-                    print("[websocket] Sent Mac info response: model=\(exactDeviceName), type=\(categoryType)")
-                }
-            }
-        } catch {
-            print("[websocket] Error creating Mac info response: \(error)")
-        }
-    }
-
-    // MARK: - Sending Helpers
-
-    private func broadcast(message: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        activeSessions.forEach { $0.writeText(message) }
-    }
-
-    private func sendToFirstAvailable(message: String) {
-        lock.lock()
-        let session = activeSessions.first
-        lock.unlock()
-        
-        if let key = symmetricKey, let encrypted = encryptMessage(message, using: key) {
-            session?.writeText(encrypted)
-        } else {
-            session?.writeText(message)
-        }
-    }
-
-
-    // MARK: - Notification Control
-
-    func dismissNotification(id: String) {
-        let message = """
-        {
-            "type": "dismissNotification",
-            "data": {
-                "id": "\(id)"
-            }
-        }
-        """
-        sendToFirstAvailable(message: message)
-    }
-
-    func sendNotificationAction(id: String, name: String, text: String? = nil) {
-        var data: [String: Any] = ["id": id, "name": name]
-        if let t = text, !t.isEmpty { data["text"] = t }
-        if let jsonData = try? JSONSerialization.data(withJSONObject: ["type": "notificationAction", "data": data], options: []),
-           let json = String(data: jsonData, encoding: .utf8) {
-            sendToFirstAvailable(message: json)
-        }
-    }
-
-    func sendCallAction(eventId: String, action: String) {
-        // Send key events via ADB to control calls
-        // KeyCode 5 = KEYCODE_CALL (Accept/Answer call)
-        // KeyCode 6 = KEYCODE_ENDCALL (End call)
-        let keyCode: String
-        switch action.lowercased() {
-        case "accept":
-            keyCode = "5"   // KEYCODE_CALL
-        case "decline", "end":
-            keyCode = "6"   // KEYCODE_ENDCALL
-        default:
-            keyCode = "6"
-        }
-        
-        // Execute: adb shell input keyevent <keyCode>
-        DispatchQueue.global(qos: .userInitiated).async {
-            guard let adbPath = ADBConnector.findExecutable(named: "adb", fallbackPaths: ADBConnector.possibleADBPaths) else {
-                print("[websocket] ADB not found for call action")
-                return
-            }
-            
-            // Use the actual connected ADB IP address (discovered IP), not the device reported IP
-            let adbIP = AppState.shared.adbConnectedIP.isEmpty ? AppState.shared.device?.ipAddress ?? "" : AppState.shared.adbConnectedIP
-            if !adbIP.isEmpty {
-                let adbPort = AppState.shared.adbPort
-                let fullAddress = "\(adbIP):\(adbPort)"
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: adbPath)
-                process.arguments = ["-s", fullAddress, "shell", "input", "keyevent", keyCode]
-                
-                print("[websocket] Sending call action: \(action) (keyCode: \(keyCode)) to device \(fullAddress) for eventId: \(eventId)")
-                
-                do {
-                    try process.run()
-                    process.waitUntilExit()
-                    print("[websocket] Call action sent: keyevent \(keyCode) for event: \(eventId) on \(fullAddress)")
-                } catch {
-                    print("[websocket] Failed to send call action: \(error.localizedDescription)")
-                }
-            } else {
-                print("[websocket] ERROR: No device address found for call action (adbConnectedIP: '\(AppState.shared.adbConnectedIP)', device IP: \(AppState.shared.device?.ipAddress ?? "nil"))")
-            }
-        }
-    }
-
-    // MARK: - Media Controls
-
-    func togglePlayPause() {
-        sendMediaAction("playPause")
-    }
-
-    func skipNext() {
-        sendMediaAction("next")
-    }
-
-    func skipPrevious() {
-        sendMediaAction("previous")
-    }
-
-    func stopMedia() {
-        sendMediaAction("stop")
-    }
-
-    // Like controls
-    func toggleLike() {
-        sendMediaAction("toggleLike")
-    }
-
-    func like() {
-        sendMediaAction("like")
-    }
-
-    func unlike() {
-        sendMediaAction("unlike")
-    }
-
-    private func sendMediaAction(_ action: String) {
-        let message = """
-        {
-            "type": "mediaControl",
-            "data": {
-                "action": "\(action)"
-            }
-        }
-        """
-        sendToFirstAvailable(message: message)
-    }
-
-    // MARK: - Volume Controls
-
-    func volumeUp() {
-        sendVolumeAction("volumeUp")
-    }
-
-    func volumeDown() {
-        sendVolumeAction("volumeDown")
-    }
-
-    func toggleMute() {
-        sendVolumeAction("mute")
-    }
-
-    func setVolume(_ volume: Int) {
-        let message = """
-        {
-            "type": "volumeControl",
-            "data": {
-                "action": "setVolume",
-                "volume": \(volume)
-            }
-        }
-        """
-        sendToFirstAvailable(message: message)
-    }
-
-    private func sendVolumeAction(_ action: String) {
-        let message = """
-        {
-            "type": "volumeControl",
-            "data": {
-                "action": "\(action)"
-            }
-        }
-        """
-        sendToFirstAvailable(message: message)
-    }
-
-    func sendMacVolumeUpdate(level: Int) {
-        let message = """
-        {
-            "type": "macVolume",
-            "data": {
-                "volume": \(level)
-            }
-        }
-        """
-        sendToFirstAvailable(message: message)
-    }
-
-    func sendModifierStatus(status: [String: [String: Any]]) {
-        let messageDict: [String: Any] = [
-            "type": "modifierStatus",
-            "data": status
-        ]
-        
-        do {
-            let jsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
-            if let jsonString = String(data: jsonData, encoding: .utf8) {
-                sendToFirstAvailable(message: jsonString)
-            }
-        } catch {
-            print("[websocket] Error creating modifier status message: \(error)")
-        }
-    }
-
-    func sendClipboardUpdate(_ message: String) {
-        sendToFirstAvailable(message: message)
-    }
-
-    // MARK: - Device Status (Mac -> Android)
-    func sendDeviceStatus(batteryLevel: Int, isCharging: Bool, isPaired: Bool, musicInfo: NowPlayingInfo?, albumArtBase64: String? = nil) {
-        var statusDict: [String: Any] = [
-            "battery": [
-                "level": batteryLevel, // -1 for non-MacBooks, 0-100 for MacBooks
-                "isCharging": isCharging
-            ],
-            "isPaired": isPaired
-        ]
-
-        // Only include music section if we have valid playback info
-        if let musicInfo {
-            let musicDict: [String: Any] = [
-                "isPlaying": musicInfo.isPlaying ?? false,
-                "title": musicInfo.title ?? "",
-                "artist": musicInfo.artist ?? "",
-                "volume": 50, // Hardcoded for now - will be replaced later
-                "isMuted": false, // Hardcoded for now - will be replaced later
-                "albumArt": albumArtBase64 ?? "",
-                "likeStatus": "none" // Hardcoded for now - will be replaced later
-            ]
-            statusDict["music"] = musicDict
-        }
-
-        let messageDict: [String: Any] = [
-            "type": "status",
-            "data": statusDict
-        ]
-
-        do {
-            let jsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
-            if let jsonString = String(data: jsonData, encoding: .utf8) {
-                sendToFirstAvailable(message: jsonString)
-            }
-        } catch {
-            print("[websocket] Error creating device status message: \(error)")
-        }
-    }
-
-    // MARK: - File transfer (Mac -> Android)
-    func sendFile(url: URL, chunkSize: Int = 64 * 1024) {
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
-            guard FileManager.default.fileExists(atPath: url.path) else {
-                print("[websocket] (file-transfer) File does not exist at \(url.path)")
-                return
-            }
-
-            let fileName = url.lastPathComponent
-            let mime = self.mimeType(for: url) ?? "application/octet-stream"
-            
-            guard let fileHandle = try? FileHandle(forReadingFrom: url) else {
-                print("[websocket] (file-transfer) Could not open file handle for \(url.path)")
-                return
-            }
-            
-            let totalSize: Int
-            do {
-                let attr = try FileManager.default.attributesOfItem(atPath: url.path)
-                totalSize = attr[.size] as? Int ?? 0
-            } catch {
-                print("[websocket] (file-transfer) Could not get attributes for \(url.path)")
-                return
-            }
-            
-            // compute checksum without loading whole file
-            print("[websocket] (file-transfer) Computing checksum for \(fileName)...")
-            var hasher = SHA256()
-            let hashBuffer = 1024 * 1024
-            while true {
-                let data = fileHandle.readData(ofLength: hashBuffer)
-                if data.isEmpty { break }
-                hasher.update(data: data)
-            }
-            let checksum = hasher.finalize().compactMap { String(format: "%02x", $0) }.joined()
-            try? fileHandle.seek(toOffset: 0)
-
-            let transferId = UUID().uuidString
-            print("[websocket] (file-transfer) Starting transfer id=\(transferId) name=\(fileName) size=\(totalSize)")
-
-            // Track in AppState
-            AppState.shared.startOutgoingTransfer(id: transferId, name: fileName, size: totalSize, mime: mime, chunkSize: chunkSize)
-
-            // Send init message
-            let initMessage = FileTransferProtocol.buildInit(
-                id: transferId,
-                name: fileName,
-                size: Int64(totalSize),
-                mime: mime,
-                chunkSize: chunkSize,
-                checksum: checksum
-            )
-            self.sendToFirstAvailable(message: initMessage)
-
-            // Send chunks using a simple sliding window
-            let windowSize = 8
-            let totalChunks = totalSize == 0 ? 1 : (totalSize + chunkSize - 1) / chunkSize
-            
-            self.lock.lock()
-            self.outgoingAcks[transferId] = []
-            self.lock.unlock()
-
-            // sentBuffer: index -> (payloadBase64, attempts, lastSent)
-            var sentBuffer: [Int: (payload: String, attempts: Int, lastSent: Date)] = [:]
-            var nextIndexToSend = 0
-            let startTime = Date()
-
-            func sendChunkAt(_ idx: Int) {
-                let offset = UInt64(idx * chunkSize)
-                do {
-                    try fileHandle.seek(toOffset: offset)
-                    let chunk = fileHandle.readData(ofLength: chunkSize)
-                    let base64 = chunk.base64EncodedString()
-                    let chunkMessage = FileTransferProtocol.buildChunk(id: transferId, index: idx, base64Chunk: base64)
-                    self.sendToFirstAvailable(message: chunkMessage)
-                    sentBuffer[idx] = (payload: base64, attempts: 1, lastSent: Date())
-                } catch {
-                    print("[websocket] (file-transfer) Seek/Read failed for chunk \(idx): \(error)")
-                }
-            }
-
-            // Loop until all chunks are acked
-            var transferFailed = false
-            while !transferFailed {
-                self.lock.lock()
-                let acked = self.outgoingAcks[transferId] ?? []
-                self.lock.unlock()
-                
-                // compute baseIndex = lowest unacked index
-                var baseIndex = 0
-                while acked.contains(baseIndex) {
-                    sentBuffer.removeValue(forKey: baseIndex)
-                    baseIndex += 1
-                }
-
-                // Update progress in AppState
-                let bytesAcked = min(baseIndex * chunkSize, totalSize)
-                DispatchQueue.main.async {
-                    AppState.shared.updateOutgoingProgress(id: transferId, bytesTransferred: bytesAcked)
-                }
-
-                if baseIndex >= totalChunks {
-                    break
-                }
-
-                // send new chunks while window has space
-                while nextIndexToSend < totalChunks && (nextIndexToSend - baseIndex) < windowSize {
-                    
-                    // Check if transfer was cancelled externally (e.g. by user)
-                    var isCancelled = false
-                     DispatchQueue.main.sync {
-                        if let t = AppState.shared.transfers[transferId], t.status != .inProgress {
-                            isCancelled = true
-                        }
-                     }
-                    if isCancelled {
-                        transferFailed = true
-                        print("[websocket] (file-transfer) Transfer cancelled externally, stopping loop.")
-                        break
-                    }
-
-                    sendChunkAt(nextIndexToSend)
-                    nextIndexToSend += 1
-                }
-
-                // Retransmit logic
-                let now = Date()
-                for (idx, entry) in sentBuffer {
-                    if acked.contains(idx) { continue }
-                    let elapsedMs = now.timeIntervalSince(entry.lastSent) * 1000.0
-                    if elapsedMs > Double(self.ackWaitMs) {
-                        if entry.attempts >= self.maxChunkRetries {
-                            print("[websocket] (file-transfer) Failed to get ack for chunk \(idx) after \(self.maxChunkRetries) attempts")
-                             DispatchQueue.main.async {
-                                AppState.shared.failTransfer(id: transferId, reason: "Multiple retries failed for chunk \(idx)")
-                             }
-                            transferFailed = true
-                            break
-                        }
-                        // retransmit
-                        let chunkMessage = FileTransferProtocol.buildChunk(id: transferId, index: idx, base64Chunk: entry.payload)
-                        self.sendToFirstAvailable(message: chunkMessage)
-                        sentBuffer[idx] = (payload: entry.payload, attempts: entry.attempts + 1, lastSent: Date())
-                    }
-                }
-
-                usleep(20_000) // 20ms
-            }
-
-            try? fileHandle.close()
-            
-            if !transferFailed {
-                 DispatchQueue.main.async {
-                    AppState.shared.updateOutgoingProgress(id: transferId, bytesTransferred: totalSize)
-                 }
-                let elapsed = Date().timeIntervalSince(startTime)
-                print("[websocket] (file-transfer) Completed sending \(totalSize) bytes in \(String(format: "%.2f", elapsed)) s")
-
-                let completeMessage = FileTransferProtocol.buildComplete(
-                    id: transferId,
-                    name: fileName,
-                    size: Int64(totalSize),
-                    checksum: checksum
-                )
-                self.sendToFirstAvailable(message: completeMessage)
-            }
-            
-            self.lock.lock()
-            self.outgoingAcks.removeValue(forKey: transferId)
-            self.lock.unlock()
-        }
-    }
-
-    func sendTransferCancel(id: String) {
-        let message = """
-        {
-            "type": "fileTransferCancel",
-            "data": {
-                "id": "\(id)"
-            }
-        }
-        """
-        sendToFirstAvailable(message: message)
-    }
-
-    func toggleNotification(for package: String, to state: Bool) {
-        guard var app = AppState.shared.androidApps[package] else { return }
-
-        app.listening = state
-        AppState.shared.androidApps[package] = app
-        AppState.shared.saveAppsToDisk()
-
-        // WebSocket call
-        let message = """
-        {
-            "type": "toggleAppNotif",
-            "data": {
-                "package": "\(package)",
-                "state": "\(state)"
-            }
-        }
-        """
-        sendToFirstAvailable(message: message)
-    }
-
-    func sendBrowseRequest(path: String, showHidden: Bool = false) {
-        let message = """
-        {
-            "type": "browseLs",
-            "data": {
-                "path": "\(path)",
-                "showHidden": \(showHidden)
-            }
-        }
-        """
-        sendToFirstAvailable(message: message)
-    }
-
-    func sendPullRequest(path: String) {
-        let message = FileTransferProtocol.buildFilePull(path: path)
-        print("[websocket] Sending pull request for \(path)")
-        sendToFirstAvailable(message: message)
-    }
-
     func loadOrGenerateSymmetricKey() {
         let defaults = UserDefaults.standard
-
         if let savedKey = defaults.string(forKey: "encryptionKey"),
            let keyData = Data(base64Encoded: savedKey) {
             symmetricKey = SymmetricKey(data: keyData)
-            print("[websocket] (auth) Loaded existing symmetric key")
         } else {
             let base64Key = generateSymmetricKey()
             defaults.set(base64Key, forKey: "encryptionKey")
-
             if let keyData = Data(base64Encoded: base64Key) {
                 symmetricKey = SymmetricKey(data: keyData)
-                print("[websocket] (auth) Generated and stored new symmetric key")
-            } else {
-                print("[websocket] (auth) Failed to generate symmetric key")
             }
         }
     }
@@ -1537,96 +253,13 @@ class WebSocketServer: ObservableObject {
         return key.withUnsafeBytes { Data($0).base64EncodedString() }
     }
 
-
     func setEncryptionKey(base64Key: String) {
         if let data = Data(base64Encoded: base64Key) {
             symmetricKey = SymmetricKey(data: data)
-            print("[websocket] (auth) Encryption key set")
-        }
-    }
-
-    // Helper: determine mime type for a file URL
-    func mimeType(for url: URL) -> String? {
-        let ext = url.pathExtension
-        if ext.isEmpty { return nil }
-
-        if #available(macOS 11.0, *) {
-            if let ut = UTType(filenameExtension: ext) {
-                return ut.preferredMIMEType
-            }
-        } else {
-#if canImport(MobileCoreServices)
-            // Fallback to MobileCoreServices APIs
-            if let uti = UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, ext as CFString, nil)?.takeRetainedValue() {
-                if let mime = UTTypeCopyPreferredTagWithClass(uti, kUTTagClassMIMEType)?.takeRetainedValue() as String? {
-                    return mime
-                }
-            }
-#else
-            // No fallback available on this SDK
-#endif
-        }
-        return nil
-    }
-    func startNetworkMonitoring() {
-        networkMonitorTimer = Timer.scheduledTimer(withTimeInterval: networkCheckInterval, repeats: true) { [weak self] _ in
-            self?.checkNetworkChange()
-        }
-        networkMonitorTimer?.tolerance = 1.0
-        networkMonitorTimer?.fire()
-    }
-
-    func stopNetworkMonitoring() {
-        networkMonitorTimer?.invalidate()
-        networkMonitorTimer = nil
-        lastKnownAdapters = []
-    }
-
-    private func checkNetworkChange() {
-        let adapters = getAvailableNetworkAdapters()
-        let chosenIP = getLocalIPAddress(adapterName: AppState.shared.selectedNetworkAdapterName)
-
-        // Compare by addresses to detect any change
-        let adapterAddresses = adapters.map { $0.address }
-        let lastAddresses = lastKnownAdapters.map { $0.address }
-
-        if adapterAddresses != lastAddresses {
-            lastKnownAdapters = adapters
-
-            // Revalidate the current network adapter selection
-            AppState.shared.revalidateNetworkAdapter()
-
-            for adapter in adapters {
-                let activeMark = (adapter.address == chosenIP) ? " [ACTIVE]" : ""
-                print("[websocket] (network) \(adapter.name) -> \(adapter.address)\(activeMark)")
-            }
-
-            // Restart if the IP changed
-            if let lastIP = lastKnownIP, lastIP != chosenIP {
-                print("[websocket] (network) IP changed from \(lastIP) to \(chosenIP ?? "N/A"), restarting WebSocket in 5 seconds")
-                lastKnownIP = chosenIP
-                AppState.shared.shouldRefreshQR = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-                    self.stop()
-                    self.start(port: Defaults.serverPort)
-                }
-            } else if lastKnownIP == nil {
-                // First run
-                lastKnownIP = chosenIP
-            }
-        } else {
-            // [quiet] No change is the common case; keep log line for debugging
-            // print("[websocket] (network) No change detected")
         }
     }
     
-    // MARK: - Quick Connect Delegate
-    
-    /// Delegates wake-up functionality to QuickConnectManager
     func wakeUpLastConnectedDevice() {
         QuickConnectManager.shared.wakeUpLastConnectedDevice()
     }
-
-
-
 }
