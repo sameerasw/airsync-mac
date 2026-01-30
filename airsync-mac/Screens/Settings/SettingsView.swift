@@ -15,72 +15,72 @@ struct SettingsView: View {
     var body: some View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    // 1. Device & Server
-                    headerSection(title: "Device & Server", icon: "desktopcomputer")
-                    VStack(spacing: 0) {
+                    // 1. Device
+                    VStack {
                         DeviceNameView(deviceName: $deviceName)
-                            .padding(.bottom, 8)
-                        
-                        Divider().opacity(0.5)
-                        
-                        VStack(spacing: 12) {
-                            HStack {
-                                Label("Network Adapter", systemImage: "rectangle.connected.to.line.below")
-                                Spacer()
+                    }
+                    .padding()
+                    .background(.background.opacity(0.3))
+                    .cornerRadius(12.0)
 
-                                Picker("", selection: Binding(
-                                    get: { appState.selectedNetworkAdapterName },
-                                    set: { appState.selectedNetworkAdapterName = $0 }
-                                )) {
-                                    Text("Auto").tag(nil as String?)
-                                    ForEach(availableAdapters, id: \.name) { adapter in
-                                        Text("\(adapter.name) (\(adapter.address))").tag(Optional(adapter.name))
-                                    }
+                    // 2. Server
+                    headerSection(title: "Server", icon: "server.rack")
+                    VStack(spacing: 12) {
+                        HStack {
+                            Label("Network Adapter", systemImage: "rectangle.connected.to.line.below")
+                            Spacer()
+
+                            Picker("", selection: Binding(
+                                get: { appState.selectedNetworkAdapterName },
+                                set: { appState.selectedNetworkAdapterName = $0 }
+                            )) {
+                                Text("Auto").tag(nil as String?)
+                                ForEach(availableAdapters, id: \.name) { adapter in
+                                    Text("\(adapter.name) (\(adapter.address))").tag(Optional(adapter.name))
                                 }
-                                .pickerStyle(MenuPickerStyle())
                             }
-                            .onAppear {
-                                availableAdapters = WebSocketServer.shared.getAvailableNetworkAdapters()
-                                currentIPAddress = WebSocketServer.shared.getLocalIPAddress(adapterName: appState.selectedNetworkAdapterName) ?? "N/A"
-                            }
-                            .onChange(of: appState.selectedNetworkAdapterName) { _, _ in
-                                currentIPAddress = WebSocketServer.shared.getLocalIPAddress(adapterName: appState.selectedNetworkAdapterName) ?? "N/A"
-                                WebSocketServer.shared.stop()
-                                if let port = UInt16(port) {
-                                    WebSocketServer.shared.start(port: port)
-                                } else {
-                                    WebSocketServer.shared.start()
-                                }
-                                appState.shouldRefreshQR = true
-                            }
-
-                            ConnectionInfoText(
-                                label: "IP Address",
-                                icon: "wifi",
-                                text: currentIPAddress,
-                                activeIp: appState.activeMacIp
-                            )
-
-                            HStack {
-                                Label("Server Port", systemImage: "rectangle.connected.to.line.below")
-                                    .padding(.trailing, 20)
-                                Spacer()
-                                TextField("Server Port", text: $port)
-                                    .textFieldStyle(.roundedBorder)
-                                    .onChange(of: port) { oldValue, newValue in
-                                        port = newValue.filter { "0123456789".contains($0) }
-                                    }
-                                    .frame(maxWidth: 100)
-                            }
-
-                            HStack {
-                                Label("Fallback to mdns services", systemImage: "antenna.radiowaves.left.and.right")
-                                Spacer()
-                                Toggle("", isOn: $appState.fallbackToMdns)
-                                    .toggleStyle(.switch)
-                            }
+                            .pickerStyle(MenuPickerStyle())
                         }
-                        .padding(.top, 12)
+                        .onAppear {
+                            availableAdapters = WebSocketServer.shared.getAvailableNetworkAdapters()
+                            currentIPAddress = WebSocketServer.shared.getLocalIPAddress(adapterName: appState.selectedNetworkAdapterName) ?? "N/A"
+                        }
+                        .onChange(of: appState.selectedNetworkAdapterName) { _, _ in
+                            currentIPAddress = WebSocketServer.shared.getLocalIPAddress(adapterName: appState.selectedNetworkAdapterName) ?? "N/A"
+                            WebSocketServer.shared.stop()
+                            if let port = UInt16(port) {
+                                WebSocketServer.shared.start(port: port)
+                            } else {
+                                WebSocketServer.shared.start()
+                            }
+                            appState.shouldRefreshQR = true
+                        }
+
+                        ConnectionInfoText(
+                            label: "IP Address",
+                            icon: "wifi",
+                            text: currentIPAddress,
+                            activeIp: appState.activeMacIp
+                        )
+
+                        HStack {
+                            Label("Server Port", systemImage: "rectangle.connected.to.line.below")
+                                .padding(.trailing, 20)
+                            Spacer()
+                            TextField("Server Port", text: $port)
+                                .textFieldStyle(.roundedBorder)
+                                .onChange(of: port) { oldValue, newValue in
+                                    port = newValue.filter { "0123456789".contains($0) }
+                                }
+                                .frame(maxWidth: 100)
+                        }
+
+                        HStack {
+                            Label("Fallback to mdns services", systemImage: "antenna.radiowaves.left.and.right")
+                            Spacer()
+                            Toggle("", isOn: $appState.fallbackToMdns)
+                                .toggleStyle(.switch)
+                        }
                     }
                     .padding()
                     .background(.background.opacity(0.3))
