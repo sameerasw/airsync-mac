@@ -103,6 +103,9 @@ class AppState: ObservableObject {
 
         loadAppsFromDisk()
         loadPinnedApps()
+        
+        // Ensure dock icon visibility is applied on launch
+        updateDockIconVisibility()
     }
 
     @Published var minAndroidVersion = Bundle.main.infoDictionary?["AndroidVersion"] as? String ?? "2.0.0"
