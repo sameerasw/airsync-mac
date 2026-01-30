@@ -618,7 +618,7 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
                         let args = ["-s", fullAddress, "pull", remotePath, destinationURL.path]
                         logBinaryDetection("Pulling: \(adbPath) \(args.joined(separator: " "))")
                         
-                        runADBCommand(adbPath: adbPath, arguments: args) { output in
+                        runADBCommand(adbPath: adbPath, arguments: args, completion: { output in
                             logBinaryDetection("ADB Pull Output: \(output)")
                             let success = !output.lowercased().contains("error") && !output.lowercased().contains("failed")
                             
@@ -632,7 +632,7 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
                                 }
                                 completion?(success)
                             }
-                        }
+                        })
                     }
                 } else {
                     completion?(false)
@@ -663,7 +663,7 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
             let args = ["-s", fullAddress, "push", localPath, remotePath]
             logBinaryDetection("Pushing: \(adbPath) \(args.joined(separator: " "))")
             
-            runADBCommand(adbPath: adbPath, arguments: args) { output in
+            runADBCommand(adbPath: adbPath, arguments: args, completion: { output in
                 logBinaryDetection("ADB Push Output: \(output)")
                 let success = !output.lowercased().contains("error") && !output.lowercased().contains("failed")
                 
@@ -672,7 +672,7 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
                     AppState.shared.adbTransferringFilePath = nil
                     completion?(success)
                 }
-            }
+            })
         }
     }
 }
