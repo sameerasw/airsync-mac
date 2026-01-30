@@ -243,7 +243,7 @@ Keeps me inspired to continue and maybe even to publish to the Apple app store a
 That said, I know not everyone who wants the full experience can afford it. If that’s you, please don’t hesitate to reach out. 😊
 
 The source code is available on GitHub, and you're more than welcome to build with all Plus features free — for personal use which also opens for contributions which is a win-win!.
-As a thank-you for supporting the app, AirSync+ unlocks some nice extras: media controls, synced widgets, low battery alerts, wireless ADB, and more to come as I keep adding new features.
+As a thank-you for supporting the app, AirSync+ unlocks some nice extras: media controls, synced widgets, low battery alerts, wireless ADB, file browser, and more to come as I keep adding new features.
 
 Enjoy the app!
 (っ◕‿◕)っ
