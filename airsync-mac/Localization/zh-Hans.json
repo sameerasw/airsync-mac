@@ -20,7 +20,7 @@
   "transfers.empty": "暂无传输记录",
   "plus.title": "AirSync+",
   "plus.why": "为什么 Plus?",
-  "plus.why.body": "这个小小的支持会让我保持动力继续开发，甚至有机会发布到 Apple App Store 和 Google Play Store。可以把它看作是让这个项目持续活跃、不断进化的一点小捐助。\n\n话虽如此，我知道并不是每个想要完整体验的用户都能负担得起。如果你正好遇到这种情况，请随时联系我。😊\n\n源代码已在 GitHub 开源，你完全可以用它来构建带有所有 Plus 功能的个人版本——同时也欢迎贡献代码，这是一种双赢！\n\n作为支持应用的感谢，AirSync+ 将解锁一些实用的小功能：媒体控制、同步小组件、低电量提醒、无线 ADB，还有更多新功能会陆续加入。\n\n祝你使用愉快！\n(っ◕‿◕)っ",
+  "plus.why.body": "Keeps me inspired to continue and maybe even to publish to the Apple app store and Google Play Store. Think of it as a little donation to keep this project alive and evolving.\nThat said, I know not everyone who wants the full experience can afford it. If that’s you, please don’t hesitate to reach out. 😊\n\nThe source code is available on GitHub, and you're more than welcome to build with all Plus features free — for personal use which also opens for contributions which is a win-win!.\nAs a thank-you for supporting the app, AirSync+ unlocks some nice extras: media controls, synced widgets, low battery alerts, wireless ADB, file browser, and more to come as I keep adding new features.\n\nEnjoy the app!\n(っ◕‿◕)っ",
   "license.enterKey": "输入激活码",
   "status.battery": "电池",
   "status.volume": "音量",
