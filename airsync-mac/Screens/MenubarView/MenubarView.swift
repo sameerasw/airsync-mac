@@ -66,6 +66,42 @@ struct MenubarView: View {
 
                     if (appState.device != nil){
                         GlassButtonView(
+                            label: "Sync Clipboard",
+                            systemImage: "doc.on.clipboard",
+                            iconOnly: true,
+                            circleSize: toolButtonSize,
+                            action: {
+                                let pasteboard = NSPasteboard.general
+                                if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], let firstUrl = urls.first {
+                                    DispatchQueue.global(qos: .userInitiated).async {
+                                        WebSocketServer.shared.sendFile(url: firstUrl, isClipboard: true)
+                                    }
+                                } else if let image = NSImage(pasteboard: pasteboard) {
+                                    // Handle copied image data
+                                    let tempDir = FileManager.default.temporaryDirectory
+                                    let tempUrl = tempDir.appendingPathComponent("clipboard_image_\(Int(Date().timeIntervalSince1970)).png")
+                                    if let tiffData = image.tiffRepresentation,
+                                       let bitmap = NSBitmapImageRep(data: tiffData),
+                                       let pngData = bitmap.representation(using: .png, properties: [:]) {
+                                        do {
+                                            try pngData.write(to: tempUrl)
+                                            DispatchQueue.global(qos: .userInitiated).async {
+                                                WebSocketServer.shared.sendFile(url: tempUrl, isClipboard: true)
+                                            }
+                                        } catch {
+                                            print("[MenubarView] Failed to save clipboard image: \(error)")
+                                        }
+                                    }
+                                }
+                            }
+                        )
+                        .transition(.identity)
+                        .keyboardShortcut(
+                            "v",
+                            modifiers: [.command, .shift]
+                        )
+                        
+                        GlassButtonView(
                             label: "Send",
                             systemImage: "square.and.arrow.up",
                             iconOnly: true,

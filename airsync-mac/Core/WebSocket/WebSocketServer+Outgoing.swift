@@ -193,7 +193,7 @@ extension WebSocketServer {
 
     /// Initiates a robust file transfer to the connected device.
     /// Implements a sliding window protocol with checksum verification and retry logic for reliable delivery.
-    func sendFile(url: URL, chunkSize: Int = 64 * 1024) {
+    func sendFile(url: URL, chunkSize: Int = 64 * 1024, isClipboard: Bool = false) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
             guard FileManager.default.fileExists(atPath: url.path) else { return }
@@ -222,7 +222,7 @@ extension WebSocketServer {
             let transferId = UUID().uuidString
             AppState.shared.startOutgoingTransfer(id: transferId, name: fileName, size: totalSize, mime: mime, chunkSize: chunkSize)
 
-            let initMessage = FileTransferProtocol.buildInit(id: transferId, name: fileName, size: Int64(totalSize), mime: mime, chunkSize: chunkSize, checksum: checksum)
+            let initMessage = FileTransferProtocol.buildInit(id: transferId, name: fileName, size: Int64(totalSize), mime: mime, chunkSize: chunkSize, checksum: checksum, isClipboard: isClipboard)
             self.sendToFirstAvailable(message: initMessage)
 
             let windowSize = 8
