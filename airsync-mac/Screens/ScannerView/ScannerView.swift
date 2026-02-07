@@ -201,10 +201,10 @@ struct ScannerView: View {
         }
         .onAppear {
             generateQRAsync()
-            udpDiscovery.start()
+            // UDP Discovery is now managed globally in App/AppDelegate
         }
         .onDisappear {
-            udpDiscovery.stop()
+            // UDP Discovery is now managed globally in App/AppDelegate
         }
         .onTapGesture {
             generateQRAsync()

@@ -44,22 +44,75 @@ class UDPDiscoveryManager: ObservableObject {
         // Init logic only
     }
     
+    private var networkMonitor: NWPathMonitor?
+    
     // MARK: - Lifecycle
     
     func start() {
         if !isListening {
             startListening()
             startPruning()
+            startMonitoring()
             isListening = true
+            
+            // Immediate broadcast on start
+            broadcastBurst()
         }
     }
     
     func stop() {
         stopListening()
+        stopMonitoring()
         isListening = false
     }
     
+    // MARK: - Smart Triggers
+    
+    private func startMonitoring() {
+        // 1. System Wake
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(handleSystemWake),
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+        
+        // 2. Network Change
+        networkMonitor = NWPathMonitor()
+        networkMonitor?.pathUpdateHandler = { [weak self] path in
+            guard let self = self else { return }
+            if path.status == .satisfied {
+                print("[Discovery] Network change detected: \(path.status)")
+                self.broadcastBurst()
+            }
+        }
+        networkMonitor?.start(queue: queue)
+    }
+    
+    private func stopMonitoring() {
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        networkMonitor?.cancel()
+        networkMonitor = nil
+    }
+    
+    @objc private func handleSystemWake() {
+        print("[Discovery] System wake detected")
+        broadcastBurst()
+    }
+    
     // MARK: - Broadcasting
+    
+    /// Sends a rapid burst of broadcasts to ensure delivery (Active Burst support)
+    func broadcastBurst() {
+        print("[Discovery] Triggering broadcast burst")
+        
+        // Send 3 packets with slight delay
+        for i in 0..<3 {
+            DispatchQueue.global().asyncAfter(deadline: .now() + (Double(i) * 0.1)) { [weak self] in
+                self?.broadcastPresence()
+            }
+        }
+    }
     
     func broadcastPresence() {
         let adapters = WebSocketServer.shared.getAvailableNetworkAdapters()

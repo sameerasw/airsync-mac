@@ -64,9 +64,13 @@ struct airsync_macApp: App {
         loadCachedWallpapers()
 
 
+
         // Initialize trial manager early so entitlement state is up-to-date on launch.
         _ = TrialManager.shared
-
+        
+        // Start UDP Discovery (Active Burst + Passive Listen)
+        UDPDiscoveryManager.shared.start()
+        
     }
 
     var body: some Scene {
