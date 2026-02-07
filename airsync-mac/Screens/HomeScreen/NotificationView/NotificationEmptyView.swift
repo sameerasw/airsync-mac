@@ -15,7 +15,7 @@ struct NotificationEmptyView: View {
     var body: some View {
         VStack {
             LottieView("empty-notification-v1-clear")
-                .loopMode(.loop)
+                .loopMode(.playOnce)
                 .frame(width: 100, height: 100)
                 .modifier(InvertIfLightMode(colorScheme: colorScheme))
 

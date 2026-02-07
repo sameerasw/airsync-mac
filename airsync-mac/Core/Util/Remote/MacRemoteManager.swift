@@ -17,6 +17,7 @@ class MacRemoteManager: ObservableObject {
     @Published var lastVolumeLevel: Int = 0
     private var volumeCheckTimer: Timer?
     private var cachedScreenHeight: CGFloat = 1080
+    private var isMonitoring = false
     
     // Key codes
     enum Key: Int {
@@ -45,7 +46,6 @@ class MacRemoteManager: ObservableObject {
         // Initialize last known volume
         self.lastVolumeLevel = getVolume()
         self.cachedScreenHeight = NSScreen.main?.frame.height ?? 1080
-        startVolumeMonitoring()
     }
     
     deinit {
@@ -188,8 +188,7 @@ class MacRemoteManager: ObservableObject {
     
     func setVolume(_ percent: Int) {
         let constrained = max(0, min(100, percent))
-        let scriptSource = "set volume output volume \(constrained)"
-        executeAppleScript(scriptSource)
+        setSystemVolume(Float(constrained) / 100.0)
         
         // Update local state immediately for responsiveness
         self.lastVolumeLevel = constrained
@@ -197,11 +196,8 @@ class MacRemoteManager: ObservableObject {
     }
     
     func getVolume() -> Int {
-        let scriptSource = "output volume of (get volume settings)"
-        if let result = executeAppleScript(scriptSource), let val = Int(result) {
-            return val
-        }
-        return 0
+        let vol = getSystemVolume()
+        return Int(vol * 100)
     }
     
     func increaseVolume() {
@@ -226,15 +222,114 @@ class MacRemoteManager: ObservableObject {
         simulateMediaKey(.mute)
     }
     
+    // MARK: - CoreAudio Implementation
+    
+    private func getSystemVolume() -> Float {
+        var defaultOutputDeviceID = AudioDeviceID(0)
+        var defaultOutputDeviceIDSize = UInt32(MemoryLayout.size(ofValue: defaultOutputDeviceID))
+        
+        var getDefaultOutputDevicePropertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        
+        let status1 = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &getDefaultOutputDevicePropertyAddress,
+            0,
+            nil,
+            &defaultOutputDeviceIDSize,
+            &defaultOutputDeviceID
+        )
+        
+        guard status1 == noErr else { return 0.0 }
+        
+        var volume = Float32(0.0)
+        var volumeSize = UInt32(MemoryLayout.size(ofValue: volume))
+        
+        var volumePropertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
+            mScope: kAudioDevicePropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        
+        let status2 = AudioObjectGetPropertyData(
+            defaultOutputDeviceID,
+            &volumePropertyAddress,
+            0,
+            nil,
+            &volumeSize,
+            &volume
+        )
+        
+        if status2 == noErr {
+            return volume
+        } else {
+            return 0.0
+        }
+    }
+    
+    private func setSystemVolume(_ volume: Float) {
+        var defaultOutputDeviceID = AudioDeviceID(0)
+        var defaultOutputDeviceIDSize = UInt32(MemoryLayout.size(ofValue: defaultOutputDeviceID))
+        
+        var getDefaultOutputDevicePropertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        
+        let status1 = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &getDefaultOutputDevicePropertyAddress,
+            0,
+            nil,
+            &defaultOutputDeviceIDSize,
+            &defaultOutputDeviceID
+        )
+        
+        guard status1 == noErr else { return }
+        
+        var volumeToSet = Float32(volume)
+        let volumeSize = UInt32(MemoryLayout.size(ofValue: volumeToSet))
+        
+        var volumePropertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
+            mScope: kAudioDevicePropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        
+        AudioObjectSetPropertyData(
+            defaultOutputDeviceID,
+            &volumePropertyAddress,
+            0,
+            nil,
+            volumeSize,
+            &volumeToSet
+        )
+    }
+    
     // MARK: - Monitoring & Sync
     
-    private func startVolumeMonitoring() {
+    func startVolumeMonitoring() {
+        guard !isMonitoring else { return }
+        isMonitoring = true
+        print("[MacRemoteManager] Starting volume monitoring")
+        
+        checkVolumeChange()
+        
+        // Start timer
         volumeCheckTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.checkVolumeChange()
         }
     }
     
-    private func stopVolumeMonitoring() {
+    func stopVolumeMonitoring() {
+        guard isMonitoring else { return }
+        isMonitoring = false
+        print("[MacRemoteManager] Stopping volume monitoring")
+        
         volumeCheckTimer?.invalidate()
         volumeCheckTimer = nil
     }

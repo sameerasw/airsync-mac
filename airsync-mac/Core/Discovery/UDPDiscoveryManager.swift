@@ -193,7 +193,7 @@ class UDPDiscoveryManager: ObservableObject {
             listener?.start(queue: queue)
             
             // Start periodic broadcast
-            Timer.publish(every: 3, on: .main, in: .common)
+            Timer.publish(every: 10, on: .main, in: .common)
                 .autoconnect()
                 .sink { [weak self] _ in
                     guard let self = self, self.isListening else { return }
@@ -309,7 +309,7 @@ class UDPDiscoveryManager: ObservableObject {
     
     private func startPruning() {
         // More frequent pruning for better UI responsiveness
-        Timer.publish(every: 2.0, on: .main, in: .common)
+        Timer.publish(every: 10.0, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
                 self?.pruneStaleDevices()

@@ -142,15 +142,20 @@ extension WebSocketServer {
         ]
 
         if let musicInfo {
-            statusDict["music"] = [
+            var musicDict: [String: Any] = [
                 "isPlaying": musicInfo.isPlaying ?? false,
                 "title": musicInfo.title ?? "",
                 "artist": musicInfo.artist ?? "",
                 "volume": 50,
                 "isMuted": false,
-                "albumArt": albumArtBase64 ?? "",
                 "likeStatus": "none"
             ]
+            
+            if let art = albumArtBase64 {
+                musicDict["albumArt"] = art
+            }
+            
+            statusDict["music"] = musicDict
         }
 
         sendMessage(type: "status", data: statusDict)

@@ -20,7 +20,7 @@ class WebSocketServer: ObservableObject {
     internal var pingTimer: Timer?
     internal let pingInterval: TimeInterval = 5.0
     internal var lastActivity: [ObjectIdentifier: Date] = [:]
-    internal let activityTimeout: TimeInterval = 6.0
+    internal let activityTimeout: TimeInterval = 11.0
     
     @Published var symmetricKey: SymmetricKey?
     @Published var localPort: UInt16?
@@ -129,7 +129,6 @@ class WebSocketServer: ObservableObject {
                 self.lock.unlock()
 
                 self.startNetworkMonitoring()
-                self.startPing()
             } catch {
                 self.lock.unlock()
                 DispatchQueue.main.async { AppState.shared.webSocketStatus = .failed(error: "\(error)") }
@@ -203,16 +202,28 @@ class WebSocketServer: ObservableObject {
                 let sessionId = ObjectIdentifier(session)
                 self.lastActivity[sessionId] = Date()
                 self.activeSessions.append(session)
+                let sessionCount = self.activeSessions.count
                 self.lock.unlock()
                 print("[websocket] Session \(sessionId) connected.")
+                
+                if sessionCount == 1 {
+                    MacRemoteManager.shared.startVolumeMonitoring()
+                    self.startPing()
+                }
             },
             disconnected: { [weak self] session in
                 guard let self = self else { return }
                 self.lock.lock()
                 self.activeSessions.removeAll(where: { $0 === session })
+                let sessionCount = self.activeSessions.count
                 let wasPrimary = (ObjectIdentifier(session) == self.primarySessionID)
                 if wasPrimary { self.primarySessionID = nil }
                 self.lock.unlock()
+                
+                if sessionCount == 0 {
+                    MacRemoteManager.shared.stopVolumeMonitoring()
+                    self.stopPing()
+                }
                 
                 if wasPrimary {
                     DispatchQueue.main.async {
