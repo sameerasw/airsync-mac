@@ -28,6 +28,7 @@ final class TrialManager: ObservableObject {
         hasSecretConfigured = TrialSecretProvider.currentSecret() != nil
         lastSyncDate = UserDefaults.standard.trialLastSync
 
+        validateDataIntegrity()
         evaluatePersistedState()
         observeLicenseChanges()
     }
@@ -116,6 +117,7 @@ final class TrialManager: ObservableObject {
             case .activated(let token, let expiry):
                 lastError = nil
                 handleActivation(token: token, expiry: expiry)
+                updateIntegrityHash()
             case .expired(let message):
                 lastError = message
                 handleExpirationReached(expiryOverride: expiresAt)
@@ -264,7 +266,13 @@ final class TrialManager: ObservableObject {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        let payload = TrialRequestPayload(deviceId: deviceIdentifier, secret: secret)
+        let payload = TrialRequestPayload(
+            deviceId: deviceIdentifier,
+            secret: secret,
+            deviceName: HardwareInfo.deviceName,
+            modelName: HardwareInfo.modelName,
+            osVersion: HardwareInfo.osVersion
+        )
         request.httpBody = try JSONEncoder().encode(payload)
 
         let (data, response): (Data, URLResponse)
@@ -309,21 +317,61 @@ final class TrialManager: ObservableObject {
 
     private static func loadOrCreateDeviceIdentifier() -> String {
         let key = "trial-device-identifier"
+        let hardwareId = HardwareInfo.hardwareUUID()
 
+        // 1. If we have a hardware ID, prioritize it as the most stable identifier
+        if let hwId = hardwareId {
+            KeychainStorage.set(hwId, for: key)
+            UserDefaults.standard.trialDeviceIdentifier = hwId
+            return hwId
+        }
+
+        // 2. Fallback to existing Keychain identifier
         if let existing = KeychainStorage.string(for: key) {
             UserDefaults.standard.trialDeviceIdentifier = existing
             return existing
         }
 
+        // 3. Fallback to existing UserDefaults identifier
         if let stored = UserDefaults.standard.trialDeviceIdentifier, !stored.isEmpty {
             KeychainStorage.set(stored, for: key)
             return stored
         }
 
+        // 4. Final Fallback: New random UUID
         let newIdentifier = UUID().uuidString
         KeychainStorage.set(newIdentifier, for: key)
         UserDefaults.standard.trialDeviceIdentifier = newIdentifier
         return newIdentifier
+    }
+
+    private func validateDataIntegrity() {
+        guard let expiry = expiresAt, token != nil else { return }
+        let secret = TrialSecretProvider.currentSecret() ?? ""
+        let combined = "\(expiry.timeIntervalSince1970)\(deviceIdentifier)\(secret)"
+        let expectedHash = sha256(combined)
+
+        if let storedHash = KeychainStorage.string(for: "trial-integrity-hash") {
+            if storedHash == expectedHash {
+                return
+            } else {
+                #if !DEBUG
+                clearTrial()
+                #else
+                print("[TrialManager] Integrity check failed. Stored hash mismatch.")
+                #endif
+            }
+        } else {
+            updateIntegrityHash()
+        }
+    }
+
+    private func updateIntegrityHash() {
+        guard let expiry = expiresAt else { return }
+        let secret = TrialSecretProvider.currentSecret() ?? ""
+        let combined = "\(expiry.timeIntervalSince1970)\(deviceIdentifier)\(secret)"
+        let hash = sha256(combined)
+        KeychainStorage.set(hash, for: "trial-integrity-hash")
     }
 
     private static let countdownFormatter: DateComponentsFormatter = {
@@ -368,6 +416,9 @@ private enum TrialAPIError: LocalizedError {
 private struct TrialRequestPayload: Encodable {
     let deviceId: String
     let secret: String
+    let deviceName: String
+    let modelName: String
+    let osVersion: String
 }
 
 private struct TrialResponsePayload: Decodable {
