@@ -184,7 +184,9 @@ class Gumroad {
 
         // If no stored key, behave as before
         guard let key = appState.licenseDetails?.key, !key.isEmpty else {
-            appState.isPlus = false
+            if !TrialManager.shared.isTrialActive {
+                appState.isPlus = false
+            }
             Gumroad().incrementInvalidLicenseFailCount() // treat as invalid (no key)
             UserDefaults.standard.lastLicenseCheckDate = now
             return
@@ -208,11 +210,13 @@ class Gumroad {
                 print("[gumroad] License valid — daily success recorded.")
             } else {
                 // Invalid/expired/cancelled/license-limit — disable immediately
-                appState.isPlus = false
+                if !TrialManager.shared.isTrialActive {
+                    appState.isPlus = false
+                }
                 Gumroad().incrementInvalidLicenseFailCount()
                 // Reset network failure streak because this is not a network failure
                 UserDefaults.standard.consecutiveNetworkFailureDays = 0
-                print("[gumroad] License invalid or expired — disabled Plus.")
+                print("[gumroad] License invalid or expired — disabled Plus (unless trial active).")
             }
         } catch let error as LicenseCheckError {
             // Network/server failure: do not disable Plus today
@@ -286,6 +290,7 @@ class Gumroad {
         if let lastSuccess = UserDefaults.standard.lastLicenseSuccessfulCheckDate,
            Calendar.current.isDateInToday(lastSuccess) {
             print("[gumroad] License already successfully validated today — skipping network call.")
+            appState.isPlus = true
             return
         }
 

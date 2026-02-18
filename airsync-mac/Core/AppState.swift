@@ -22,7 +22,7 @@ class AppState: ObservableObject {
     @Published var isOS26: Bool = true
 
     init() {
-        self.isPlus = UserDefaults.standard.bool(forKey: "isPlus")
+        self.isPlus = false
 
         let adbPortValue = UserDefaults.standard.integer(forKey: "adbPort")
         self.adbPort = adbPortValue == 0 ? 5555 : UInt16(adbPortValue)
