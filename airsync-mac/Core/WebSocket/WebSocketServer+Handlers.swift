@@ -440,10 +440,25 @@ extension WebSocketServer {
 
                     if let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
                         do {
-                            let finalDest = downloads.appendingPathComponent(resolvedName)
-                            if FileManager.default.fileExists(atPath: finalDest.path) {
-                                try FileManager.default.removeItem(at: finalDest)
+                            var finalName = resolvedName
+                            var finalDest = downloads.appendingPathComponent(finalName)
+                            var counter = 1
+                            
+                            let nsString = resolvedName as NSString
+                            let baseName = nsString.deletingPathExtension
+                            let extensionStr = nsString.pathExtension
+                            let hasExtension = !extensionStr.isEmpty
+                            
+                            while FileManager.default.fileExists(atPath: finalDest.path) {
+                                if hasExtension {
+                                    finalName = "\(baseName)(\(counter)).\(extensionStr)"
+                                } else {
+                                    finalName = "\(baseName)(\(counter))"
+                                }
+                                finalDest = downloads.appendingPathComponent(finalName)
+                                counter += 1
                             }
+                            
                             try FileManager.default.moveItem(at: state.tempUrl, to: finalDest)
 
                             DispatchQueue.main.async {
@@ -451,7 +466,7 @@ extension WebSocketServer {
                                 AppState.shared.postNativeNotification(
                                     id: "incoming_file_\(id)",
                                     appName: "AirSync",
-                                    title: "Received: \(resolvedName)",
+                                    title: "Received: \(finalName)",
                                     body: "Saved to Downloads"
                                 )
                             }
