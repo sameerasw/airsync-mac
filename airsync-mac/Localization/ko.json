@@ -1,7 +1,7 @@
 {
   "app.name": "AirSync",
   "menu.mirror": "미러",
-  "menu.about": "AirSync 소개",
+  "menu.about": "AirSync에 관하여",
   "menu.checkUpdates": "업데이트 확인…",
   "menu.quit": "종료",
   "home.title": "AirSync",
