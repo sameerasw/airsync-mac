@@ -505,7 +505,13 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
         }
 
         if desktop ?? true {
-            args.append("--new-display=\(desktopMode ?? "1600x1000")")
+            let res = desktopMode ?? "1600x1000"
+            let dpi = UserDefaults.standard.string(forKey: "scrcpyDesktopDpi") ?? ""
+            if !dpi.isEmpty {
+                args.append("--new-display=\(res)/\(dpi)")
+            } else {
+                args.append("--new-display=\(res)")
+            }
         }
 
         if let pkg = package {
