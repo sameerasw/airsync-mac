@@ -77,6 +77,11 @@ class MacRemoteManager: ObservableObject {
             executeAppleScript("tell application \"System Events\" to keystroke \"q\" using {control down, command down}")
         }
     }
+
+    func startScreensaver() {
+        // Start the screensaver engine
+        executeAppleScript("do shell script \"open -a ScreenSaverEngine\"")
+    }
     
     // MARK: - Input Simulation
     

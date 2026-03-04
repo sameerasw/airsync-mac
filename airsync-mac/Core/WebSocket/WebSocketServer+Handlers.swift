@@ -566,6 +566,8 @@ extension WebSocketServer {
                 }
             case "lock_screen":
                 MacRemoteManager.shared.lockScreen()
+            case "screensaver":
+                MacRemoteManager.shared.startScreensaver()
             default: break
             }
         }
