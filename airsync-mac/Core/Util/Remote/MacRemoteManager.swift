@@ -63,6 +63,20 @@ class MacRemoteManager: ObservableObject {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
         AXIsProcessTrustedWithOptions(options as CFDictionary)
     }
+
+    func lockScreen() {
+        let libPath = "/System/Library/PrivateFrameworks/login.framework/Versions/Current/login"
+        if let handle = dlopen(libPath, RTLD_NOW) {
+            if let sym = dlsym(handle, "SACLockScreenImmediate") {
+                let lockFunc = unsafeBitCast(sym, to: (@convention(c) () -> Void).self)
+                lockFunc()
+            }
+            dlclose(handle)
+        } else {
+            // Fallback to keyboard shortcut if dlopen fails (unlikely)
+            executeAppleScript("tell application \"System Events\" to keystroke \"q\" using {control down, command down}")
+        }
+    }
     
     // MARK: - Input Simulation
     
@@ -97,7 +111,7 @@ class MacRemoteManager: ObservableObject {
         }
     }
 
-    func simulateMouseScroll(dx: CGFloat, dy: CGFloat) {
+    func simulateMouseScroll(dx: CGFloat, dy: Double) {
         // wheel1 is vertical, wheel2 is horizontal
         let event = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: Int32(dy), wheel2: Int32(dx), wheel3: 0)
         event?.post(tap: .cghidEventTap)

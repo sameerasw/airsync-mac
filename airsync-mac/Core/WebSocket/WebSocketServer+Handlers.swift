@@ -564,6 +564,8 @@ extension WebSocketServer {
                 if let dx = dict["dx"] as? Double, let dy = dict["dy"] as? Double {
                     MacRemoteManager.shared.simulateMouseScroll(dx: CGFloat(dx), dy: CGFloat(dy))
                 }
+            case "lock_screen":
+                MacRemoteManager.shared.lockScreen()
             default: break
             }
         }
