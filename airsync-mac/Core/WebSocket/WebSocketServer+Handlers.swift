@@ -517,6 +517,7 @@ extension WebSocketServer {
     private func handleRemoteControl(_ message: Message) {
         if let dict = message.data.value as? [String: Any],
            let action = dict["action"] as? String {
+            print("[WebSocketServer] Received remote action: \(action)")
             
             switch action {
             case "keypress":
@@ -568,6 +569,10 @@ extension WebSocketServer {
                 MacRemoteManager.shared.lockScreen()
             case "screensaver":
                 MacRemoteManager.shared.startScreensaver()
+            case "brightness_up":
+                MacRemoteManager.shared.increaseBrightness()
+            case "brightness_down":
+                MacRemoteManager.shared.decreaseBrightness()
             default: break
             }
         }

@@ -9,6 +9,7 @@ import Foundation
 import Cocoa
 import Carbon
 import AudioToolbox
+import CoreGraphics
 internal import Combine
 
 class MacRemoteManager: ObservableObject {
@@ -40,6 +41,8 @@ class MacRemoteManager: ObservableObject {
         case soundUp = 0   // NX_KEYTYPE_SOUND_UP
         case soundDown = 1 // NX_KEYTYPE_SOUND_DOWN
         case mute = 7      // NX_KEYTYPE_MUTE
+        case brightnessUp = 2   // NX_KEYTYPE_BRIGHTNESS_UP
+        case brightnessDown = 3 // NX_KEYTYPE_BRIGHTNESS_DOWN
     }
     
     private init() {
@@ -240,8 +243,52 @@ class MacRemoteManager: ObservableObject {
     func toggleMute() {
         simulateMediaKey(.mute)
     }
+
+    func increaseBrightness() {
+        let current = getSystemBrightness()
+        let newLevel = min(1.0, current + 0.0625)
+        setSystemBrightness(newLevel)
+        print("[MacRemoteManager] Increasing brightness to \(newLevel)")
+    }
+
+    func decreaseBrightness() {
+        let current = getSystemBrightness()
+        let newLevel = max(0.0, current - 0.0625)
+        setSystemBrightness(newLevel)
+        print("[MacRemoteManager] Decreasing brightness to \(newLevel)")
+    }
     
     // MARK: - CoreAudio Implementation
+    
+    private func getSystemBrightness() -> Float {
+        let libPath = "/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices"
+        guard let handle = dlopen(libPath, RTLD_NOW) else { return 0.5 }
+        defer { dlclose(handle) }
+        
+        typealias GetBrightnessPtr = @convention(c) (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32
+        if let sym = dlsym(handle, "DisplayServicesGetBrightness") {
+            let getBrightness = unsafeBitCast(sym, to: GetBrightnessPtr.self)
+            var brightness: Float = 0
+            let result = getBrightness(CGMainDisplayID(), &brightness)
+            if result == 0 {
+                return brightness
+            }
+        }
+        return 0.5
+    }
+
+    private func setSystemBrightness(_ level: Float) {
+        let libPath = "/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices"
+        guard let handle = dlopen(libPath, RTLD_NOW) else { return }
+        defer { dlclose(handle) }
+        
+        typealias SetBrightnessPtr = @convention(c) (CGDirectDisplayID, Float) -> Int32
+        if let sym = dlsym(handle, "DisplayServicesSetBrightness") {
+            let setBrightness = unsafeBitCast(sym, to: SetBrightnessPtr.self)
+            let newLevel = max(0.0, min(1.0, level))
+            _ = setBrightness(CGMainDisplayID(), newLevel)
+        }
+    }
     
     private func getSystemVolume() -> Float {
         var defaultOutputDeviceID = AudioDeviceID(0)
@@ -364,7 +411,9 @@ class MacRemoteManager: ObservableObject {
     private func notifyVolumeChange() {
         DispatchQueue.main.async {
             // Send update via WebSocket
-            WebSocketServer.shared.sendMacVolumeUpdate(level: self.lastVolumeLevel)
+            let levelInt = Int(self.lastVolumeLevel * 100)
+            print("[MacRemoteManager] Notifying volume change: \(levelInt)%")
+            WebSocketServer.shared.sendMacVolumeUpdate(level: levelInt)
         }
     }
     
