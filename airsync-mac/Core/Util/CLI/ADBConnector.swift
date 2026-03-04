@@ -178,22 +178,12 @@ struct ADBConnector {
     }
 
     private static func proceedWithConnection(adbPath: String, ip: String, portsToTry: [UInt16]) {
-        // Kill adb server first
-        logBinaryDetection("Killing adb server: \(adbPath) kill-server")
-        runADBCommand(adbPath: adbPath, arguments: ["kill-server"], completion: { _ in
-            // Give the adb daemon time to fully terminate
-            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 1.0) {
-                // Explicitly start the server and wait for it
-                logBinaryDetection("Starting adb server...")
-                ADBConnector.runADBCommand(adbPath: adbPath, arguments: ["start-server"], completion: { _ in
-                    // Give server time to fully initialize
-                    DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 1.5) {
-                        // Try each port until one succeeds
-                        attemptConnectionToNextPort(adbPath: adbPath, ip: ip, portsToTry: portsToTry, currentIndex: 0, reportedIP: ip)
-                    }
-                })
-            }
-        })
+        logBinaryDetection("Proceeding with ADB connection attempts to \(ip)...")
+        
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.5) {
+            // Try each port until one succeeds
+            attemptConnectionToNextPort(adbPath: adbPath, ip: ip, portsToTry: portsToTry, currentIndex: 0, reportedIP: ip)
+        }
     }
 
     // Attempt connection using custom port directly without mDNS discovery
@@ -385,9 +375,18 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
             return
         }
 
-        logBinaryDetection("Killing adb server: \(adbPath) kill-server")
-        runADBCommand(adbPath: adbPath, arguments: ["kill-server"])
-        UserDefaults.standard.lastADBCommand = "adb kill-server"
+        let adbIP = AppState.shared.adbConnectedIP
+        let adbPort = AppState.shared.adbPort
+        let fullAddress = "\(adbIP):\(adbPort)"
+
+        if !adbIP.isEmpty {
+            logBinaryDetection("Disconnecting from adb device: \(adbPath) disconnect \(fullAddress)")
+            runADBCommand(adbPath: adbPath, arguments: ["disconnect", fullAddress])
+            UserDefaults.standard.lastADBCommand = "adb disconnect \(fullAddress)"
+        } else {
+            logBinaryDetection("No connected ADB device to disconnect, skipping.")
+        }
+        
         AppState.shared.adbConnected = false
         AppState.shared.adbConnecting = false
     }
