@@ -17,7 +17,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate() {
         AppState.shared.disconnectDevice()
-        ADBConnector.disconnectADB()
+        if AppState.shared.adbConnected {
+            ADBConnector.disconnectADB()
+        }
         WebSocketServer.shared.stop()
     }
 

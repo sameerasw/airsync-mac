@@ -18,6 +18,7 @@ struct SettingsFeaturesView: View {
     @AppStorage("manualPosition") private var manualPosition = false
     @AppStorage("continueApp") private var continueApp = false
     @AppStorage("directKeyInput") private var directKeyInput = true
+    @AppStorage("scrcpyDesktopDpi") private var scrcpyDesktopDpi = ""
 
     @State private var showingPlusPopover = false
     @State private var tempBitrate: Double = 4.00
@@ -214,6 +215,19 @@ struct SettingsFeaturesView: View {
                                         Text("2000x1800").tag("2000x1800")
                                     }
                                     .pickerStyle(MenuPickerStyle())
+                                }
+
+                                HStack {
+                                    Text("dpi")
+                                    Spacer()
+                                    TextField("dpi", text: Binding(
+                                        get: { UserDefaults.standard.string(forKey: "scrcpyDesktopDpi") ?? "" },
+                                        set: { newValue in
+                                            UserDefaults.standard.set(newValue.filter { "0123456789".contains($0) }, forKey: "scrcpyDesktopDpi")
+                                        }
+                                    ))
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(maxWidth: 60)
                                 }
 
                                 HStack{
