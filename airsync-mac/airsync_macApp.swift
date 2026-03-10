@@ -74,15 +74,6 @@ struct airsync_macApp: App {
     }
 
     var body: some Scene {
-        MenuBarExtra {
-            MenubarView()
-                .environmentObject(appState)
-        } label: {
-            MenuBarLabelView()
-                .environmentObject(appState)
-        }
-        .menuBarExtraStyle(.window)
-
         Window("AirSync", id: "main") {
             if #available(macOS 15.0, *) {
                 HomeView()

@@ -161,6 +161,7 @@ class AppState: ObservableObject {
     @Published var adbConnecting: Bool = false
     @Published var manualAdbConnectionPending: Bool = false
     @Published var currentDeviceWallpaperBase64: String? = nil
+    @Published var isMenubarWindowOpen: Bool = false
 
     // Audio player for ringtone
     private var ringtonePlayer: AVAudioPlayer?

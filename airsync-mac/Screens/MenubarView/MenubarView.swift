@@ -210,6 +210,13 @@ struct MenubarView: View {
         }
         .frame(minWidth: minWidthTabs)
         .frame(maxWidth: .infinity)
+        .dropTarget(appState: appState)
+        .onAppear {
+            appState.isMenubarWindowOpen = true
+        }
+        .onDisappear {
+            appState.isMenubarWindowOpen = false
+        }
     }
 }
 
