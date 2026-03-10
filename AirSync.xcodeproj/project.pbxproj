@@ -134,6 +134,7 @@
 				B9D742FA2E39CF850053128A /* XCRemoteSwiftPackageReference "swifter" */,
 				B9AEBC082E6235D3006BA027 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				B9B1C00B2E94E15D0005F6CB /* XCRemoteSwiftPackageReference "LottieUI" */,
+				B9D263162F60D26700628704 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B9673B582E35A2A1006D284A /* Products */;
@@ -549,6 +550,14 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 26.10.0;
+			};
+		};
+		B9D263162F60D26700628704 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/getsentry/sentry-cocoa.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.6.0;
 			};
 		};
 		B9D742FA2E39CF850053128A /* XCRemoteSwiftPackageReference "swifter" */ = {
