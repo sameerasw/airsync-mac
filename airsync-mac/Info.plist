@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>AndroidVersion</key>
-	<string>2.5.2</string>
+	<string>2.6.0</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
