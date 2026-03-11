@@ -87,13 +87,38 @@ struct ConnectionStatusPill: View {
 
 struct ConnectionPillPopover: View {
     @ObservedObject var appState = AppState.shared
+    @State private var currentIPAddress: String = "N/A"
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Connection")
                 .font(.headline)
             
-            if appState.device != nil {
+            if let device = appState.device {
+                VStack(alignment: .leading, spacing: 8) {
+                    ConnectionInfoText(
+                        label: "Device",
+                        icon: "iphone.gen3",
+                        text: device.name
+                    )
+                    
+                    ConnectionInfoText(
+                        label: "IP Address",
+                        icon: "wifi",
+                        text: currentIPAddress,
+                        activeIp: appState.activeMacIp
+                    )
+                    
+                    if appState.adbConnected {
+                        ConnectionInfoText(
+                            label: "ADB Connection",
+                            icon: appState.adbConnectionMode == .wired ? "cable.connector" : "airplay.audio",
+                            text: appState.adbConnectionMode == .wired ? "Wired (USB)" : "Wireless"
+                        )
+                    }
+                }
+                .padding(.bottom, 4)
+                
                 HStack(spacing: 8) {
                     if appState.adbConnected {
                         GlassButtonView(
@@ -150,6 +175,9 @@ struct ConnectionPillPopover: View {
             }
         }
         .padding()
+        .onAppear {
+            currentIPAddress = WebSocketServer.shared.getLocalIPAddress(adapterName: appState.selectedNetworkAdapterName) ?? "N/A"
+        }
     }
 }
 
