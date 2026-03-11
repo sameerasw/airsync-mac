@@ -113,7 +113,12 @@ struct ConnectionPillPopover: View {
                             iconOnly: false,
                             primary: false,
                             action: {
-                                ADBConnector.connectToADB(ip: appState.device?.ipAddress ?? "")
+                                if !appState.adbConnecting {
+                                    appState.adbConnectionResult = "" // Clear console
+                                    appState.manualAdbConnectionPending = true
+                                    WebSocketServer.shared.sendRefreshAdbPortsRequest()
+                                    appState.adbConnectionResult = "Refreshing latest ADB ports from device..."
+                                }
                             }
                         )
                         .focusable(false)
