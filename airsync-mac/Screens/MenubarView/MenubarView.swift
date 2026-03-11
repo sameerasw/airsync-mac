@@ -172,6 +172,17 @@ struct MenubarView: View {
                     ) {
                         NSApplication.shared.terminate(nil)
                     }
+
+                    #if DEBUG
+                    GlassButtonView(
+                        label: "Crash",
+                        systemImage: "bolt.trianglebadge.exclamationmark",
+                        iconOnly: true,
+                        circleSize: toolButtonSize
+                    ) {
+                        fatalError("Sentry Test Crash")
+                    }
+                    #endif
                 }
                 .padding(8)
 

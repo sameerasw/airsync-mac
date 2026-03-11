@@ -27,6 +27,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Foundation.Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
+        // Initialize Sentry 
+        setupSentry()
+        
         // Dock icon visibility is now controlled by AppState.hideDockIcon
         AppState.shared.updateDockIconVisibility()
         
@@ -36,6 +39,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Register Services Provider
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()
+    }
+
+    private func setupSentry() {
+        SentryInitializer.start()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

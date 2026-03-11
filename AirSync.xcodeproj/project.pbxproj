@@ -11,6 +11,8 @@
 		B9AEBC0A2E6235D3006BA027 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B9AEBC092E6235D3006BA027 /* Sparkle */; };
 		B9B1C00D2E94E15D0005F6CB /* LottieUI in Frameworks */ = {isa = PBXBuildFile; productRef = B9B1C00C2E94E15D0005F6CB /* LottieUI */; };
 		B9C3181E2E37AA1D00367F16 /* QRCode in Frameworks */ = {isa = PBXBuildFile; productRef = B9C3181D2E37AA1D00367F16 /* QRCode */; };
+		B9D2631B2F60D97900628704 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = B9D2631A2F60D97900628704 /* Sentry */; };
+		B9D263292F60D9CF00628704 /* SentrySwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = B9D263282F60D9CF00628704 /* SentrySwiftUI */; };
 		B9D742FC2E39CF850053128A /* Swifter in Frameworks */ = {isa = PBXBuildFile; productRef = B9D742FB2E39CF850053128A /* Swifter */; };
 /* End PBXBuildFile section */
 
@@ -49,6 +51,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B9D2631B2F60D97900628704 /* Sentry in Frameworks */,
+				B9D263292F60D9CF00628704 /* SentrySwiftUI in Frameworks */,
 				B9AEBC0A2E6235D3006BA027 /* Sparkle in Frameworks */,
 				B9D742FC2E39CF850053128A /* Swifter in Frameworks */,
 				B9C3181E2E37AA1D00367F16 /* QRCode in Frameworks */,
@@ -64,6 +68,7 @@
 			children = (
 				B995A3322E4D2B3F00FA7A41 /* AppIcon-uni.icon */,
 				B9673B592E35A2A1006D284A /* airsync-mac */,
+				B9D263192F60D97900628704 /* Frameworks */,
 				B9673B582E35A2A1006D284A /* Products */,
 			);
 			sourceTree = "<group>";
@@ -74,6 +79,13 @@
 				B9673B572E35A2A1006D284A /* AirSync.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B9D263192F60D97900628704 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -100,6 +112,8 @@
 				B9D742FB2E39CF850053128A /* Swifter */,
 				B9AEBC092E6235D3006BA027 /* Sparkle */,
 				B9B1C00C2E94E15D0005F6CB /* LottieUI */,
+				B9D2631A2F60D97900628704 /* Sentry */,
+				B9D263282F60D9CF00628704 /* SentrySwiftUI */,
 			);
 			productName = "airsync-mac";
 			productReference = B9673B572E35A2A1006D284A /* AirSync.app */;
@@ -585,6 +599,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B9C3181C2E37AA1D00367F16 /* XCRemoteSwiftPackageReference "QRCode" */;
 			productName = QRCode;
+		};
+		B9D2631A2F60D97900628704 /* Sentry */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B9D263162F60D26700628704 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = Sentry;
+		};
+		B9D263282F60D9CF00628704 /* SentrySwiftUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B9D263162F60D26700628704 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = SentrySwiftUI;
 		};
 		B9D742FB2E39CF850053128A /* Swifter */ = {
 			isa = XCSwiftPackageProductDependency;
