@@ -165,14 +165,20 @@ class Gumroad {
         UserDefaults.standard.consecutiveNetworkFailureDays = 0
         UserDefaults.standard.set(nil, forKey: "lastNetworkFailureDay")
 
-        // Inform user with a blocking popup
+        // Inform user without blocking main thread
         DispatchQueue.main.async {
             let alert = NSAlert()
             alert.alertStyle = .warning
             alert.addButton(withTitle: "OK")
             alert.messageText = "AirSync+ Unregistered"
             alert.informativeText = reason
-            alert.runModal()
+            
+            if let window = NSApp.windows.first(where: { $0.isKeyWindow && $0.isVisible }) ?? NSApp.windows.first(where: { $0.isVisible }) {
+                alert.beginSheetModal(for: window, completionHandler: nil)
+            } else {
+                NSApp.activate(ignoringOtherApps: true)
+                alert.runModal()
+            }
         }
     }
 

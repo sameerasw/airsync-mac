@@ -282,9 +282,8 @@ Possible fixes:
 
 Please see the ADB console for more details.
 """
-                        let response = alert.runModal()
-                        if response == .alertFirstButtonReturn {
-                            DispatchQueue.main.async {
+                        presentAlertAsynchronously(alert) { response in
+                            if response == .alertFirstButtonReturn {
                                 AppState.shared.suppressAdbFailureAlerts = true
                             }
                         }
@@ -342,9 +341,8 @@ Suggestions:
 
 Please see the ADB console for more details.
 """
-                    let response = alert.runModal()
-                    if response == .alertFirstButtonReturn {
-                        DispatchQueue.main.async {
+                    presentAlertAsynchronously(alert) { response in
+                        if response == .alertFirstButtonReturn {
                             AppState.shared.suppressAdbFailureAlerts = true
                         }
                     }
@@ -518,11 +516,11 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
         // Prioritize wired ADB if enabled
         if AppState.shared.wiredAdbEnabled, let serial = getWiredDeviceSerial() {
             args.append("--serial=\(serial)")
-            AppState.shared.adbConnectionMode = .wired
+            AppState.shared.adbConnectionMode = AppState.ADBConnectionMode.wired
             logBinaryDetection("Wired ADB prioritized: using serial \(serial)")
         } else {
             args.append("--tcpip=\(fullAddress)")
-            AppState.shared.adbConnectionMode = .wireless
+            AppState.shared.adbConnectionMode = AppState.ADBConnectionMode.wireless
         }
 
         if manualPosition {
@@ -753,6 +751,20 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
 
 // MARK: - Alert Helper
 private extension ADBConnector {
+    static func presentAlertAsynchronously(_ alert: NSAlert, completion: ((NSApplication.ModalResponse) -> Void)? = nil) {
+        DispatchQueue.main.async {
+            if let window = NSApp.windows.first(where: { $0.isKeyWindow && $0.isVisible }) ?? NSApp.windows.first(where: { $0.isVisible }) {
+                alert.beginSheetModal(for: window) { response in
+                    completion?(response)
+                }
+            } else {
+                NSApp.activate(ignoringOtherApps: true)
+                let response = alert.runModal()
+                completion?(response)
+            }
+        }
+    }
+
     static func presentScrcpyAlert(title: String, informative: String) {
         // Present immediately on main thread (caller ensures main queue)
         let alert = NSAlert()
@@ -760,6 +772,6 @@ private extension ADBConnector {
         alert.messageText = title
         alert.informativeText = informative + "\n\nCheck the ADB Console in Settings for detailed logs."
         alert.addButton(withTitle: "OK")
-        alert.runModal()
+        presentAlertAsynchronously(alert)
     }
 }
