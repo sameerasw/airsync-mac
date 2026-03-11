@@ -17,7 +17,14 @@ struct ConnectionStatusPill: View {
                 .contentTransition(.symbolEffect(.replace))
                 .help(appState.isConnectedOverLocalNetwork ? "Local WiFi" : "Extended Connection (Tailscale)")
             
-            if appState.adbConnected {
+            if appState.adbConnecting {
+                ProgressView()
+                    .controlSize(.small)
+                    .transition(.asymmetric(
+                        insertion: .scale.combined(with: .opacity),
+                        removal: .opacity
+                    ))
+            } else if appState.adbConnected {
                 // ADB Indicator
                 HStack(spacing: 6) {
                     Image(systemName: "iphone.gen3.crop.circle")
