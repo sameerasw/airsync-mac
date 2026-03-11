@@ -670,11 +670,15 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
                         // Prioritize wired ADB if enabled
                         if AppState.shared.wiredAdbEnabled, let serial = getWiredDeviceSerial() {
                             args.insert(contentsOf: ["-s", serial], at: 0)
-                            AppState.shared.adbConnectionMode = .wired
+                            DispatchQueue.main.async {
+                                AppState.shared.adbConnectionMode = .wired
+                            }
                             logBinaryDetection("Wired ADB prioritized for pull: using serial \(serial)")
                         } else {
                             args.insert(contentsOf: ["-s", fullAddress], at: 0)
-                            AppState.shared.adbConnectionMode = .wireless
+                            DispatchQueue.main.async {
+                                AppState.shared.adbConnectionMode = .wireless
+                            }
                         }
                         
                         logBinaryDetection("Pulling: \(adbPath) \(args.joined(separator: " "))")
@@ -726,11 +730,15 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
             // Prioritize wired ADB if enabled
             if AppState.shared.wiredAdbEnabled, let serial = getWiredDeviceSerial() {
                 args.insert(contentsOf: ["-s", serial], at: 0)
-                AppState.shared.adbConnectionMode = .wired
+                DispatchQueue.main.async {
+                    AppState.shared.adbConnectionMode = .wired
+                }
                 logBinaryDetection("Wired ADB prioritized for push: using serial \(serial)")
             } else {
                 args.insert(contentsOf: ["-s", fullAddress], at: 0)
-                AppState.shared.adbConnectionMode = .wireless
+                DispatchQueue.main.async {
+                    AppState.shared.adbConnectionMode = .wireless
+                }
             }
             
             logBinaryDetection("Pushing: \(adbPath) \(args.joined(separator: " "))")
