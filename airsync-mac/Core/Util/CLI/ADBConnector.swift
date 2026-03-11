@@ -78,6 +78,43 @@ struct ADBConnector {
         print("[adb-connector] (Binary Detection) \(message)")
     }
     
+    // Get the serial of a wired (USB) device if available
+    static func getWiredDeviceSerial() -> String? {
+        guard let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) else { return nil }
+        
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: adbPath)
+        process.arguments = ["devices", "-l"]
+        
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        
+        do {
+            try process.run()
+            process.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? ""
+            let lines = output.components(separatedBy: .newlines)
+            
+            for line in lines {
+                // We look for 'usb:' to identify wired devices
+                if line.contains("device") && line.contains("usb:") {
+                    let parts = line.split(separator: " ").filter { !$0.isEmpty }
+                    if !parts.isEmpty {
+                        let serial = String(parts[0])
+                        logBinaryDetection("Detected wired ADB device: \(serial)")
+                        return serial
+                    }
+                }
+            }
+        } catch {
+            print("[adb-connector] Error getting wired devices: \(error)")
+        }
+        
+        return nil
+    }
+
     private static func clearConnectionFlag() {
         // Note: This function must ONLY be called while holding the connectionLock
         // Do NOT try to acquire the lock here
@@ -471,12 +508,19 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
 
         var args = [
             "--window-title=\(deviceNameFormatted)",
-            "--tcpip=\(fullAddress)",
             "--video-bit-rate=\(bitrate)M",
             "--video-codec=h265",
             "--max-size=\(resolution)",
             "--no-power-on"
         ]
+
+        // Prioritize wired ADB if enabled
+        if AppState.shared.wiredAdbEnabled, let serial = getWiredDeviceSerial() {
+            args.append("--serial=\(serial)")
+            logBinaryDetection("Wired ADB prioritized: using serial \(serial)")
+        } else {
+            args.append("--tcpip=\(fullAddress)")
+        }
 
         if manualPosition {
             args.append("--window-x=\(manualPositionCoords[0])")
@@ -620,7 +664,16 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
                     }
 
                     DispatchQueue.global(qos: .userInitiated).async {
-                        let args = ["-s", fullAddress, "pull", remotePath, destinationURL.path]
+                        var args = ["pull", remotePath, destinationURL.path]
+                        
+                        // Prioritize wired ADB if enabled
+                        if AppState.shared.wiredAdbEnabled, let serial = getWiredDeviceSerial() {
+                            args.insert(contentsOf: ["-s", serial], at: 0)
+                            logBinaryDetection("Wired ADB prioritized for pull: using serial \(serial)")
+                        } else {
+                            args.insert(contentsOf: ["-s", fullAddress], at: 0)
+                        }
+                        
                         logBinaryDetection("Pulling: \(adbPath) \(args.joined(separator: " "))")
                         
                         runADBCommand(adbPath: adbPath, arguments: args, completion: { output in
@@ -665,7 +718,16 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let args = ["-s", fullAddress, "push", localPath, remotePath]
+            var args = ["push", localPath, remotePath]
+            
+            // Prioritize wired ADB if enabled
+            if AppState.shared.wiredAdbEnabled, let serial = getWiredDeviceSerial() {
+                args.insert(contentsOf: ["-s", serial], at: 0)
+                logBinaryDetection("Wired ADB prioritized for push: using serial \(serial)")
+            } else {
+                args.insert(contentsOf: ["-s", fullAddress], at: 0)
+            }
+            
             logBinaryDetection("Pushing: \(adbPath) \(args.joined(separator: " "))")
             
             runADBCommand(adbPath: adbPath, arguments: args, completion: { output in

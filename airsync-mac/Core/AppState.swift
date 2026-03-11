@@ -29,6 +29,7 @@ class AppState: ObservableObject {
         self.adbConnectedIP = UserDefaults.standard.string(forKey: "adbConnectedIP") ?? ""
         self.mirroringPlus = UserDefaults.standard.bool(forKey: "mirroringPlus")
         self.adbEnabled = UserDefaults.standard.bool(forKey: "adbEnabled")
+        self.wiredAdbEnabled = UserDefaults.standard.bool(forKey: "wiredAdbEnabled")
         self.suppressAdbFailureAlerts = UserDefaults.standard.bool(forKey: "suppressAdbFailureAlerts")
         
         let savedFallbackToMdns = UserDefaults.standard.object(forKey: "fallbackToMdns")
@@ -232,6 +233,11 @@ class AppState: ObservableObject {
     @Published var adbEnabled: Bool {
         didSet {
             UserDefaults.standard.set(adbEnabled, forKey: "adbEnabled")
+        }
+    }
+    @Published var wiredAdbEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(wiredAdbEnabled, forKey: "wiredAdbEnabled")
         }
     }
 

@@ -141,9 +141,17 @@ extension WebSocketServer {
                 }
             }
 
-            if (!AppState.shared.adbConnected && (AppState.shared.adbEnabled || AppState.shared.manualAdbConnectionPending) && AppState.shared.isPlus) {
-                ADBConnector.connectToADB(ip: ip)
-                AppState.shared.manualAdbConnectionPending = false
+            if (!AppState.shared.adbConnected && (AppState.shared.adbEnabled || AppState.shared.manualAdbConnectionPending || AppState.shared.wiredAdbEnabled) && AppState.shared.isPlus) {
+                // If wired ADB is enabled and a wired device is connected, mark as connected
+                if AppState.shared.wiredAdbEnabled, let serial = ADBConnector.getWiredDeviceSerial() {
+                    AppState.shared.adbConnected = true
+                    AppState.shared.adbConnectionResult = "Connected via Wired ADB (Serial: \(serial))"
+                    AppState.shared.manualAdbConnectionPending = false
+                } else if AppState.shared.adbEnabled || AppState.shared.manualAdbConnectionPending {
+                    // Try wireless connection
+                    ADBConnector.connectToADB(ip: ip)
+                    AppState.shared.manualAdbConnectionPending = false
+                }
             }
 
             if UserDefaults.standard.hasPairedDeviceOnce == false {
