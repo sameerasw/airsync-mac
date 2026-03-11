@@ -186,6 +186,11 @@ struct MenubarView: View {
                 }
                 .padding(8)
 
+                if appState.adbConnected && !appState.recentApps.isEmpty {
+                    RecentAppsGridView()
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
+
                 if (appState.status != nil){
                     DeviceStatusView(showMediaToggle: false)
                         .transition(.opacity.combined(with: .scale))
