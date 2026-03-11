@@ -9,44 +9,61 @@ import SwiftUI
 
 struct ConnectionStatusPill: View {
     @ObservedObject var appState = AppState.shared
+    @State private var showingPopover = false
+    @State private var isHovered = false
     
     var body: some View {
-        HStack(spacing: 8) {
-            // Network Connection Icon
-            Image(systemName: appState.isConnectedOverLocalNetwork ? "wifi" : "globe")
-                .contentTransition(.symbolEffect(.replace))
-                .help(appState.isConnectedOverLocalNetwork ? "Local WiFi" : "Extended Connection (Tailscale)")
-            
-            if appState.adbConnecting {
-                ProgressView()
-                    .controlSize(.small)
+        Button(action: {
+            showingPopover.toggle()
+        }) {
+            HStack(spacing: 8) {
+                // Network Connection Icon
+                Image(systemName: appState.isConnectedOverLocalNetwork ? "wifi" : "globe")
+                    .contentTransition(.symbolEffect(.replace))
+                    .help(appState.isConnectedOverLocalNetwork ? "Local WiFi" : "Extended Connection (Tailscale)")
+                
+                if appState.adbConnecting {
+                    ProgressView()
+                        .controlSize(.small)
+                        .transition(.asymmetric(
+                            insertion: .scale.combined(with: .opacity),
+                            removal: .opacity
+                        ))
+                } else if appState.adbConnected {
+                    // ADB Indicator
+                    HStack(spacing: 6) {
+                        Image(systemName: "iphone.gen3.crop.circle")
+                            .contentTransition(.symbolEffect(.replace))
+                        
+                        // ADB Mode Icon
+                        Image(systemName: adbModeIcon)
+                            .contentTransition(.symbolEffect(.replace))
+                            .help(adbModeHelp)
+                    }
                     .transition(.asymmetric(
                         insertion: .scale.combined(with: .opacity),
                         removal: .opacity
                     ))
-            } else if appState.adbConnected {
-                // ADB Indicator
-                HStack(spacing: 6) {
-                    Image(systemName: "iphone.gen3.crop.circle")
-                        .contentTransition(.symbolEffect(.replace))
-                    
-                    // ADB Mode Icon
-                    Image(systemName: adbModeIcon)
-                        .contentTransition(.symbolEffect(.replace))
-                        .help(adbModeHelp)
                 }
-                .transition(.asymmetric(
-                    insertion: .scale.combined(with: .opacity),
-                    removal: .opacity
-                ))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+            .applyGlassViewIfAvailable()
+            .scaleEffect(isHovered ? 1.05 : 1.0)
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appState.adbConnected)
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appState.adbConnectionMode)
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appState.isConnectedOverLocalNetwork)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                isHovered = hovering
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .applyGlassViewIfAvailable()
-        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appState.adbConnected)
-        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appState.adbConnectionMode)
-        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appState.isConnectedOverLocalNetwork)
+        .popover(isPresented: $showingPopover, arrowEdge: .top) {
+            ConnectionPillPopover()
+        }
     }
     
     private var adbModeIcon: String {
@@ -67,6 +84,70 @@ struct ConnectionStatusPill: View {
         }
     }
 }
+
+struct ConnectionPillPopover: View {
+    @ObservedObject var appState = AppState.shared
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Connection")
+                .font(.headline)
+            
+            if appState.device != nil {
+                HStack(spacing: 8) {
+                    if appState.adbConnected {
+                        GlassButtonView(
+                            label: "Disconnect ADB",
+                            systemImage: "cable.connector.slash",
+                            iconOnly: false,
+                            primary: false,
+                            action: {
+                                ADBConnector.disconnectADB()
+                            }
+                        )
+                        .focusable(false)
+                    } else if !appState.adbConnecting {
+                        GlassButtonView(
+                            label: "Connect ADB",
+                            systemImage: "cable.connector",
+                            iconOnly: false,
+                            primary: false,
+                            action: {
+                                ADBConnector.connectToADB(ip: appState.device?.ipAddress ?? "")
+                            }
+                        )
+                        .focusable(false)
+                    } else {
+                        HStack {
+                            ProgressView().controlSize(.small)
+                            Text("Connecting ADB...")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    GlassButtonView(
+                        label: "Disconnect Device",
+                        systemImage: "iphone.slash",
+                        iconOnly: false,
+                        primary: true,
+                        action: {
+                            appState.disconnectDevice()
+                            ADBConnector.disconnectADB()
+                            appState.adbConnected = false
+                        }
+                    )
+                    .focusable(false)
+                }
+            } else {
+                Text("No device connected")
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+    }
+}
+
 
 #Preview {
     ConnectionStatusPill()
