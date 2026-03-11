@@ -66,6 +66,8 @@ class AppState: ObservableObject {
 
         self.useADBWhenPossible = UserDefaults.standard.object(forKey: "useADBWhenPossible") == nil ? true : UserDefaults.standard.bool(forKey: "useADBWhenPossible")
         self.isMusicCardHidden = UserDefaults.standard.bool(forKey: "isMusicCardHidden")
+        
+        self.isCrashReportingEnabled = UserDefaults.standard.object(forKey: "isCrashReportingEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "isCrashReportingEnabled")
 
         let savedAdapterName = UserDefaults.standard.string(forKey: "selectedNetworkAdapterName")
         let validatedAdapter = AppState.validateAndGetNetworkAdapter(savedName: savedAdapterName)
@@ -161,6 +163,7 @@ class AppState: ObservableObject {
     @Published var adbConnecting: Bool = false
     @Published var manualAdbConnectionPending: Bool = false
     @Published var currentDeviceWallpaperBase64: String? = nil
+    @Published var isMenubarWindowOpen: Bool = false
 
     // Audio player for ringtone
     private var ringtonePlayer: AVAudioPlayer?
@@ -315,6 +318,12 @@ class AppState: ObservableObject {
     @Published var isMusicCardHidden: Bool = false {
         didSet {
             UserDefaults.standard.set(isMusicCardHidden, forKey: "isMusicCardHidden")
+        }
+    }
+
+    @Published var isCrashReportingEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(isCrashReportingEnabled, forKey: "isCrashReportingEnabled")
         }
     }
 

@@ -172,6 +172,17 @@ struct MenubarView: View {
                     ) {
                         NSApplication.shared.terminate(nil)
                     }
+
+                    #if DEBUG
+                    GlassButtonView(
+                        label: "Crash",
+                        systemImage: "bolt.trianglebadge.exclamationmark",
+                        iconOnly: true,
+                        circleSize: toolButtonSize
+                    ) {
+                        fatalError("Sentry Test Crash")
+                    }
+                    #endif
                 }
                 .padding(8)
 
@@ -210,6 +221,13 @@ struct MenubarView: View {
         }
         .frame(minWidth: minWidthTabs)
         .frame(maxWidth: .infinity)
+        .dropTarget(appState: appState)
+        .onAppear {
+            appState.isMenubarWindowOpen = true
+        }
+        .onDisappear {
+            appState.isMenubarWindowOpen = false
+        }
     }
 }
 

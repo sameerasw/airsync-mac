@@ -15,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Access the single shared AppDelegate instance
     static var shared: AppDelegate? { NSApp.delegate as? AppDelegate }
 
+    private var menuBarManager: MenuBarManager?
+
     func applicationWillTerminate() {
         AppState.shared.disconnectDevice()
         if AppState.shared.adbConnected {
@@ -25,12 +27,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Foundation.Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
+        // Initialize Sentry 
+        setupSentry()
+        
         // Dock icon visibility is now controlled by AppState.hideDockIcon
         AppState.shared.updateDockIconVisibility()
+        
+        // Initialize Menu Bar Manager
+        menuBarManager = MenuBarManager.shared
         
         // Register Services Provider
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()
+    }
+
+    private func setupSentry() {
+        SentryInitializer.start()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

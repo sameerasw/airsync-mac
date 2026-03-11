@@ -70,31 +70,21 @@ struct DropTargetModifier: ViewModifier {
 
 struct DropTargetOverlay: View {
     var body: some View {
-        RoundedRectangle(cornerRadius: 16)
-            .fill(.ultraThinMaterial)
-            .padding(64)
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 3, dash: [10, 5]))
-                    .padding(64)
-            )
-            .overlay(
-                VStack(spacing: 12) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 48))
-                        .foregroundColor(.accentColor)
-
-                    Text("Drop text or files to send")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
-                        .multilineTextAlignment(.center)
-                }
-                    .padding()
-            )
-            .allowsHitTesting(false)
+        ZStack {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.ultraThinMaterial)
+            
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 3, dash: [10, 5]))
+                .padding(8)
+            
+            Image(systemName: "arrow.up.circle.fill")
+                .font(.system(size: 64, weight: .semibold))
+                .foregroundColor(.accentColor)
+        }
+        .padding(4)
+        .allowsHitTesting(false)
     }
-
 }
 
 extension View {
