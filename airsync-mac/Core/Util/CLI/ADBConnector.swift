@@ -134,72 +134,65 @@ struct ADBConnector {
         isConnecting = true
         connectionLock.unlock()
         
-        DispatchQueue.global(qos: .userInitiated).async {
-            guard let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) else {
-                DispatchQueue.main.async {
-                    AppState.shared.adbConnectionResult = "ADB not found. Please install via Homebrew: brew install android-platform-tools"
-                    AppState.shared.adbConnected = false
-                    AppState.shared.adbConnecting = false
-                }
-                clearConnectionFlag()
-                return
-            }
+        DispatchQueue.main.async {
+            AppState.shared.adbConnecting = true
+            let devicePorts = AppState.shared.device?.adbPorts ?? []
+            let fallbackToMdns = AppState.shared.fallbackToMdns
 
-            DispatchQueue.main.async { AppState.shared.adbConnecting = true }
-
-            var devicePorts: [String] = []
-            var fallbackToMdns = true
-            
-            let semaphore = DispatchSemaphore(value: 0)
-            DispatchQueue.main.async {
-                devicePorts = AppState.shared.device?.adbPorts ?? []
-                fallbackToMdns = AppState.shared.fallbackToMdns
-                semaphore.signal()
-            }
-            semaphore.wait()
-            
-            if devicePorts.isEmpty {
-                if fallbackToMdns {
-                    logBinaryDetection("Device reported no ADB ports, attempting mDNS discovery...")
-                    discoverADBPorts(adbPath: adbPath, ip: ip) { ports in
-                        if ports.isEmpty {
-                            logBinaryDetection("mDNS discovery found no ports for \(ip).")
-                            DispatchQueue.main.async {
-                                AppState.shared.adbConnected = false
-                                AppState.shared.adbConnecting = false
-                                AppState.shared.adbConnectionResult = "No ADB ports reported by device and mDNS discovery failed."
-                            }
-                            clearConnectionFlag()
-                        } else {
-                            logBinaryDetection("mDNS discovery found ports: \(ports.map(String.init).joined(separator: ", "))")
-                            self.proceedWithConnection(adbPath: adbPath, ip: ip, portsToTry: ports)
-                        }
-                    }
-                } else {
-                    logBinaryDetection("Device reported no ADB ports and mDNS fallback is disabled.")
+            DispatchQueue.global(qos: .userInitiated).async {
+                guard let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) else {
                     DispatchQueue.main.async {
+                        AppState.shared.adbConnectionResult = "ADB not found. Please install via Homebrew: brew install android-platform-tools"
                         AppState.shared.adbConnected = false
                         AppState.shared.adbConnecting = false
                     }
                     clearConnectionFlag()
+                    return
                 }
-                return
-            }
-            
-            logBinaryDetection("Using ADB ports from device: \(devicePorts.joined(separator: ", "))")
-            let portsToTry = devicePorts.compactMap { UInt16($0) }
-            
-            guard !portsToTry.isEmpty else {
-                DispatchQueue.main.async {
-                    AppState.shared.adbConnectionResult = "Device reported ADB ports but none could be parsed as valid port numbers."
-                    AppState.shared.adbConnected = false
-                    AppState.shared.adbConnecting = false
+
+                if devicePorts.isEmpty {
+                    if fallbackToMdns {
+                        logBinaryDetection("Device reported no ADB ports, attempting mDNS discovery...")
+                        discoverADBPorts(adbPath: adbPath, ip: ip) { ports in
+                            if ports.isEmpty {
+                                logBinaryDetection("mDNS discovery found no ports for \(ip).")
+                                DispatchQueue.main.async {
+                                    AppState.shared.adbConnected = false
+                                    AppState.shared.adbConnecting = false
+                                    AppState.shared.adbConnectionResult = "No ADB ports reported by device and mDNS discovery failed."
+                                }
+                                clearConnectionFlag()
+                            } else {
+                                logBinaryDetection("mDNS discovery found ports: \(ports.map(String.init).joined(separator: ", "))")
+                                self.proceedWithConnection(adbPath: adbPath, ip: ip, portsToTry: ports)
+                            }
+                        }
+                    } else {
+                        logBinaryDetection("Device reported no ADB ports and mDNS fallback is disabled.")
+                        DispatchQueue.main.async {
+                            AppState.shared.adbConnected = false
+                            AppState.shared.adbConnecting = false
+                        }
+                        clearConnectionFlag()
+                    }
+                    return
                 }
-                clearConnectionFlag()
-                return
+                
+                logBinaryDetection("Using ADB ports from device: \(devicePorts.joined(separator: ", "))")
+                let portsToTry = devicePorts.compactMap { UInt16($0) }
+                
+                guard !portsToTry.isEmpty else {
+                    DispatchQueue.main.async {
+                        AppState.shared.adbConnectionResult = "Device reported ADB ports but none could be parsed as valid port numbers."
+                        AppState.shared.adbConnected = false
+                        AppState.shared.adbConnecting = false
+                    }
+                    clearConnectionFlag()
+                    return
+                }
+                
+                proceedWithConnection(adbPath: adbPath, ip: ip, portsToTry: portsToTry)
             }
-            
-            proceedWithConnection(adbPath: adbPath, ip: ip, portsToTry: portsToTry)
         }
     }
 
@@ -298,6 +291,9 @@ struct ADBConnector {
     }
 
     static func disconnectADB() {
+        let adbIP = AppState.shared.adbConnectedIP
+        let adbPort = AppState.shared.adbPort
+        
         DispatchQueue.global(qos: .userInitiated).async {
             guard let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) else {
                 DispatchQueue.main.async {
@@ -305,17 +301,6 @@ struct ADBConnector {
                 }
                 return
             }
-
-            var adbIP = ""
-            var adbPort: UInt16 = 0
-            
-            let semaphore = DispatchSemaphore(value: 0)
-            DispatchQueue.main.async {
-                adbIP = AppState.shared.adbConnectedIP
-                adbPort = AppState.shared.adbPort
-                semaphore.signal()
-            }
-            semaphore.wait()
 
             if !adbIP.isEmpty {
                 let fullAddress = "\(adbIP):\(adbPort)"
@@ -381,30 +366,9 @@ struct ADBConnector {
         desktop: Bool? = false,
         package: String? = nil
     ) {
-        guard let scrcpyPath = findExecutable(named: "scrcpy", fallbackPaths: possibleScrcpyPaths) else {
-            DispatchQueue.main.async {
-                AppState.shared.adbConnectionResult = "scrcpy not found."
-                presentScrcpyAlert(title: "scrcpy Not Found", informative: "AirSync couldn't find the scrcpy binary.")
-            }
-            return
-        }
-
-        let fullAddress = "\(ip):\(port)"
-        let deviceNameFormatted = deviceName.removingApostrophesAndPossessives()
-        
-        var bitrate = 4
-        var resolution = 1200
-        var wiredAdbEnabled = false
-        
-        let semaphore = DispatchSemaphore(value: 0)
-        DispatchQueue.main.async {
-            bitrate = AppState.shared.scrcpyBitrate
-            resolution = AppState.shared.scrcpyResolution
-            wiredAdbEnabled = AppState.shared.wiredAdbEnabled
-            semaphore.signal()
-        }
-        semaphore.wait()
-
+        let bitrate = AppState.shared.scrcpyBitrate
+        let resolution = AppState.shared.scrcpyResolution
+        let wiredAdbEnabled = AppState.shared.wiredAdbEnabled
         let desktopMode = UserDefaults.standard.scrcpyDesktopMode
         let alwaysOnTop = UserDefaults.standard.scrcpyOnTop
         let stayAwake = UserDefaults.standard.stayAwake
@@ -416,79 +380,92 @@ struct ADBConnector {
         let continueApp = UserDefaults.standard.continueApp
         let directKeyInput = UserDefaults.standard.directKeyInput
 
-        var args = [
-            "--window-title=\(deviceNameFormatted)",
-            "--video-bit-rate=\(bitrate)M",
-            "--video-codec=h265",
-            "--max-size=\(resolution)",
-            "--no-power-on"
-        ]
-
-        getWiredDeviceSerial { serial in
-            if wiredAdbEnabled, let serial = serial {
-                args.append("--serial=\(serial)")
-                DispatchQueue.main.async { AppState.shared.adbConnectionMode = .wired }
-                logBinaryDetection("Wired ADB prioritized: using serial \(serial)")
-            } else {
-                args.append("--tcpip=\(fullAddress)")
-                DispatchQueue.main.async { AppState.shared.adbConnectionMode = .wireless }
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let scrcpyPath = findExecutable(named: "scrcpy", fallbackPaths: possibleScrcpyPaths) else {
+                DispatchQueue.main.async {
+                    AppState.shared.adbConnectionResult = "scrcpy not found."
+                    presentScrcpyAlert(title: "scrcpy Not Found", informative: "AirSync couldn't find the scrcpy binary.")
+                }
+                return
             }
 
-            DispatchQueue.global(qos: .userInitiated).async {
-                if manualPosition {
-                    args.append("--window-x=\(manualPositionCoords[0])")
-                    args.append("--window-y=\(manualPositionCoords[1])")
-                }
-                if alwaysOnTop { args.append("--always-on-top") }
-                if stayAwake { args.append("--stay-awake") }
-                if turnScreenOff { args.append("--turn-screen-off") }
-                if noAudio { args.append("--no-audio") }
-                if directKeyInput { args.append("--keyboard=uhid") }
+            let fullAddress = "\(ip):\(port)"
+            let deviceNameFormatted = deviceName.removingApostrophesAndPossessives()
+            
+            var args = [
+                "--window-title=\(deviceNameFormatted)",
+                "--video-bit-rate=\(bitrate)M",
+                "--video-codec=h265",
+                "--max-size=\(resolution)",
+                "--no-power-on"
+            ]
 
-                if desktop ?? true {
-                    let res = desktopMode ?? "1600x1000"
-                    let dpi = UserDefaults.standard.string(forKey: "scrcpyDesktopDpi") ?? ""
-                    args.append("--new-display=\(res)" + (!dpi.isEmpty ? "/\(dpi)" : ""))
-                }
+            getWiredDeviceSerial { serial in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    if wiredAdbEnabled, let serial = serial {
+                        args.append("--serial=\(serial)")
+                        DispatchQueue.main.async { AppState.shared.adbConnectionMode = .wired }
+                        logBinaryDetection("Wired ADB prioritized: using serial \(serial)")
+                    } else {
+                        args.append("--tcpip=\(fullAddress)")
+                        DispatchQueue.main.async { AppState.shared.adbConnectionMode = .wireless }
+                    }
 
-                if let pkg = package {
-                    args.append(contentsOf: ["--new-display=\(appRes ?? "900x2100")", "--start-app=\(pkg)", "--no-vd-system-decorations"])
-                    if continueApp { args.append("--no-vd-destroy-content") }
-                }
+                    if manualPosition {
+                        args.append("--window-x=\(manualPositionCoords[0])")
+                        args.append("--window-y=\(manualPositionCoords[1])")
+                    }
+                    if alwaysOnTop { args.append("--always-on-top") }
+                    if stayAwake { args.append("--stay-awake") }
+                    if turnScreenOff { args.append("--turn-screen-off") }
+                    if noAudio { args.append("--no-audio") }
+                    if directKeyInput { args.append("--keyboard=uhid") }
 
-                logBinaryDetection("Launching scrcpy: \(scrcpyPath) \(args.joined(separator: " "))")
-                let task = Process()
-                task.executableURL = URL(fileURLWithPath: scrcpyPath)
-                task.arguments = args
+                    if desktop ?? true {
+                        let res = desktopMode ?? "1600x1000"
+                        let dpi = UserDefaults.standard.string(forKey: "scrcpyDesktopDpi") ?? ""
+                        args.append("--new-display=\(res)" + (!dpi.isEmpty ? "/\(dpi)" : ""))
+                    }
 
-                if let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) {
-                    var env = ProcessInfo.processInfo.environment
-                    let adbDir = URL(fileURLWithPath: adbPath).deletingLastPathComponent().path
-                    env["PATH"] = "\(adbDir):" + (env["PATH"] ?? "")
-                    env["ADB"] = adbPath
-                    task.environment = env
-                }
+                    if let pkg = package {
+                        args.append(contentsOf: ["--new-display=\(appRes ?? "900x2100")", "--start-app=\(pkg)", "--no-vd-system-decorations"])
+                        if continueApp { args.append("--no-vd-destroy-content") }
+                    }
 
-                let pipe = Pipe()
-                task.standardOutput = pipe
-                task.standardError = pipe
+                    logBinaryDetection("Launching scrcpy: \(scrcpyPath) \(args.joined(separator: " "))")
+                    let task = Process()
+                    task.executableURL = URL(fileURLWithPath: scrcpyPath)
+                    task.arguments = args
 
-                task.terminationHandler = { process in
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    let output = String(data: data, encoding: .utf8) ?? ""
-                    DispatchQueue.main.async {
-                        AppState.shared.adbConnectionResult = "scrcpy exited:\n" + output
-                        if process.terminationStatus != 0 {
-                            presentScrcpyAlert(title: "Mirroring Ended With Errors", informative: "See ADB Console for details.")
+                    if let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) {
+                        var env = ProcessInfo.processInfo.environment
+                        let adbDir = URL(fileURLWithPath: adbPath).deletingLastPathComponent().path
+                        env["PATH"] = "\(adbDir):" + (env["PATH"] ?? "")
+                        env["ADB"] = adbPath
+                        task.environment = env
+                    }
+
+                    let pipe = Pipe()
+                    task.standardOutput = pipe
+                    task.standardError = pipe
+
+                    task.terminationHandler = { process in
+                        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                        let output = String(data: data, encoding: .utf8) ?? ""
+                        DispatchQueue.main.async {
+                            AppState.shared.adbConnectionResult = "scrcpy exited:\n" + output
+                            if process.terminationStatus != 0 {
+                                presentScrcpyAlert(title: "Mirroring Ended With Errors", informative: "See ADB Console for details.")
+                            }
                         }
                     }
-                }
 
-                do {
-                    try task.run()
-                } catch {
-                    DispatchQueue.main.async {
-                        AppState.shared.adbConnectionResult = "Failed to start scrcpy: \(error.localizedDescription)"
+                    do {
+                        try task.run()
+                    } catch {
+                        DispatchQueue.main.async {
+                            AppState.shared.adbConnectionResult = "Failed to start scrcpy: \(error.localizedDescription)"
+                        }
                     }
                 }
             }
@@ -496,11 +473,6 @@ struct ADBConnector {
     }
 
     static func pull(remotePath: String, completion: ((Bool) -> Void)? = nil) {
-        guard let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) else {
-            completion?(false)
-            return
-        }
-
         DispatchQueue.main.async {
             let panel = NSOpenPanel()
             panel.canChooseFiles = false
@@ -510,20 +482,19 @@ struct ADBConnector {
                     let fileName = (remotePath as NSString).lastPathComponent
                     let destiny = destinationURL.appendingPathComponent(fileName).path
                     
-                    var wiredAdbEnabled = false
-                    var fullAddress = ""
-                    let semaphore = DispatchSemaphore(value: 0)
-                    DispatchQueue.main.async {
-                        wiredAdbEnabled = AppState.shared.wiredAdbEnabled
-                        fullAddress = "\(AppState.shared.adbConnectedIP):\(AppState.shared.adbPort)"
-                        AppState.shared.isADBTransferring = true
-                        AppState.shared.adbTransferringFilePath = remotePath
-                        semaphore.signal()
-                    }
-                    semaphore.wait()
+                    let wiredAdbEnabled = AppState.shared.wiredAdbEnabled
+                    let fullAddress = "\(AppState.shared.adbConnectedIP):\(AppState.shared.adbPort)"
+                    AppState.shared.isADBTransferring = true
+                    AppState.shared.adbTransferringFilePath = remotePath
 
                     getWiredDeviceSerial { serial in
                         DispatchQueue.global(qos: .userInitiated).async {
+                            guard let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) else {
+                                DispatchQueue.main.async { AppState.shared.isADBTransferring = false }
+                                completion?(false)
+                                return
+                            }
+                            
                             var args = ["pull", remotePath, destiny]
                             if wiredAdbEnabled, let serial = serial {
                                 args.insert(contentsOf: ["-s", serial], at: 0)
@@ -550,26 +521,20 @@ struct ADBConnector {
     }
 
     static func push(localPath: String, remotePath: String, completion: ((Bool) -> Void)? = nil) {
-        guard let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) else {
-            completion?(false)
-            return
-        }
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            var wiredAdbEnabled = false
-            var fullAddress = ""
-            let semaphore = DispatchSemaphore(value: 0)
-            DispatchQueue.main.async {
-                wiredAdbEnabled = AppState.shared.wiredAdbEnabled
-                fullAddress = "\(AppState.shared.adbConnectedIP):\(AppState.shared.adbPort)"
-                AppState.shared.isADBTransferring = true
-                AppState.shared.adbTransferringFilePath = remotePath
-                semaphore.signal()
-            }
-            semaphore.wait()
+        DispatchQueue.main.async {
+            let wiredAdbEnabled = AppState.shared.wiredAdbEnabled
+            let fullAddress = "\(AppState.shared.adbConnectedIP):\(AppState.shared.adbPort)"
+            AppState.shared.isADBTransferring = true
+            AppState.shared.adbTransferringFilePath = remotePath
 
             getWiredDeviceSerial { serial in
                 DispatchQueue.global(qos: .userInitiated).async {
+                    guard let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) else {
+                        DispatchQueue.main.async { AppState.shared.isADBTransferring = false }
+                        completion?(false)
+                        return
+                    }
+
                     var args = ["push", localPath, remotePath]
                     if wiredAdbEnabled, let serial = serial {
                         args.insert(contentsOf: ["-s", serial], at: 0)

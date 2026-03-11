@@ -72,6 +72,7 @@ private struct AppGridItemView: View {
 
     private func handleTap() {
         if let device = appState.device, appState.adbConnected {
+            appState.trackAppUse(app)
             ADBConnector.startScrcpy(
                 ip: device.ipAddress,
                 port: appState.adbPort,

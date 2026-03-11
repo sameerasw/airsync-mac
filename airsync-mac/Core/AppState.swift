@@ -125,6 +125,9 @@ class AppState: ObservableObject {
                 QuickConnectManager.shared.saveLastConnectedDevice(newDevice)
                 // Validate pinned apps when connecting to a device
                 validatePinnedApps()
+                loadRecentApps()
+            } else {
+                recentApps = []
             }
 
             // Automatically switch to the appropriate tab when device connection state changes
@@ -177,6 +180,8 @@ class AppState: ObservableObject {
     @Published var currentDeviceWallpaperBase64: String? = nil
     @Published var isMenubarWindowOpen: Bool = false
     @Published var adbConnectionMode: ADBConnectionMode? = nil
+    
+    @Published var recentApps: [AndroidApp] = []
     
     var isConnectedOverLocalNetwork: Bool {
         guard let ip = device?.ipAddress else { return true }
@@ -1081,6 +1086,55 @@ class AppState: ObservableObject {
         // Remove pinned apps that are no longer available
         pinnedApps.removeAll { pinnedApp in
             androidApps[pinnedApp.packageName] == nil
+        }
+    }
+
+    // MARK: - Recent Apps Tracking
+
+    func trackAppUse(_ app: AndroidApp) {
+        DispatchQueue.main.async {
+            self.recentApps.removeAll { $0.packageName == app.packageName }
+            
+            self.recentApps.insert(app, at: 0)
+            
+            if self.recentApps.count > 9 {
+                self.recentApps = Array(self.recentApps.prefix(9))
+            }
+            
+            self.saveRecentApps()
+        }
+    }
+
+    private func saveRecentApps() {
+        guard let deviceName = device?.name else { return }
+        do {
+            let data = try JSONEncoder().encode(recentApps)
+            UserDefaults.standard.set(data, forKey: "recentApps_\(deviceName)")
+        } catch {
+            print("[state] (recent) Error saving recent apps: \(error)")
+        }
+    }
+
+    private func loadRecentApps() {
+        guard let deviceName = device?.name else { 
+            recentApps = []
+            return 
+        }
+        
+        guard let data = UserDefaults.standard.data(forKey: "recentApps_\(deviceName)") else {
+            recentApps = []
+            return
+        }
+
+        do {
+            recentApps = try JSONDecoder().decode([AndroidApp].self, from: data)
+            // Filter out apps that are no longer in the androidApps list (in case they were uninstalled)
+            recentApps.removeAll { app in
+                androidApps[app.packageName] == nil
+            }
+        } catch {
+            print("[state] (recent) Error loading recent apps: \(error)")
+            recentApps = []
         }
     }
 
