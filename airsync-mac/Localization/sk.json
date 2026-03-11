@@ -25,5 +25,6 @@
   "status.battery": "Batéria",
   "status.volume": "Hlasitosť",
   "media.play": "Prehraj",
-  "media.pause": "Pozastav"
+  "media.pause": "Pozastav",
+  "settings.wiredAdb": "Wired ADB support"
 }
