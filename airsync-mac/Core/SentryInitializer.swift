@@ -26,9 +26,4 @@ struct SentryInitializer {
         }
         print("[SentryInitializer] Sentry initialized successfully.")
     }
-
-    static func triggerTestCrash() {
-        let array = [String]()
-        _ = array[1]
-    }
 }

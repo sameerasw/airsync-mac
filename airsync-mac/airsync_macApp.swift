@@ -116,7 +116,7 @@ struct airsync_macApp: App {
                 .keyboardShortcut("/")
 
                 Button("Simulate crash") {
-                    SentryInitializer.triggerTestCrash()
+                    fatalError("Sentry Test Crash")
                 }
             }
             // Mirror menu: launch full device mirror or specific apps via scrcpy
