@@ -22,28 +22,30 @@ struct ConnectionStatusPill: View {
                     .contentTransition(.symbolEffect(.replace))
                     .help(appState.isConnectedOverLocalNetwork ? "Local WiFi" : "Extended Connection (Tailscale)")
                 
-                if appState.adbConnecting {
-                    ProgressView()
-                        .controlSize(.small)
+                if appState.isPlus {
+                    if appState.adbConnecting {
+                        ProgressView()
+                            .controlSize(.small)
+                            .transition(.asymmetric(
+                                insertion: .scale.combined(with: .opacity),
+                                removal: .opacity
+                            ))
+                    } else if appState.adbConnected {
+                        // ADB Indicator
+                        HStack(spacing: 6) {
+                            Image(systemName: "iphone.gen3.crop.circle")
+                                .contentTransition(.symbolEffect(.replace))
+                            
+                            // ADB Mode Icon
+                            Image(systemName: adbModeIcon)
+                                .contentTransition(.symbolEffect(.replace))
+                                .help(adbModeHelp)
+                        }
                         .transition(.asymmetric(
                             insertion: .scale.combined(with: .opacity),
                             removal: .opacity
                         ))
-                } else if appState.adbConnected {
-                    // ADB Indicator
-                    HStack(spacing: 6) {
-                        Image(systemName: "iphone.gen3.crop.circle")
-                            .contentTransition(.symbolEffect(.replace))
-                        
-                        // ADB Mode Icon
-                        Image(systemName: adbModeIcon)
-                            .contentTransition(.symbolEffect(.replace))
-                            .help(adbModeHelp)
                     }
-                    .transition(.asymmetric(
-                        insertion: .scale.combined(with: .opacity),
-                        removal: .opacity
-                    ))
                 }
             }
             .padding(.horizontal, 10)
@@ -109,7 +111,7 @@ struct ConnectionPillPopover: View {
                         activeIp: appState.activeMacIp
                     )
                     
-                    if appState.adbConnected {
+                    if appState.isPlus && appState.adbConnected {
                         ConnectionInfoText(
                             label: "ADB Connection",
                             icon: appState.adbConnectionMode == .wired ? "cable.connector" : "airplay.audio",
@@ -120,39 +122,41 @@ struct ConnectionPillPopover: View {
                 .padding(.bottom, 4)
                 
                 HStack(spacing: 8) {
-                    if appState.adbConnected {
-                        GlassButtonView(
-                            label: "Disconnect ADB",
-                            systemImage: "cable.connector.slash",
-                            iconOnly: false,
-                            primary: false,
-                            action: {
-                                ADBConnector.disconnectADB()
-                            }
-                        )
-                        .focusable(false)
-                    } else if !appState.adbConnecting {
-                        GlassButtonView(
-                            label: "Connect ADB",
-                            systemImage: "cable.connector",
-                            iconOnly: false,
-                            primary: false,
-                            action: {
-                                if !appState.adbConnecting {
-                                    appState.adbConnectionResult = "" // Clear console
-                                    appState.manualAdbConnectionPending = true
-                                    WebSocketServer.shared.sendRefreshAdbPortsRequest()
-                                    appState.adbConnectionResult = "Refreshing latest ADB ports from device..."
+                    if appState.isPlus {
+                        if appState.adbConnected {
+                            GlassButtonView(
+                                label: "Disconnect ADB",
+                                systemImage: "cable.connector.slash",
+                                iconOnly: false,
+                                primary: false,
+                                action: {
+                                    ADBConnector.disconnectADB()
                                 }
+                            )
+                            .focusable(false)
+                        } else if !appState.adbConnecting {
+                            GlassButtonView(
+                                label: "Connect ADB",
+                                systemImage: "cable.connector",
+                                iconOnly: false,
+                                primary: false,
+                                action: {
+                                    if !appState.adbConnecting {
+                                        appState.adbConnectionResult = "" // Clear console
+                                        appState.manualAdbConnectionPending = true
+                                        WebSocketServer.shared.sendRefreshAdbPortsRequest()
+                                        appState.adbConnectionResult = "Refreshing latest ADB ports from device..."
+                                    }
+                                }
+                            )
+                            .focusable(false)
+                        } else {
+                            HStack {
+                                ProgressView().controlSize(.small)
+                                Text("Connecting ADB...")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
                             }
-                        )
-                        .focusable(false)
-                    } else {
-                        HStack {
-                            ProgressView().controlSize(.small)
-                            Text("Connecting ADB...")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
                         }
                     }
                     
@@ -163,7 +167,9 @@ struct ConnectionPillPopover: View {
                         primary: true,
                         action: {
                             appState.disconnectDevice()
-                            ADBConnector.disconnectADB()
+                            if appState.isPlus {
+                                ADBConnector.disconnectADB()
+                            }
                             appState.adbConnected = false
                         }
                     )
