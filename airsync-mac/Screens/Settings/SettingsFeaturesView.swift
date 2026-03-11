@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UserNotifications
+import Foundation
 
 struct SettingsFeaturesView: View {
     @ObservedObject var appState = AppState.shared
