@@ -12,7 +12,6 @@ struct SidebarView: View {
 
     @ObservedObject var appState = AppState.shared
     @State private var isExpandedAllSeas: Bool = false
-    @State private var showDisconnectAlert = false
 
     var body: some View {
         VStack{
@@ -46,35 +45,16 @@ struct SidebarView: View {
             .frame(minWidth: 280, minHeight: 400)
             .safeAreaInset(edge: .bottom) {
                 HStack{
-                    if appState.device != nil {
-                        GlassButtonView(
-                            label: "Disconnect",
-                            systemImage: "xmark",
-                            action: {
-                                showDisconnectAlert = true
-                            }
-                        )
-                        .transition(.identity)
-                    } else {
+                    if appState.device == nil {
                         Label("Connect your device", systemImage: "arrow.2.circlepath.circle")
                     }
                 }
                 .padding(16)
             }
         }
-        .alert(isPresented: $showDisconnectAlert) {
-            Alert(
-                title: Text("Disconnect Device"),
-                message: Text("Do you want to disconnect \"\(appState.device?.name ?? "device")\"?"),
-                primaryButton: .destructive(Text("Disconnect")) {
-                    appState.disconnectDevice()
-                    ADBConnector.disconnectADB()
-                    appState.adbConnected = false
-                },
-                secondaryButton: .cancel()
-            )
-        }
+
     }
+
 }
 
 #Preview {

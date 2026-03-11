@@ -80,16 +80,18 @@ class MacInfoSyncManager: ObservableObject {
         timer = nil
 
         // Reset published properties when stopping
-        title = "Unknown Title"
-        artist = "Unknown Artist"
-        album = "Unknown Album"
-        elapsed = 0
-        duration = 0
-        isPlaying = false
-        artworkBase64 = ""
-        lastSentInfo = nil
-        lastSentSnapshot = nil
-        lastSentArtworkHash = nil
+        DispatchQueue.main.async {
+            self.title = "Unknown Title"
+            self.artist = "Unknown Artist"
+            self.album = "Unknown Album"
+            self.elapsed = 0
+            self.duration = 0
+            self.isPlaying = false
+            self.artworkBase64 = ""
+            self.lastSentInfo = nil
+            self.lastSentSnapshot = nil
+            self.lastSentArtworkHash = nil
+        }
     }
 
     private func fetch() {

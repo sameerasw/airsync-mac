@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UserNotifications
+import Foundation
 
 struct SettingsFeaturesView: View {
     @ObservedObject var appState = AppState.shared
@@ -99,7 +100,7 @@ struct SettingsFeaturesView: View {
                     }
                 }
                 .popover(isPresented: $showingPlusPopover, arrowEdge: .bottom) {
-                    PlusFeaturePopover(message: "Wireless ADB features are available in AirSync+")
+                    PlusFeaturePopover(message: "Wireless and Wired ADB features are available in AirSync+")
                         .onTapGesture {
                             showingPlusPopover = false
                         }
@@ -111,6 +112,31 @@ struct SettingsFeaturesView: View {
                         ExpandableLicenseSection(title: "ADB Console", content: "[" + (UserDefaults.standard.lastADBCommand ?? "[]") + "] " + result)
                     }
                     .transition(.opacity)
+                }
+
+                HStack {
+                    ZStack {
+                        HStack {
+                            Label(L("settings.wiredAdb"), systemImage: "cable.connector")
+                            Spacer()
+                            Toggle("", isOn: $appState.wiredAdbEnabled)
+                                .toggleStyle(.switch)
+                                .disabled(!AppState.shared.isPlus && AppState.shared.licenseCheck)
+                        }
+                        
+                        if !AppState.shared.isPlus && AppState.shared.licenseCheck {
+                            HStack {
+                                Spacer()
+                                Rectangle()
+                                    .fill(Color.clear)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        showingPlusPopover = true
+                                    }
+                                    .frame(width: 500)
+                            }
+                        }
+                    }
                 }
 
                 HStack {

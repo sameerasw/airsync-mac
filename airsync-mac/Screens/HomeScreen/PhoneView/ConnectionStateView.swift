@@ -14,14 +14,7 @@ struct ConnectionStateView: View {
     
     var body: some View {
         ZStack {
-            if appState.adbConnecting && !showResult {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("Connecting ADB...")
-                }
-                .padding(8)
-                .applyGlassViewIfAvailable()
-            } else if showResult {
+            if showResult {
                 HStack(spacing: 8) {
                     Image(systemName: isSuccess ? "checkmark.circle.fill" : "xmark.circle.fill")
                         .foregroundColor(isSuccess ? .green : .red)

@@ -13,6 +13,11 @@ import AVFoundation
 
 class AppState: ObservableObject {
     static let shared = AppState()
+    
+    enum ADBConnectionMode: String, Codable {
+        case wireless
+        case wired
+    }
 
     private var clipboardCancellable: AnyCancellable?
     private var lastClipboardValue: String? = nil
@@ -29,6 +34,7 @@ class AppState: ObservableObject {
         self.adbConnectedIP = UserDefaults.standard.string(forKey: "adbConnectedIP") ?? ""
         self.mirroringPlus = UserDefaults.standard.bool(forKey: "mirroringPlus")
         self.adbEnabled = UserDefaults.standard.bool(forKey: "adbEnabled")
+        self.wiredAdbEnabled = UserDefaults.standard.bool(forKey: "wiredAdbEnabled")
         self.suppressAdbFailureAlerts = UserDefaults.standard.bool(forKey: "suppressAdbFailureAlerts")
         
         let savedFallbackToMdns = UserDefaults.standard.object(forKey: "fallbackToMdns")
@@ -119,6 +125,9 @@ class AppState: ObservableObject {
                 QuickConnectManager.shared.saveLastConnectedDevice(newDevice)
                 // Validate pinned apps when connecting to a device
                 validatePinnedApps()
+                loadRecentApps()
+            } else {
+                recentApps = []
             }
 
             // Automatically switch to the appropriate tab when device connection state changes
@@ -159,11 +168,26 @@ class AppState: ObservableObject {
     @Published var webSocketStatus: WebSocketStatus = .stopped
     @Published var selectedTab: TabIdentifier = .qr
 
-    @Published var adbConnected: Bool = false
+    @Published var adbConnected: Bool = false {
+        didSet {
+            if !adbConnected {
+                adbConnectionMode = nil
+            }
+        }
+    }
     @Published var adbConnecting: Bool = false
     @Published var manualAdbConnectionPending: Bool = false
     @Published var currentDeviceWallpaperBase64: String? = nil
     @Published var isMenubarWindowOpen: Bool = false
+    @Published var adbConnectionMode: ADBConnectionMode? = nil
+    
+    @Published var recentApps: [AndroidApp] = []
+    
+    var isConnectedOverLocalNetwork: Bool {
+        guard let ip = device?.ipAddress else { return true }
+        // Tailscale IPs usually start with 100.
+        return !ip.hasPrefix("100.")
+    }
 
     // Audio player for ringtone
     private var ringtonePlayer: AVAudioPlayer?
@@ -232,6 +256,11 @@ class AppState: ObservableObject {
     @Published var adbEnabled: Bool {
         didSet {
             UserDefaults.standard.set(adbEnabled, forKey: "adbEnabled")
+        }
+    }
+    @Published var wiredAdbEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(wiredAdbEnabled, forKey: "wiredAdbEnabled")
         }
     }
 
@@ -1057,6 +1086,55 @@ class AppState: ObservableObject {
         // Remove pinned apps that are no longer available
         pinnedApps.removeAll { pinnedApp in
             androidApps[pinnedApp.packageName] == nil
+        }
+    }
+
+    // MARK: - Recent Apps Tracking
+
+    func trackAppUse(_ app: AndroidApp) {
+        DispatchQueue.main.async {
+            self.recentApps.removeAll { $0.packageName == app.packageName }
+            
+            self.recentApps.insert(app, at: 0)
+            
+            if self.recentApps.count > 9 {
+                self.recentApps = Array(self.recentApps.prefix(9))
+            }
+            
+            self.saveRecentApps()
+        }
+    }
+
+    private func saveRecentApps() {
+        guard let deviceName = device?.name else { return }
+        do {
+            let data = try JSONEncoder().encode(recentApps)
+            UserDefaults.standard.set(data, forKey: "recentApps_\(deviceName)")
+        } catch {
+            print("[state] (recent) Error saving recent apps: \(error)")
+        }
+    }
+
+    private func loadRecentApps() {
+        guard let deviceName = device?.name else { 
+            recentApps = []
+            return 
+        }
+        
+        guard let data = UserDefaults.standard.data(forKey: "recentApps_\(deviceName)") else {
+            recentApps = []
+            return
+        }
+
+        do {
+            recentApps = try JSONDecoder().decode([AndroidApp].self, from: data)
+            // Filter out apps that are no longer in the androidApps list (in case they were uninstalled)
+            recentApps.removeAll { app in
+                androidApps[app.packageName] == nil
+            }
+        } catch {
+            print("[state] (recent) Error loading recent apps: \(error)")
+            recentApps = []
         }
     }
 

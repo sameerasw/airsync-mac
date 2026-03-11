@@ -12,16 +12,27 @@ struct ScreenView: View {
     @State private var showingPlusPopover = false
 
     var body: some View {
-        VStack{
+        VStack {
+            ConnectionStatusPill()
+                .padding(.top, 4)
+            
             ConnectionStateView()
-                .padding(.top, 12)
+                .padding(.top, 4)
 
             Spacer()
 
-            TimeView()
-                .transition(.opacity.combined(with: .scale))
-
+                TimeView()
             Spacer()
+
+            if appState.adbConnected {
+                RecentAppsGridView()
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.9)),
+                        removal: .opacity.combined(with: .scale(scale: 1.1))
+                    ))
+            }
+            
+
 
             if appState.device != nil {
 

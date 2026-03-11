@@ -141,9 +141,29 @@ extension WebSocketServer {
                 }
             }
 
-            if (!AppState.shared.adbConnected && (AppState.shared.adbEnabled || AppState.shared.manualAdbConnectionPending) && AppState.shared.isPlus) {
-                ADBConnector.connectToADB(ip: ip)
-                AppState.shared.manualAdbConnectionPending = false
+            if (!AppState.shared.adbConnected && (AppState.shared.adbEnabled || AppState.shared.manualAdbConnectionPending || AppState.shared.wiredAdbEnabled) && AppState.shared.isPlus) {
+                if AppState.shared.wiredAdbEnabled {
+                    ADBConnector.getWiredDeviceSerial(completion: { serial in
+                        if let serial = serial {
+                            DispatchQueue.main.async {
+                                AppState.shared.adbConnected = true
+                                AppState.shared.adbConnectionMode = .wired
+                                AppState.shared.adbConnectionResult = "Connected via Wired ADB (Serial: \(serial))"
+                                AppState.shared.manualAdbConnectionPending = false
+                            }
+                        } else if AppState.shared.adbEnabled || AppState.shared.manualAdbConnectionPending {
+                            // Try wireless connection if wired failed or no device found
+                            ADBConnector.connectToADB(ip: ip)
+                            DispatchQueue.main.async {
+                                AppState.shared.manualAdbConnectionPending = false
+                            }
+                        }
+                    })
+                } else if AppState.shared.adbEnabled || AppState.shared.manualAdbConnectionPending {
+                    // Try wireless connection directly
+                    ADBConnector.connectToADB(ip: ip)
+                    AppState.shared.manualAdbConnectionPending = false
+                }
             }
 
             if UserDefaults.standard.hasPairedDeviceOnce == false {
