@@ -13,6 +13,11 @@ import AVFoundation
 
 class AppState: ObservableObject {
     static let shared = AppState()
+    
+    enum ADBConnectionMode: String, Codable {
+        case wireless
+        case wired
+    }
 
     private var clipboardCancellable: AnyCancellable?
     private var lastClipboardValue: String? = nil
@@ -160,11 +165,24 @@ class AppState: ObservableObject {
     @Published var webSocketStatus: WebSocketStatus = .stopped
     @Published var selectedTab: TabIdentifier = .qr
 
-    @Published var adbConnected: Bool = false
+    @Published var adbConnected: Bool = false {
+        didSet {
+            if !adbConnected {
+                adbConnectionMode = nil
+            }
+        }
+    }
     @Published var adbConnecting: Bool = false
     @Published var manualAdbConnectionPending: Bool = false
     @Published var currentDeviceWallpaperBase64: String? = nil
     @Published var isMenubarWindowOpen: Bool = false
+    @Published var adbConnectionMode: ADBConnectionMode? = nil
+    
+    var isConnectedOverLocalNetwork: Bool {
+        guard let ip = device?.ipAddress else { return true }
+        // Tailscale IPs usually start with 100.
+        return !ip.hasPrefix("100.")
+    }
 
     // Audio player for ringtone
     private var ringtonePlayer: AVAudioPlayer?

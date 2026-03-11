@@ -12,9 +12,12 @@ struct ScreenView: View {
     @State private var showingPlusPopover = false
 
     var body: some View {
-        VStack{
+        VStack {
+            ConnectionStatusPill()
+                .padding(.top, 4)
+            
             ConnectionStateView()
-                .padding(.top, 12)
+                .padding(.top, 4)
 
             Spacer()
 

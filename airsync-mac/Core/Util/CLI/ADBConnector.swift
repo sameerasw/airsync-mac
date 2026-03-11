@@ -240,6 +240,7 @@ struct ADBConnector {
                         AppState.shared.adbPort = port
                     }
                     AppState.shared.adbConnected = true
+                    AppState.shared.adbConnectionMode = .wireless
                     AppState.shared.adbConnectionResult = trimmedOutput
                     logBinaryDetection("(/^▽^)/ ADB connection successful to \(fullAddress)")
                     AppState.shared.adbConnecting = false
@@ -517,9 +518,11 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
         // Prioritize wired ADB if enabled
         if AppState.shared.wiredAdbEnabled, let serial = getWiredDeviceSerial() {
             args.append("--serial=\(serial)")
+            AppState.shared.adbConnectionMode = .wired
             logBinaryDetection("Wired ADB prioritized: using serial \(serial)")
         } else {
             args.append("--tcpip=\(fullAddress)")
+            AppState.shared.adbConnectionMode = .wireless
         }
 
         if manualPosition {
@@ -669,9 +672,11 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
                         // Prioritize wired ADB if enabled
                         if AppState.shared.wiredAdbEnabled, let serial = getWiredDeviceSerial() {
                             args.insert(contentsOf: ["-s", serial], at: 0)
+                            AppState.shared.adbConnectionMode = .wired
                             logBinaryDetection("Wired ADB prioritized for pull: using serial \(serial)")
                         } else {
                             args.insert(contentsOf: ["-s", fullAddress], at: 0)
+                            AppState.shared.adbConnectionMode = .wireless
                         }
                         
                         logBinaryDetection("Pulling: \(adbPath) \(args.joined(separator: " "))")
@@ -723,9 +728,11 @@ Attempt \(portNumber)/\(totalPorts) on port \(currentPort): Failed - \(trimmedOu
             // Prioritize wired ADB if enabled
             if AppState.shared.wiredAdbEnabled, let serial = getWiredDeviceSerial() {
                 args.insert(contentsOf: ["-s", serial], at: 0)
+                AppState.shared.adbConnectionMode = .wired
                 logBinaryDetection("Wired ADB prioritized for push: using serial \(serial)")
             } else {
                 args.insert(contentsOf: ["-s", fullAddress], at: 0)
+                AppState.shared.adbConnectionMode = .wireless
             }
             
             logBinaryDetection("Pushing: \(adbPath) \(args.joined(separator: " "))")

@@ -145,12 +145,14 @@ extension WebSocketServer {
                 // If wired ADB is enabled and a wired device is connected, mark as connected
                 if AppState.shared.wiredAdbEnabled, let serial = ADBConnector.getWiredDeviceSerial() {
                     AppState.shared.adbConnected = true
+                    AppState.shared.adbConnectionMode = .wired
                     AppState.shared.adbConnectionResult = "Connected via Wired ADB (Serial: \(serial))"
                     AppState.shared.manualAdbConnectionPending = false
                 } else if AppState.shared.adbEnabled || AppState.shared.manualAdbConnectionPending {
                     // Try wireless connection
                     ADBConnector.connectToADB(ip: ip)
                     AppState.shared.manualAdbConnectionPending = false
+                    // Note: adbConnectionMode will be set to .wireless in attemptDirectConnection on success
                 }
             }
 
