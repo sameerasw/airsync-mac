@@ -25,5 +25,6 @@
   "status.battery": "Bateria",
   "status.volume": "Volum",
   "media.play": "Reprodueix",
-  "media.pause": "Pausa"
+  "media.pause": "Pausa",
+  "settings.wiredAdb": "Wired ADB support"
 }
