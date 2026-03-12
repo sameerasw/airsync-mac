@@ -119,14 +119,30 @@ struct SettingsView: View {
                         RemotePermissionView()
                     }
 
+
                     // 3. Quick Share
-                    headerSection(title: "Quick Share", icon: "shareplay")
+                    headerSection(title: "Quick Share", icon: "laptopcomputer.and.arrow.down")
                     VStack {
                         HStack {
-                            Label("Auto accept from my device", systemImage: "bolt.badge.checkmark")
+                            Label(Localizer.shared.text("quickshare.title"), systemImage: "bolt.horizontal.circle")
                             Spacer()
-                            Toggle("", isOn: $appState.autoAcceptQuickShare)
+                            Toggle("", isOn: $appState.quickShareEnabled)
                                 .toggleStyle(.switch)
+                        }
+
+                        if appState.quickShareEnabled {
+                            Text(String(format: Localizer.shared.text("quickshare.settings.discoverable"), QuickShareManager.shared.deviceName))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            HStack {
+                                Label(Localizer.shared.text("quickshare.settings.autoAccept"), systemImage: "checkmark.shield")
+                                Spacer()
+                                Toggle("", isOn: $appState.autoAcceptQuickShare)
+                                    .toggleStyle(.switch)
+                            }
+
                         }
                     }
                     .padding()

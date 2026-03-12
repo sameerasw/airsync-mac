@@ -403,33 +403,6 @@ struct SettingsFeaturesView: View {
             .padding()
             .background(.background.opacity(0.3))
             .cornerRadius(12.0)
-
-            // Quick Share
-            VStack {
-                HStack {
-                    Label(Localizer.shared.text("quickshare.title"), systemImage: "bolt.horizontal.circle")
-                    Spacer()
-                    Toggle("", isOn: $appState.quickShareEnabled)
-                        .toggleStyle(.switch)
-                }
-
-                if appState.quickShareEnabled {
-                    HStack {
-                        Label(Localizer.shared.text("quickshare.settings.autoAccept"), systemImage: "checkmark.shield")
-                        Spacer()
-                        Toggle("", isOn: $appState.autoAcceptQuickShare)
-                            .toggleStyle(.switch)
-                    }
-                    
-                    Text(String(format: Localizer.shared.text("quickshare.settings.discoverable"), QuickShareManager.shared.deviceName))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .padding()
-            .background(.background.opacity(0.3))
-            .cornerRadius(12.0)
         }
     }
 
