@@ -6,102 +6,107 @@ struct QuickShareTransferSheet: View {
     @ObservedObject var appState = AppState.shared
     
     var body: some View {
-        VStack(spacing: 20) {
-            HStack {
-                Text(Localizer.shared.text("quickshare.title"))
-                    .font(.headline)
-                Spacer()
-                Button(action: { 
-                    manager.stopDiscovery()
-                    appState.showingQuickShareTransfer = false
-                }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
+        ZStack {
+            VisualEffectBlur(material: .hudWindow, blendingMode: .behindWindow)
+                .edgesIgnoringSafeArea(.all)
+            
+            VStack(spacing: 20) {
+                HStack {
+                    Text(Localizer.shared.text("quickshare.title"))
+                        .font(.headline)
+                    Spacer()
+                    Button(action: { 
+                        manager.stopDiscovery()
+                        appState.showingQuickShareTransfer = false
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-            }
-            .padding(.bottom, 10)
+                .padding(.bottom, 10)
 
-            if manager.transferState == .discovering {
-                VStack(alignment: .leading, spacing: 10) {
-                    if let targetName = manager.autoTargetDeviceName {
-                        // Special Auto-Targeting UI for Menubar
-                        VStack(spacing: 20) {
+                if manager.transferState == .discovering {
+                    VStack(alignment: .leading, spacing: 10) {
+                        if let targetName = manager.autoTargetDeviceName {
+                            // Special Auto-Targeting UI for Menubar
+                            VStack(spacing: 20) {
+                                HStack {
+                                    Text(String(format: Localizer.shared.text("quickshare.waiting_for"), targetName))
+                                        .font(.subheadline)
+                                    Spacer()
+                                    ProgressView()
+                                        .controlSize(.small)
+                                }
+                                
+                                HStack(spacing: 12) {
+                                    GlassButtonView(label: Localizer.shared.text("quickshare.more_devices")) {
+                                        manager.autoTargetDeviceName = nil
+                                    }
+                                    
+                                    GlassButtonView(label: Localizer.shared.text("quickshare.cancel")) {
+                                        manager.stopDiscovery()
+                                        appState.showingQuickShareTransfer = false
+                                    }
+                                }
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 100)
+                        } else {
+                            // Default Device Selection UI
                             HStack {
-                                Text(String(format: Localizer.shared.text("quickshare.waiting_for"), targetName))
+                                Text(Localizer.shared.text("quickshare.select_device"))
                                     .font(.subheadline)
                                 Spacer()
                                 ProgressView()
                                     .controlSize(.small)
                             }
                             
-                            HStack(spacing: 12) {
-                                GlassButtonView(label: Localizer.shared.text("quickshare.more_devices")) {
-                                    manager.autoTargetDeviceName = nil
-                                }
-                                
-                                GlassButtonView(label: Localizer.shared.text("quickshare.cancel")) {
-                                    manager.stopDiscovery()
-                                    appState.showingQuickShareTransfer = false
-                                }
-                            }
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 100)
-                    } else {
-                        // Default Device Selection UI
-                        HStack {
-                            Text(Localizer.shared.text("quickshare.select_device"))
-                                .font(.subheadline)
-                            Spacer()
-                            ProgressView()
-                                .controlSize(.small)
-                        }
-                        
-                        if manager.discoveredDevices.isEmpty {
-                            Text(Localizer.shared.text("quickshare.searching"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, minHeight: 100)
-                        } else {
-                            ScrollView {
-                                VStack(spacing: 8) {
-                                    ForEach(manager.discoveredDevices, id: \.id) { device in
-                                        Button(action: { 
-                                            manager.sendFiles(urls: manager.transferURLs, to: device) 
-                                        }) {
-                                            HStack {
-                                                Image(systemName: iconForDeviceType(device.type))
-                                                    .frame(width: 24)
-                                                Text(device.name)
-                                                Spacer()
-                                                Image(systemName: "chevron.right")
-                                                    .font(.caption)
-                                                    .foregroundStyle(.secondary)
+                            if manager.discoveredDevices.isEmpty {
+                                Text(Localizer.shared.text("quickshare.searching"))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, minHeight: 100)
+                            } else {
+                                ScrollView {
+                                    VStack(spacing: 8) {
+                                        ForEach(manager.discoveredDevices, id: \.id) { device in
+                                            Button(action: { 
+                                                manager.sendFiles(urls: manager.transferURLs, to: device) 
+                                            }) {
+                                                HStack {
+                                                    Image(systemName: iconForDeviceType(device.type))
+                                                        .frame(width: 24)
+                                                    Text(device.name)
+                                                    Spacer()
+                                                    Image(systemName: "chevron.right")
+                                                        .font(.caption)
+                                                        .foregroundStyle(.secondary)
+                                                }
+                                                .padding(10)
+                                                .background(Color.secondary.opacity(0.1))
+                                                .cornerRadius(8)
                                             }
-                                            .padding(10)
-                                            .background(Color.secondary.opacity(0.1))
-                                            .cornerRadius(8)
+                                            .buttonStyle(.plain)
                                         }
-                                        .buttonStyle(.plain)
                                     }
                                 }
+                                .frame(maxHeight: 150)
                             }
-                            .frame(maxHeight: 150)
+                            
+                            Button(Localizer.shared.text("quickshare.cancel")) {
+                                manager.stopDiscovery()
+                                appState.showingQuickShareTransfer = false
+                            }
+                            .buttonStyle(.link)
+                            .frame(maxWidth: .infinity, alignment: .center)
                         }
-                        
-                        Button(Localizer.shared.text("quickshare.cancel")) {
-                            manager.stopDiscovery()
-                            appState.showingQuickShareTransfer = false
-                        }
-                        .buttonStyle(.link)
-                        .frame(maxWidth: .infinity, alignment: .center)
                     }
+                } else {
+                    transferStatusView
                 }
-            } else {
-                transferStatusView
             }
+            .padding(20)
         }
-        .padding(20)
         .frame(width: 350)
         .animation(.default, value: manager.transferState)
     }
