@@ -53,5 +53,7 @@
   "quickshare.pin_code": "PIN: %@",
   "quickshare.device_sending_files": "%1$@ is sending %2$@",
   "quickshare.n_files": "%d files",
+  "quickshare.drop.send_to": "Send to %@",
+  "quickshare.drop.pick_device": "Pick a device to send",
   "settings.quickshare": "Quick Share"
 }

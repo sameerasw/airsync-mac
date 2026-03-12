@@ -24,10 +24,21 @@ struct DropTargetModifier: ViewModifier {
             .overlay(
                 Group {
                     if isTargeted {
-                        DropTargetOverlay()
+                        DropTargetOverlay(label: dragFeedbackLabel)
                     }
                 }
             )
+    }
+
+    private var dragFeedbackLabel: String {
+        let optionPressed = NSEvent.modifierFlags.contains(.option)
+        if optionPressed {
+            return Localizer.shared.text("quickshare.drop.pick_device")
+        } else if let deviceName = appState.device?.name {
+            return String(format: Localizer.shared.text("quickshare.drop.send_to"), deviceName)
+        } else {
+            return Localizer.shared.text("quickshare.drop.pick_device")
+        }
     }
 
     private func handleDrop(providers: [NSItemProvider]) {
@@ -94,6 +105,8 @@ struct DropTargetModifier: ViewModifier {
 }
 
 struct DropTargetOverlay: View {
+    let label: String
+    
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12)
@@ -103,9 +116,16 @@ struct DropTargetOverlay: View {
                 .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 3, dash: [10, 5]))
                 .padding(8)
             
-            Image(systemName: "arrow.up.circle.fill")
-                .font(.system(size: 64, weight: .semibold))
-                .foregroundColor(.accentColor)
+            VStack(spacing: 16) {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 48, weight: .semibold))
+                    .foregroundColor(.accentColor)
+                
+                Text(label)
+                    .font(.headline)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
         }
         .padding(4)
         .allowsHitTesting(false)

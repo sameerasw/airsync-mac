@@ -17,6 +17,7 @@ class MenuBarManager: NSObject {
     private var eventMonitor: Any?
     private var cancellables = Set<AnyCancellable>()
     private var appState = AppState.shared
+    private var temporaryDragLabel: String?
     
     private let statusButton: MenuBarStatusButton = {
         let view = MenuBarStatusButton(frame: NSRect(x: 0, y: 0, width: 22, height: 22))
@@ -89,11 +90,23 @@ class MenuBarManager: NSObject {
         button.imagePosition = .imageLeft
         
         // Update text if enabled
-        if appState.showMenubarText, let text = getDeviceStatusText() {
+        if let dragLabel = temporaryDragLabel {
+            button.title = dragLabel
+        } else if appState.showMenubarText, let text = getDeviceStatusText() {
             button.title = text
         } else {
             button.title = ""
         }
+    }
+    
+    func showDragLabel(_ label: String) {
+        temporaryDragLabel = label
+        updateStatusItem()
+    }
+    
+    func clearDragLabel() {
+        temporaryDragLabel = nil
+        updateStatusItem()
     }
     
     private func getDeviceStatusText() -> String? {
@@ -164,6 +177,7 @@ class MenuBarStatusButton: NSView {
     var statusItem: NSStatusItem?
     var clickHandler: (() -> Void)?
     var dragEnteredHandler: (() -> Void)?
+    var dragExitedHandler: (() -> Void)?
     
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -182,16 +196,37 @@ class MenuBarStatusButton: NSView {
     
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard AppState.shared.device != nil else { return [] }
+        updateDragLabel()
         dragEnteredHandler?()
         return .copy
     }
     
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard AppState.shared.device != nil else { return [] }
+        updateDragLabel()
         return .copy
     }
     
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        MenuBarManager.shared.clearDragLabel()
+        dragExitedHandler?()
+    }
+    
+    private func updateDragLabel() {
+        let optionPressed = NSEvent.modifierFlags.contains(.option)
+        let label: String
+        if optionPressed {
+            label = Localizer.shared.text("quickshare.drop.pick_device")
+        } else if let deviceName = AppState.shared.device?.name {
+            label = String(format: Localizer.shared.text("quickshare.drop.send_to"), deviceName)
+        } else {
+            label = Localizer.shared.text("quickshare.drop.pick_device")
+        }
+        MenuBarManager.shared.showDragLabel(label)
+    }
+    
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        MenuBarManager.shared.clearDragLabel()
         let pboard = sender.draggingPasteboard
         
         // Handle file URLs
