@@ -7,16 +7,12 @@
 
 import SwiftUI
 
-
 struct SidebarView: View {
-
     @ObservedObject var appState = AppState.shared
     @State private var isExpandedAllSeas: Bool = false
-    @State private var isShowingQuickShare: Bool = false
 
     var body: some View {
-        VStack{
-
+        VStack {
             HStack(alignment: .center) {
                 let name = appState.device?.name ?? "AirSync"
                 let truncated = name.count > 20
@@ -28,55 +24,29 @@ struct SidebarView: View {
             }
             .padding(8)
 
-
-
             if let deviceVersion = appState.device?.version,
                isVersion(deviceVersion, lessThan: appState.minAndroidVersion) {
                 Label("Your Android app is outdated", systemImage: "iphone.badge.exclamationmark")
                     .padding(4)
             }
 
-
             PhoneView()
                 .transition(.scale)
                 .opacity(appState.device != nil ? 1 : 0.5)
 
-            Button(action: {
-                // Open Quick Share sheet
-                isShowingQuickShare = true
-            }) {
-                HStack {
-                    Image(systemName: "antenna.radiowaves.left.and.right")
-                    Text(Localizer.shared.text("quickshare.button"))
-                    Spacer()
-                }
-                .padding(.vertical, 8)
-                .padding(.horizontal, 12)
-                .background(Color.accentColor.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .sheet(isPresented: $isShowingQuickShare) {
-                QuickShareView()
-            }
-
-
-            .animation(.easeInOut(duration: 0.5), value: appState.status != nil)
-            .frame(minWidth: 280, minHeight: 400)
-            .safeAreaInset(edge: .bottom) {
-                HStack{
-                    if appState.device == nil {
-                        Label("Connect your device", systemImage: "arrow.2.circlepath.circle")
-                    }
-                }
-                .padding(16)
-            }
+            Spacer()
         }
-
+        .animation(.easeInOut(duration: 0.5), value: appState.status != nil)
+        .frame(minWidth: 280, minHeight: 400)
+        .safeAreaInset(edge: .bottom) {
+            HStack{
+                if appState.device == nil {
+                    Label("Connect your device", systemImage: "arrow.2.circlepath.circle")
+                }
+            }
+            .padding(16)
+        }
     }
-
 }
 
 #Preview {

@@ -39,19 +39,18 @@ struct ScreenView: View {
                 HStack(spacing: 10){
                     GlassButtonView(
                         label: "Send",
-                        systemImage: "square.and.arrow.up",
+                        systemImage: "paperplane.fill",
                         iconOnly: appState.adbConnected,
                         action: {
                             let panel = NSOpenPanel()
-                            panel.canChooseFiles = true
+                            panel.allowsMultipleSelection = true
                             panel.canChooseDirectories = false
-                            panel.allowsMultipleSelection = false
-                            panel.begin { response in
-                                if response == .OK, let url = panel.url {
-                                    DispatchQueue.global(qos: .userInitiated).async {
-                                        WebSocketServer.shared.sendFile(url: url)
-                                    }
-                                }
+                            panel.canChooseFiles = true
+                            
+                            if panel.runModal() == .OK {
+                                QuickShareManager.shared.transferURLs = panel.urls
+                                QuickShareManager.shared.startDiscovery()
+                                appState.showingQuickShareTransfer = true
                             }
                         }
                     )
@@ -134,6 +133,9 @@ struct ScreenView: View {
             .easeInOut(duration: 0.28),
             value: appState.isMusicCardHidden
         )
+        .sheet(isPresented: $appState.showingQuickShareTransfer) {
+            QuickShareTransferSheet()
+        }
     }
 }
 

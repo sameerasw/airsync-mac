@@ -376,6 +376,7 @@ class AppState: ObservableObject {
     // ADB Transfer Progress
     @Published var isADBTransferring: Bool = false
     @Published var adbTransferringFilePath: String? = nil
+    @Published var showingQuickShareTransfer = false
 
     @Published var showHiddenFiles: Bool = false {
         didSet {

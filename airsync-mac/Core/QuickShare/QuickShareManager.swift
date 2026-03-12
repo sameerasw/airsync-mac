@@ -33,6 +33,7 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     @Published public var transferState: TransferState = .idle
     @Published public var transferProgress: Double = 0
     @Published public var lastPinCode: String?
+    @Published public var transferURLs: [URL] = []
     
     public enum TransferState: Equatable {
         case idle
@@ -47,13 +48,11 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     private var activeIncomingTransfers: [String: QuickShareTransferInfo] = [:]
     
     override private init() {
-        // The isEnabled property is now initialized directly in its declaration.
-        // If the key doesn't exist, bool(forKey:) returns false.
-        // If the desired default behavior is 'true' when not set,
-        // then a check like `UserDefaults.standard.object(forKey: "quickShareEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "quickShareEnabled")`
-        // would be needed in the declaration. For now, assuming `false` is the default if not set.
         super.init()
         NearbyConnectionManager.shared.mainAppDelegate = self
+        if isEnabled {
+            startService()
+        }
     }
     
     public var deviceName: String {
