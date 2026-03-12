@@ -131,6 +131,15 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     // MARK: - MainAppDelegate (Incoming)
     
     public func obtainUserConsent(for transfer: TransferMetadata, from device: RemoteDeviceInfo) {
+        // Auto-accept if enabled and sender matches connected device
+        if AppState.shared.autoAcceptQuickShare,
+           let connectedDeviceName = AppState.shared.device?.name,
+           device.name == connectedDeviceName {
+            print("[quickshare] Auto-accepting transfer \(transfer.id) from \(device.name)")
+            handleUserConsent(transferID: transfer.id, accepted: true)
+            return
+        }
+
         let fileStr: String
         if let textTitle = transfer.textDescription {
             fileStr = textTitle

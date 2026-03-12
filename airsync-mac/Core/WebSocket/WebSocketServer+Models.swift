@@ -15,8 +15,13 @@ enum WebSocketStatus {
 
 extension WebSocketServer {
     struct IncomingFileIO {
+        var id: String
+        var name: String
+        var size: Int
+        var mime: String
         var tempUrl: URL
         var fileHandle: FileHandle?
         var chunkSize: Int
+        var bytesReceived: Int = 0
     }
 }

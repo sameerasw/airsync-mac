@@ -53,7 +53,7 @@ class AppState: ObservableObject {
         self.notificationSound = UserDefaults.standard.string(forKey: "notificationSound") ?? "default"
         self.dismissNotif = UserDefaults.standard.bool(forKey: "dismissNotif")
         
-        self.showFileShareDialog = UserDefaults.standard.object(forKey: "showFileShareDialog") == nil ? true : UserDefaults.standard.bool(forKey: "showFileShareDialog")
+        self.autoAcceptQuickShare = UserDefaults.standard.bool(forKey: "autoAcceptQuickShare")
 
         let savedNotificationMode = UserDefaults.standard.string(forKey: "callNotificationMode") ?? CallNotificationMode.popup.rawValue
         self.callNotificationMode = CallNotificationMode(rawValue: savedNotificationMode) ?? .popup
@@ -325,9 +325,9 @@ class AppState: ObservableObject {
         }
     }
 
-    @Published var showFileShareDialog: Bool {
+    @Published var autoAcceptQuickShare: Bool {
         didSet {
-            UserDefaults.standard.set(showFileShareDialog, forKey: "showFileShareDialog")
+            UserDefaults.standard.set(autoAcceptQuickShare, forKey: "autoAcceptQuickShare")
         }
     }
 
@@ -385,10 +385,6 @@ class AppState: ObservableObject {
         }
     }
 
-    // File transfer tracking state
-    @Published var transfers: [String: FileTransferSession] = [:]
-    @Published var activeTransferId: String? = nil
-    var transferDismissTimer: Timer?
 
     // Toggle licensing
     let licenseCheck: Bool = true
@@ -668,7 +664,11 @@ class AppState: ObservableObject {
             self.notifications.removeAll()
             self.status = nil
             self.currentDeviceWallpaperBase64 = nil
-            self.transfers = [:]
+            
+            // Clean up Quick Share state
+            if QuickShareManager.shared.transferState != .idle {
+                QuickShareManager.shared.transferState = .idle
+            }
 
             if self.adbConnected {
                 ADBConnector.disconnectADB()

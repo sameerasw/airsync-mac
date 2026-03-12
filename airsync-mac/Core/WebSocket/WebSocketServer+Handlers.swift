@@ -351,17 +351,13 @@ extension WebSocketServer {
             FileManager.default.createFile(atPath: tempFile.path, contents: nil, attributes: nil)
             let handle = try? FileHandle(forWritingTo: tempFile)
 
-            let io = IncomingFileIO(tempUrl: tempFile, fileHandle: handle, chunkSize: chunkSize)
+            let io = IncomingFileIO(id: id, name: name, size: size, mime: mime, tempUrl: tempFile, fileHandle: handle, chunkSize: chunkSize)
             self.lock.lock()
             incomingFiles[id] = io
             if let checksum = checksum {
                 incomingFilesChecksum[id] = checksum
             }
             self.lock.unlock()
-            
-            DispatchQueue.main.async {
-                AppState.shared.startIncomingTransfer(id: id, name: name, size: size, mime: mime)
-            }
         }
     }
 
@@ -377,7 +373,7 @@ extension WebSocketServer {
             let io = incomingFiles[id]
             self.lock.unlock()
 
-            if let io = io, let data = Data(base64Encoded: chunkBase64, options: .ignoreUnknownCharacters) {
+            if var io = io, let data = Data(base64Encoded: chunkBase64, options: .ignoreUnknownCharacters) {
                 fileQueue.async {
                     let offset = UInt64(index * io.chunkSize)
                     if let fh = io.fileHandle {
@@ -389,11 +385,11 @@ extension WebSocketServer {
                         }
                     }
                 }
-                DispatchQueue.main.async {
-                    let prev = AppState.shared.transfers[id]?.bytesTransferred ?? 0
-                    let newBytes = prev + data.count
-                    AppState.shared.updateIncomingProgress(id: id, receivedBytes: newBytes)
-                }
+                
+                self.lock.lock()
+                io.bytesReceived += data.count
+                incomingFiles[id] = io
+                self.lock.unlock()
             }
             
             let ackMsg = FileTransferProtocol.buildChunkAck(id: id, index: index)
@@ -421,19 +417,11 @@ extension WebSocketServer {
                         print("[websocket] (file-transfer) Failed to get size for validation: \(error)")
                     }
                     
-                    var expectedSize: Int = 0
-                    var resolvedName = state.tempUrl.lastPathComponent
-                    DispatchQueue.main.sync {
-                        if let t = AppState.shared.transfers[id] {
-                            expectedSize = t.size
-                            resolvedName = t.name
-                        }
-                    }
+                    let expectedSize = state.size
+                    let resolvedName = state.name
                     
                     if Int(totalBytes) != expectedSize {
-                        DispatchQueue.main.async {
-                            AppState.shared.failTransfer(id: id, reason: "Size mismatch: \(totalBytes)/\(expectedSize)")
-                        }
+                        print("[websocket] (file-transfer) Size mismatch for \(resolvedName): \(totalBytes)/\(expectedSize)")
                         try? FileManager.default.removeItem(at: state.tempUrl)
                         self.lock.lock()
                         self.incomingFiles.removeValue(forKey: id)
@@ -482,7 +470,6 @@ extension WebSocketServer {
                             try FileManager.default.moveItem(at: state.tempUrl, to: finalDest)
 
                             DispatchQueue.main.async {
-                                AppState.shared.completeIncoming(id: id, verified: nil)
                                 AppState.shared.postNativeNotification(
                                     id: "incoming_file_\(id)",
                                     appName: "AirSync",
@@ -680,7 +667,6 @@ extension WebSocketServer {
         if let dict = message.data.value as? [String: Any],
            let id = dict["id"] as? String,
            let verified = dict["verified"] as? Bool {
-            AppState.shared.completeOutgoingVerified(id: id, verified: verified)
             AppState.shared.postNativeNotification(
                 id: "transfer_verified_\(id)",
                 appName: "AirSync",
@@ -693,9 +679,7 @@ extension WebSocketServer {
     private func handleFileTransferCancel(_ message: Message) {
         if let dict = message.data.value as? [String: Any],
            let id = dict["id"] as? String {
-            DispatchQueue.main.async {
-                AppState.shared.stopTransferRemote(id: id)
-            }
+            print("[websocket] Transfer \(id) cancelled by remote.")
         }
     }
 

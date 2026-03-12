@@ -37,5 +37,6 @@
   "quickshare.deviceSending": "%1$@ is sending %2$@",
   "quickshare.error.protocol": "Protocol error",
   "quickshare.error.crypto": "Encryption error",
-  "quickshare.transferError": "Transfer error with %@"
+  "quickshare.transferError": "Transfer error with %@",
+  "quickshare.settings.autoAccept": "Auto accept from my device"
 }

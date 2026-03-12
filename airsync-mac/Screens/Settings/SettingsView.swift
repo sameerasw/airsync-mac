@@ -119,8 +119,21 @@ struct SettingsView: View {
                         RemotePermissionView()
                     }
 
+                    // 3. Quick Share
+                    headerSection(title: "Quick Share", icon: "shareplay")
+                    VStack {
+                        HStack {
+                            Label("Auto accept from my device", systemImage: "bolt.badge.checkmark")
+                            Spacer()
+                            Toggle("", isOn: $appState.autoAcceptQuickShare)
+                                .toggleStyle(.switch)
+                        }
+                    }
+                    .padding()
+                    .background(.background.opacity(0.3))
+                    .cornerRadius(12.0)
 
-                    // 3. Appearance
+                    // 4. Appearance
                     headerSection(title: "Appearance", icon: "paintbrush")
                     VStack(spacing: 12) {
                         HStack{
