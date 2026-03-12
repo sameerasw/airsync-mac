@@ -38,10 +38,10 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     public enum TransferState: Equatable {
         case idle
         case discovering
-        case connecting
-        case awaitingPin(String)
-        case sending
-        case receiving
+        case connecting(String) // deviceID
+        case awaitingPin(String, String) // pin, deviceID
+        case sending(String) // deviceID
+        case receiving(String) // transferID
         case incomingAwaitingConsent(TransferMetadata, RemoteDeviceInfo)
         case finished
         case failed(String)
@@ -125,10 +125,12 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
 
     public func cancelActiveTransfer() {
         switch transferState {
-        case .sending, .connecting, .awaitingPin:
+        case .connecting(let id), .awaitingPin(_, let id), .sending(let id):
+            NearbyConnectionManager.shared.cancelOutgoingTransfer(id: id)
             transferState = .idle
             AppState.shared.showingQuickShareTransfer = false
-        case .receiving:
+        case .receiving(let id):
+            NearbyConnectionManager.shared.cancelIncomingTransfer(id: id)
             transferState = .idle
             AppState.shared.showingQuickShareTransfer = false
         case let .incomingAwaitingConsent(meta, _):
@@ -144,9 +146,10 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     }
 
     public func sendFiles(urls: [URL], to device: RemoteDeviceInfo) {
-        transferState = .connecting
+        guard let deviceID = device.id else { return }
+        transferState = .connecting(deviceID)
         transferProgress = 0
-        NearbyConnectionManager.shared.startOutgoingTransfer(deviceID: device.id!, delegate: self, urls: urls)
+        NearbyConnectionManager.shared.startOutgoingTransfer(deviceID: deviceID, delegate: self, urls: urls)
     }
     
     public func generateQrCodeKey() -> String {
@@ -222,7 +225,7 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["transfer_" + id])
         activeIncomingTransfers.removeValue(forKey: id)
     }
-
+ 
     public func transferDidComplete(id: String) {
         print("[quickshare] Transfer \(id) completed on disk")
         self.transferState = .finished
@@ -246,7 +249,7 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
             }
         } else {
             if case .incomingAwaitingConsent(let meta, _) = transferState, meta.id == transferID {
-                transferState = .receiving
+                transferState = .receiving(transferID)
                 transferProgress = 0
                 UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["transfer_" + transferID])
                 UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["transfer_" + transferID])
@@ -256,8 +259,10 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     
     public func incomingTransferProgress(id: String, progress: Double) {
         self.transferProgress = progress
-        if transferState != .receiving {
-            transferState = .receiving
+        if case .receiving(let activeID) = transferState, activeID == id {
+            // Already in receiving state
+        } else {
+            transferState = .receiving(id)
         }
     }
     
@@ -285,8 +290,18 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     }
     
     public func connectionWasEstablished(pinCode: String) {
+        let deviceID = caseDiscoveryID() ?? "unknown"
         lastPinCode = pinCode
-        transferState = .awaitingPin(pinCode)
+        transferState = .awaitingPin(pinCode, deviceID)
+    }
+
+    private func caseDiscoveryID() -> String? {
+        switch transferState {
+        case .connecting(let id), .awaitingPin(_, let id), .sending(let id):
+            return id
+        default:
+            return nil
+        }
     }
     
     public func connectionFailed(with error: Error) {
@@ -298,7 +313,9 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     }
     
     public func transferAccepted() {
-        transferState = .sending
+        if let id = caseDiscoveryID() {
+            transferState = .sending(id)
+        }
     }
     
     public func transferProgress(progress: Double) {

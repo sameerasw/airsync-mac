@@ -106,7 +106,7 @@ struct QuickShareTransferSheet: View {
     private var transferStatusView: some View {
         VStack(spacing: 15) {
             
-            if case .awaitingPin(let pin) = manager.transferState {
+            if case .awaitingPin(let pin, _) = manager.transferState {
                 VStack(spacing: 5) {
                     Text(Localizer.shared.text("quickshare.confirm_pin"))
                         .font(.subheadline)
@@ -170,10 +170,18 @@ struct QuickShareTransferSheet: View {
                         .foregroundStyle(.green)
                     }
                 }
-            } else if manager.transferState == .sending {
+            } else if case .sending = manager.transferState {
                 VStack(spacing: 8) {
+                    Text(Localizer.shared.text("quickshare.sending"))
+                        .font(.headline)
                     ProgressView(value: manager.transferProgress)
                     Text("\(Int(manager.transferProgress * 100))%")
+                        .font(.caption)
+                }
+            } else if case .connecting = manager.transferState {
+                VStack(spacing: 8) {
+                    ProgressView()
+                    Text(Localizer.shared.text("quickshare.connecting"))
                         .font(.caption)
                 }
             } else if manager.transferState == .finished {
@@ -203,7 +211,7 @@ struct QuickShareTransferSheet: View {
                     manager.stopDiscovery()
                     appState.showingQuickShareTransfer = false
                 }
-            } else if manager.transferState == .discovering {
+            } else if manager.transferState != .idle && manager.transferState != .finished {
                 GlassButtonView(label: Localizer.shared.text("quickshare.cancel"), size: .large) {
                     manager.stopDiscovery()
                     appState.showingQuickShareTransfer = false
