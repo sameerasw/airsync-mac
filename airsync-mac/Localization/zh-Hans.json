@@ -25,5 +25,6 @@
   "status.battery": "电池",
   "status.volume": "音量",
   "media.play": "播放",
-  "media.pause": "暂停"
+  "media.pause": "暂停",
+  "settings.wiredAdb": "Wired ADB support"
 }

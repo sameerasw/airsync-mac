@@ -25,5 +25,6 @@
   "status.battery": "Батарея",
   "status.volume": "Громкость",
   "media.play": "Воспроизведение",
-  "media.pause": "Пауза"
+  "media.pause": "Пауза",
+  "settings.wiredAdb": "Wired ADB support"
 }

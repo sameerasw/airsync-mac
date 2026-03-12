@@ -25,5 +25,6 @@
   "status.battery": "סוללה",
   "status.volume": "עוצמת שמע",
   "media.play": "הפעלה",
-  "media.pause": "עצירה"
+  "media.pause": "עצירה",
+  "settings.wiredAdb": "Wired ADB support"
 }
