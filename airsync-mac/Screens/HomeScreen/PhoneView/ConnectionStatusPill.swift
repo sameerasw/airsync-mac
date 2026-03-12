@@ -46,6 +46,16 @@ struct ConnectionStatusPill: View {
                             removal: .opacity
                         ))
                     }
+
+                    if QuickShareManager.shared.isEnabled && QuickShareManager.shared.isRunning {
+                        Image(systemName: "laptopcomputer.and.arrow.down")
+                            .contentTransition(.symbolEffect(.replace))
+                            .help("Quick Share Ready")
+                            .transition(.asymmetric(
+                                insertion: .scale.combined(with: .opacity),
+                                removal: .opacity
+                            ))
+                    }
                 }
             }
             .padding(.horizontal, 10)
@@ -56,6 +66,7 @@ struct ConnectionStatusPill: View {
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appState.adbConnected)
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appState.adbConnectionMode)
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appState.isConnectedOverLocalNetwork)
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: QuickShareManager.shared.isRunning)
         }
         .buttonStyle(.plain)
         .onHover { hovering in
@@ -89,6 +100,7 @@ struct ConnectionStatusPill: View {
 
 struct ConnectionPillPopover: View {
     @ObservedObject var appState = AppState.shared
+    @ObservedObject var quickShareManager = QuickShareManager.shared
     @State private var currentIPAddress: String = "N/A"
     
     var body: some View {
@@ -117,6 +129,13 @@ struct ConnectionPillPopover: View {
                             icon: appState.adbConnectionMode == .wired ? "cable.connector" : "airplay.audio",
                             text: appState.adbConnectionMode == .wired ? "Wired (USB)" : "Wireless"
                         )
+                    }
+
+                    HStack {
+                        Label("QuickShare", systemImage: "laptopcomputer.and.arrow.down")
+                        Spacer()
+                        Toggle("", isOn: $quickShareManager.isEnabled)
+                            .toggleStyle(.switch)
                     }
                 }
                 .padding(.bottom, 4)

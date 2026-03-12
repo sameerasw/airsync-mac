@@ -10,7 +10,6 @@ import SwiftUI
 enum TabIdentifier: String, CaseIterable, Identifiable {
     case notifications = "notifications.tab"
     case apps = "apps.tab"
-    case transfers = "transfers.tab"
     case settings = "settings.tab"
     case qr = "qr.tab"
 
@@ -20,7 +19,6 @@ enum TabIdentifier: String, CaseIterable, Identifiable {
         switch self {
         case .notifications: return "bell.badge"
         case .apps: return "app"
-        case .transfers: return "tray.and.arrow.up"
         case .settings: return "gear"
         case .qr: return "qrcode"
         }
@@ -30,7 +28,6 @@ enum TabIdentifier: String, CaseIterable, Identifiable {
         switch self {
         case .notifications: return "1"
         case .apps: return "2"
-        case .transfers: return "3"
         case .settings: return ","
         case .qr: return "."
         }
@@ -42,7 +39,6 @@ enum TabIdentifier: String, CaseIterable, Identifiable {
             tabs.remove(at: 0)
             tabs.insert(.notifications, at: 0)
             tabs.insert(.apps, at: 1)
-            tabs.insert(.transfers, at: 2)
         }
         return tabs
     }

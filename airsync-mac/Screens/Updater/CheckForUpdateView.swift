@@ -7,7 +7,7 @@
 
 import SwiftUI
 import Sparkle
-internal import Combine
+import Combine
 
 final class CheckForUpdatesViewModel: ObservableObject {
     @Published var canCheckForUpdates = false

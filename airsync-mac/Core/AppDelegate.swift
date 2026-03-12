@@ -35,6 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Initialize Menu Bar Manager
         menuBarManager = MenuBarManager.shared
+
+        // Initialize Quick Share
+        _ = QuickShareManager.shared
         
         // Register Services Provider
         NSApp.servicesProvider = self
@@ -46,18 +49,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls {
-            print("[AppDelegate] Opening file: \(url.path)")
-            WebSocketServer.shared.sendFile(url: url)
+        if !urls.isEmpty {
+            QuickShareManager.shared.startDiscovery(autoTargetName: nil)
+            QuickShareManager.shared.transferURLs = urls
+            AppState.shared.showingQuickShareTransfer = true
         }
     }
 
     @objc func handleServices(_ pboard: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
-        if let urls = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
-            for url in urls {
-                print("[AppDelegate] Services menu received file: \(url.path)")
-                WebSocketServer.shared.sendFile(url: url)
-            }
+        if let urls = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
+            QuickShareManager.shared.startDiscovery(autoTargetName: nil)
+            QuickShareManager.shared.transferURLs = urls
+            AppState.shared.showingQuickShareTransfer = true
         }
     }
 

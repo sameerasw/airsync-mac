@@ -1,6 +1,6 @@
 import Foundation
 import SwiftUI
-internal import Combine
+import Combine
 
 /// Simple JSON-based localization loader.
 /// Loads `en.json` as base and overlays with current locale file if available.
@@ -35,7 +35,7 @@ final class Localizer: ObservableObject {
         }
     }
 
-    func text(_ key: String) -> String { strings[key] ?? key }
+    public func text(_ key: String) -> String { strings[key] ?? key }
 }
 
 /// Convenience SwiftUI helper
@@ -44,4 +44,4 @@ extension Text {
 }
 
 /// Helper function
-func L(_ key: String) -> String { Localizer.shared.text(key) }
+public func L(_ key: String) -> String { Localizer.shared.text(key) }

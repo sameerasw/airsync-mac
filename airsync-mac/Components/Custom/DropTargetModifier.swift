@@ -7,68 +7,119 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import Foundation
+import AppKit
 
 struct DropTargetModifier: ViewModifier {
     @State private var isTargeted = false
+    @State private var dragLabel: String = ""
     let appState: AppState
 
     func body(content: Content) -> some View {
         content
-            .onDrop(of: [.plainText, .fileURL], isTargeted: $isTargeted) { providers in
-                handleDrop(providers: providers)
-                return true
-            }
+            .onDrop(of: [.plainText, .fileURL], delegate: QuickShareDropDelegate(
+                appState: appState,
+                isTargeted: $isTargeted,
+                dragLabel: $dragLabel
+            ))
             .overlay(
                 Group {
                     if isTargeted {
-                        DropTargetOverlay()
+                        DropTargetOverlay(label: dragLabel)
                     }
                 }
             )
+    }
+}
+
+struct QuickShareDropDelegate: DropDelegate {
+    let appState: AppState
+    @Binding var isTargeted: Bool
+    @Binding var dragLabel: String
+    
+    private func updateLabel() {
+        let optionPressed = NSEvent.modifierFlags.contains(.option)
+        if optionPressed {
+            dragLabel = Localizer.shared.text("quickshare.drop.pick_device")
+        } else if let deviceName = appState.device?.name {
+            dragLabel = String(format: Localizer.shared.text("quickshare.drop.send_to"), deviceName)
+        } else {
+            dragLabel = Localizer.shared.text("quickshare.drop.pick_device")
+        }
+    }
+    
+    func dropEntered(info: DropInfo) {
+        isTargeted = true
+        updateLabel()
+    }
+    
+    func dropUpdated(info: DropInfo) -> DropOperation? {
+        updateLabel()
+        return .copy
+    }
+    
+    func dropExited(info: DropInfo) {
+        isTargeted = false
+    }
+    
+    func performDrop(info: DropInfo) -> Bool {
+        isTargeted = false
+        
+        let providers = info.itemProviders(for: [.plainText, .fileURL])
+        handleDrop(providers: providers)
+        return true
     }
 
     private func handleDrop(providers: [NSItemProvider]) {
-        guard appState.device != nil else {
-            // Show notification if no device connected
-            appState.postNativeNotification(
-                id: "no_device",
-                appName: "AirSync",
-                title: "No Device Connected",
-                body: "Connect an Android device first to send text"
-            )
-            return
-        }
+        let group = DispatchGroup()
+        var urls: [URL] = []
+        let urlLock = NSLock()
+        var text: String?
+        let textLock = NSLock()
 
         for provider in providers {
-            if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+            if provider.canLoadObject(ofClass: URL.self) {
+                group.enter()
+                _ = provider.loadObject(ofClass: URL.self) { url, error in
+                    if let url = url {
+                        urlLock.lock()
+                        urls.append(url)
+                        urlLock.unlock()
+                    }
+                    group.leave()
+                }
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+                group.enter()
                 provider.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) { item, error in
-                    if let text = item as? String ?? (item as? Data).flatMap({ String(data: $0, encoding: .utf8) }) {
-                        DispatchQueue.main.async {
-                            sendTextToDevice(text)
-                        }
+                    if let s = item as? String ?? (item as? Data).flatMap({ String(data: $0, encoding: .utf8) }) {
+                        textLock.lock()
+                        text = s
+                        textLock.unlock()
                     }
+                    group.leave()
                 }
-                return
-            } else if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
-                    guard let url = (item as? URL) ?? (item as? Data).flatMap({ URL(dataRepresentation: $0, relativeTo: nil) }) else { return }
-
-                    // Initiate file transfer
-                    DispatchQueue.main.async {
-                         WebSocketServer.shared.sendFile(url: url)
-                    }
-                }
-                return
             }
         }
-    }
 
-    private func sendTextToDevice(_ text: String) {
-        appState.sendClipboardToAndroid(text: text)
+        group.notify(queue: .main) {
+            if !urls.isEmpty {
+                let optionPressed = NSEvent.modifierFlags.contains(.option)
+                let connectedDeviceName = appState.device?.name
+                let targetName = (!optionPressed) ? connectedDeviceName : nil
+                
+                QuickShareManager.shared.startDiscovery(autoTargetName: targetName)
+                QuickShareManager.shared.transferURLs = urls
+                appState.showingQuickShareTransfer = true
+            } else if let text = text {
+                appState.sendClipboardToAndroid(text: text)
+            }
+        }
     }
 }
 
 struct DropTargetOverlay: View {
+    let label: String
+    
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12)
@@ -78,9 +129,16 @@ struct DropTargetOverlay: View {
                 .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 3, dash: [10, 5]))
                 .padding(8)
             
-            Image(systemName: "arrow.up.circle.fill")
-                .font(.system(size: 64, weight: .semibold))
-                .foregroundColor(.accentColor)
+            VStack(spacing: 16) {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 48, weight: .semibold))
+                    .foregroundColor(.accentColor)
+                
+                Text(label)
+                    .font(.headline)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
         }
         .padding(4)
         .allowsHitTesting(false)
@@ -88,7 +146,7 @@ struct DropTargetOverlay: View {
 }
 
 extension View {
-    func dropTarget(appState: AppState) -> some View {
+    func dropTarget(appState: AppState, autoTargetName: String? = nil) -> some View {
         self.modifier(DropTargetModifier(appState: appState))
     }
 }

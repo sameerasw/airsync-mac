@@ -7,7 +7,7 @@
 import SwiftUI
 import Foundation
 import Cocoa
-internal import Combine
+import Combine
 import UserNotifications
 import AVFoundation
 
@@ -53,7 +53,8 @@ class AppState: ObservableObject {
         self.notificationSound = UserDefaults.standard.string(forKey: "notificationSound") ?? "default"
         self.dismissNotif = UserDefaults.standard.bool(forKey: "dismissNotif")
         
-        self.showFileShareDialog = UserDefaults.standard.object(forKey: "showFileShareDialog") == nil ? true : UserDefaults.standard.bool(forKey: "showFileShareDialog")
+        self.autoAcceptQuickShare = UserDefaults.standard.bool(forKey: "autoAcceptQuickShare")
+        self.quickShareEnabled = UserDefaults.standard.object(forKey: "quickShareEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "quickShareEnabled")
 
         let savedNotificationMode = UserDefaults.standard.string(forKey: "callNotificationMode") ?? CallNotificationMode.popup.rawValue
         self.callNotificationMode = CallNotificationMode(rawValue: savedNotificationMode) ?? .popup
@@ -325,9 +326,15 @@ class AppState: ObservableObject {
         }
     }
 
-    @Published var showFileShareDialog: Bool {
+    @Published var autoAcceptQuickShare: Bool {
         didSet {
-            UserDefaults.standard.set(showFileShareDialog, forKey: "showFileShareDialog")
+            UserDefaults.standard.set(autoAcceptQuickShare, forKey: "autoAcceptQuickShare")
+        }
+    }
+
+    @Published var quickShareEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(quickShareEnabled, forKey: "quickShareEnabled")
         }
     }
 
@@ -376,6 +383,7 @@ class AppState: ObservableObject {
     // ADB Transfer Progress
     @Published var isADBTransferring: Bool = false
     @Published var adbTransferringFilePath: String? = nil
+    @Published var showingQuickShareTransfer = false
 
     @Published var showHiddenFiles: Bool = false {
         didSet {
@@ -384,10 +392,6 @@ class AppState: ObservableObject {
         }
     }
 
-    // File transfer tracking state
-    @Published var transfers: [String: FileTransferSession] = [:]
-    @Published var activeTransferId: String? = nil
-    var transferDismissTimer: Timer?
 
     // Toggle licensing
     let licenseCheck: Bool = true
@@ -667,7 +671,11 @@ class AppState: ObservableObject {
             self.notifications.removeAll()
             self.status = nil
             self.currentDeviceWallpaperBase64 = nil
-            self.transfers = [:]
+            
+            // Clean up Quick Share state
+            if QuickShareManager.shared.transferState != .idle {
+                QuickShareManager.shared.transferState = .idle
+            }
 
             if self.adbConnected {
                 ADBConnector.disconnectADB()

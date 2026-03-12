@@ -119,19 +119,37 @@ struct SettingsView: View {
                         RemotePermissionView()
                     }
 
-                    VStack{
-                        HStack{
-                            Label("Show File Share Dialog", systemImage: "doc.on.doc")
+
+                    // 3. Quick Share
+                    headerSection(title: "Quick Share", icon: "laptopcomputer.and.arrow.down")
+                    VStack {
+                        HStack {
+                            Label(Localizer.shared.text("quickshare.title"), systemImage: "bolt.horizontal.circle")
                             Spacer()
-                            Toggle("", isOn: $appState.showFileShareDialog)
+                            Toggle("", isOn: $appState.quickShareEnabled)
                                 .toggleStyle(.switch)
+                        }
+
+                        if appState.quickShareEnabled {
+                            Text(String(format: Localizer.shared.text("quickshare.settings.discoverable"), QuickShareManager.shared.deviceName))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            HStack {
+                                Label(Localizer.shared.text("quickshare.settings.autoAccept"), systemImage: "checkmark.shield")
+                                Spacer()
+                                Toggle("", isOn: $appState.autoAcceptQuickShare)
+                                    .toggleStyle(.switch)
+                            }
+
                         }
                     }
                     .padding()
                     .background(.background.opacity(0.3))
                     .cornerRadius(12.0)
 
-                    // 3. Appearance
+                    // 4. Appearance
                     headerSection(title: "Appearance", icon: "paintbrush")
                     VStack(spacing: 12) {
                         HStack{
