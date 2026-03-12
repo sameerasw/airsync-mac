@@ -12,49 +12,66 @@ import AppKit
 
 struct DropTargetModifier: ViewModifier {
     @State private var isTargeted = false
+    @State private var dragLabel: String = ""
     let appState: AppState
-    var autoTargetName: String? = nil
 
     func body(content: Content) -> some View {
         content
-            .onDrop(of: [.plainText, .fileURL], isTargeted: $isTargeted) { providers in
-                handleDrop(providers: providers)
-                return true
-            }
+            .onDrop(of: [.plainText, .fileURL], delegate: QuickShareDropDelegate(
+                appState: appState,
+                isTargeted: $isTargeted,
+                dragLabel: $dragLabel
+            ))
             .overlay(
                 Group {
                     if isTargeted {
-                        DropTargetOverlay(label: dragFeedbackLabel)
+                        DropTargetOverlay(label: dragLabel)
                     }
                 }
             )
     }
+}
 
-    private var dragFeedbackLabel: String {
+struct QuickShareDropDelegate: DropDelegate {
+    let appState: AppState
+    @Binding var isTargeted: Bool
+    @Binding var dragLabel: String
+    
+    private func updateLabel() {
         let optionPressed = NSEvent.modifierFlags.contains(.option)
         if optionPressed {
-            return Localizer.shared.text("quickshare.drop.pick_device")
+            dragLabel = Localizer.shared.text("quickshare.drop.pick_device")
         } else if let deviceName = appState.device?.name {
-            return String(format: Localizer.shared.text("quickshare.drop.send_to"), deviceName)
+            dragLabel = String(format: Localizer.shared.text("quickshare.drop.send_to"), deviceName)
         } else {
-            return Localizer.shared.text("quickshare.drop.pick_device")
+            dragLabel = Localizer.shared.text("quickshare.drop.pick_device")
         }
+    }
+    
+    func dropEntered(info: DropInfo) {
+        isTargeted = true
+        updateLabel()
+    }
+    
+    func dropUpdated(info: DropInfo) -> DropOperation? {
+        updateLabel()
+        return .copy
+    }
+    
+    func dropExited(info: DropInfo) {
+        isTargeted = false
+    }
+    
+    func performDrop(info: DropInfo) -> Bool {
+        isTargeted = false
+        
+        let providers = info.itemProviders(for: [.plainText, .fileURL])
+        handleDrop(providers: providers)
+        return true
     }
 
     private func handleDrop(providers: [NSItemProvider]) {
-        guard appState.device != nil else {
-            // Show notification if no device connected
-            appState.postNativeNotification(
-                id: "no_device",
-                appName: "AirSync",
-                title: "No Device Connected",
-                body: "Connect an Android device first to send text"
-            )
-            return
-        }
-
         let group = DispatchGroup()
-        // Collect URLs in a thread-safe way
         var urls: [URL] = []
         let urlLock = NSLock()
         var text: String?
@@ -94,13 +111,9 @@ struct DropTargetModifier: ViewModifier {
                 QuickShareManager.shared.transferURLs = urls
                 appState.showingQuickShareTransfer = true
             } else if let text = text {
-                sendTextToDevice(text)
+                appState.sendClipboardToAndroid(text: text)
             }
         }
-    }
-
-    private func sendTextToDevice(_ text: String) {
-        appState.sendClipboardToAndroid(text: text)
     }
 }
 
@@ -134,6 +147,6 @@ struct DropTargetOverlay: View {
 
 extension View {
     func dropTarget(appState: AppState, autoTargetName: String? = nil) -> some View {
-        self.modifier(DropTargetModifier(appState: appState, autoTargetName: autoTargetName))
+        self.modifier(DropTargetModifier(appState: appState))
     }
 }

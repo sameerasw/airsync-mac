@@ -195,14 +195,12 @@ class MenuBarStatusButton: NSView {
     // MARK: - Drag and Drop
     
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard AppState.shared.device != nil else { return [] }
         updateDragLabel()
         dragEnteredHandler?()
         return .copy
     }
     
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard AppState.shared.device != nil else { return [] }
         updateDragLabel()
         return .copy
     }
