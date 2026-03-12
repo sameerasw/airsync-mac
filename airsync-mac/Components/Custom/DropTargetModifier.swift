@@ -8,6 +8,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import Foundation
+import AppKit
 
 struct DropTargetModifier: ViewModifier {
     @State private var isTargeted = false
@@ -74,7 +75,11 @@ struct DropTargetModifier: ViewModifier {
 
         group.notify(queue: .main) {
             if !urls.isEmpty {
-                QuickShareManager.shared.startDiscovery(autoTargetName: self.autoTargetName)
+                let optionPressed = NSEvent.modifierFlags.contains(.option)
+                let connectedDeviceName = appState.device?.name
+                let targetName = (!optionPressed) ? connectedDeviceName : nil
+                
+                QuickShareManager.shared.startDiscovery(autoTargetName: targetName)
                 QuickShareManager.shared.transferURLs = urls
                 appState.showingQuickShareTransfer = true
             } else if let text = text {

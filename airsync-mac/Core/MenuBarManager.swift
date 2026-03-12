@@ -197,8 +197,12 @@ class MenuBarStatusButton: NSView {
         // Handle file URLs
         if let urls = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
             DispatchQueue.main.async {
+                let optionPressed = NSEvent.modifierFlags.contains(.option)
+                let connectedDeviceName = AppState.shared.device?.name
+                let autoTargetName = (!optionPressed) ? connectedDeviceName : nil
+                
                 QuickShareManager.shared.transferURLs = urls
-                QuickShareManager.shared.startDiscovery()
+                QuickShareManager.shared.startDiscovery(autoTargetName: autoTargetName)
                 AppState.shared.showingQuickShareTransfer = true
             }
             return true

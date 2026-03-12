@@ -17,22 +17,27 @@ struct QuickShareTransferSheet: View {
                 if manager.transferState == .discovering {
                     VStack(alignment: .leading, spacing: 10) {
                         if let targetName = manager.autoTargetDeviceName {
-                            // Special Auto-Targeting UI for Menubar
+                            // Special Auto-Targeting UI for Menubar/Drop
                             VStack(spacing: 20) {
                                 HStack {
-                                    Text(String(format: Localizer.shared.text("quickshare.waiting_for"), targetName))
-                                        .font(.subheadline)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(String(format: Localizer.shared.text("quickshare.waiting_for"), targetName))
+                                            .font(.subheadline).bold()
+                                        Text(Localizer.shared.text("quickshare.searching"))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
                                     Spacer()
                                     ProgressView()
                                         .controlSize(.small)
                                 }
                                 
                                 HStack(spacing: 12) {
-                                    GlassButtonView(label: Localizer.shared.text("quickshare.more_devices")) {
+                                    GlassButtonView(label: Localizer.shared.text("quickshare.more_devices"), size: .regular) {
                                         manager.autoTargetDeviceName = nil
                                     }
                                     
-                                    GlassButtonView(label: Localizer.shared.text("quickshare.cancel")) {
+                                    GlassButtonView(label: Localizer.shared.text("quickshare.cancel"), size: .regular) {
                                         manager.stopDiscovery()
                                         appState.showingQuickShareTransfer = false
                                     }
