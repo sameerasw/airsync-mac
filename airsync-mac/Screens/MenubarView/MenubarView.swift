@@ -103,20 +103,19 @@ struct MenubarView: View {
                         
                         GlassButtonView(
                             label: "Send",
-                            systemImage: "square.and.arrow.up",
+                            systemImage: "paperplane.fill",
                             iconOnly: true,
                             circleSize: toolButtonSize,
                             action: {
                                 let panel = NSOpenPanel()
+                                panel.allowsMultipleSelection = true
                                 panel.canChooseFiles = true
                                 panel.canChooseDirectories = false
-                                panel.allowsMultipleSelection = false
-                                panel.begin { response in
-                                    if response == .OK, let url = panel.url {
-                                        DispatchQueue.global(qos: .userInitiated).async {
-                                            WebSocketServer.shared.sendFile(url: url)
-                                        }
-                                    }
+                                
+                                if panel.runModal() == .OK {
+                                    QuickShareManager.shared.transferURLs = panel.urls
+                                    QuickShareManager.shared.startDiscovery()
+                                    appState.showingQuickShareTransfer = true
                                 }
                             }
                         )
@@ -232,6 +231,9 @@ struct MenubarView: View {
         }
         .onDisappear {
             appState.isMenubarWindowOpen = false
+        }
+        .sheet(isPresented: $appState.showingQuickShareTransfer) {
+            QuickShareTransferSheet()
         }
     }
 }

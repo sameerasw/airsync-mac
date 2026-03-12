@@ -93,13 +93,6 @@ struct airsync_macApp: App {
                 dismissWindow(id: "callWindow")
             }
         }
-        .onChange(of: appState.activeTransferId) { oldValue, newValue in
-            if newValue != nil {
-                openWindow(id: "fileTransferWindow")
-            } else {
-                dismissWindow(id: "fileTransferWindow")
-            }
-        }
         .commands {
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesView(updater: updaterController.updater)
@@ -171,22 +164,6 @@ struct airsync_macApp: App {
         .defaultSize(width: 320, height: 480)
         .windowStyle(.hiddenTitleBar)
 
-        // File Transfer Utility Window
-        Window("File Transfer", id: "fileTransferWindow") {
-            if #available(macOS 15.0, *) {
-                FileTransferWindowView()
-                    .environmentObject(appState)
-                    .frame(minWidth: 320, maxWidth: 320, minHeight: 300, maxHeight: 300)
-                    .containerBackground(.ultraThinMaterial, for: .window)
-            } else {
-                FileTransferWindowView()
-                    .environmentObject(appState)
-                    .frame(minWidth: 320, maxWidth: 320, minHeight: 300, maxHeight: 300)
-            }
-        }
-        .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentSize)
-        .defaultPosition(.center)
     }
 }
 

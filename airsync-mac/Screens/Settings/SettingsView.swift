@@ -119,17 +119,6 @@ struct SettingsView: View {
                         RemotePermissionView()
                     }
 
-                    VStack{
-                        HStack{
-                            Label("Show File Share Dialog", systemImage: "doc.on.doc")
-                            Spacer()
-                            Toggle("", isOn: $appState.showFileShareDialog)
-                                .toggleStyle(.switch)
-                        }
-                    }
-                    .padding()
-                    .background(.background.opacity(0.3))
-                    .cornerRadius(12.0)
 
                     // 3. Appearance
                     headerSection(title: "Appearance", icon: "paintbrush")
