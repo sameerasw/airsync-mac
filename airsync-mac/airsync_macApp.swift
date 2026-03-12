@@ -93,6 +93,13 @@ struct airsync_macApp: App {
                 dismissWindow(id: "callWindow")
             }
         }
+        .onChange(of: appState.showingQuickShareTransfer) { oldValue, newValue in
+            if newValue {
+                openWindow(id: "quickShareWindow")
+            } else {
+                dismissWindow(id: "quickShareWindow")
+            }
+        }
         .commands {
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesView(updater: updaterController.updater)
@@ -163,6 +170,34 @@ struct airsync_macApp: App {
         .defaultPosition(.topTrailing)
         .defaultSize(width: 320, height: 480)
         .windowStyle(.hiddenTitleBar)
+
+        // Standalone Tool Window for Quick Share
+        Window("Quick Share", id: "quickShareWindow") {
+            QuickShareTransferSheet()
+                .fixedSize()
+                .background(WindowAccessor(callback: { window in
+                    window.level = .floating
+                    window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+                    window.titleVisibility = .visible
+                    window.title = Localizer.shared.text("quickshare.title")
+                    window.titlebarAppearsTransparent = true
+                    window.isMovableByWindowBackground = true
+                    window.styleMask.remove(.resizable)
+                    window.standardWindowButton(.closeButton)?.isHidden = false
+                    window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+                    window.standardWindowButton(.zoomButton)?.isHidden = true
+                    window.backgroundColor = .clear
+                    window.isOpaque = false
+                    
+                    NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { _ in
+                        AppState.shared.showingQuickShareTransfer = false
+                        QuickShareManager.shared.stopDiscovery()
+                    }
+                }))
+        }
+        .defaultPosition(.topTrailing)
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
 
     }
 }

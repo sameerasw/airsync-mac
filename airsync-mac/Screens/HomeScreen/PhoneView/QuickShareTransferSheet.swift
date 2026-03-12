@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Foundation
 
 @MainActor
 struct QuickShareTransferSheet: View {
@@ -8,24 +9,10 @@ struct QuickShareTransferSheet: View {
     
     var body: some View {
         ZStack {
-            VisualEffectBlur(material: .hudWindow, blendingMode: .behindWindow)
-                .edgesIgnoringSafeArea(.all)
+            VisualEffectBlur(material: NSVisualEffectView.Material.hudWindow, blendingMode: NSVisualEffectView.BlendingMode.behindWindow)
+                .edgesIgnoringSafeArea(Edge.Set.all)
             
             VStack(spacing: 20) {
-                HStack {
-                    Text(Localizer.shared.text("quickshare.title"))
-                        .font(.headline)
-                    Spacer()
-                    Button(action: { 
-                        manager.stopDiscovery()
-                        appState.showingQuickShareTransfer = false
-                    }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.bottom, 10)
 
                 if manager.transferState == .discovering {
                     VStack(alignment: .leading, spacing: 10) {
@@ -51,7 +38,7 @@ struct QuickShareTransferSheet: View {
                                     }
                                 }
                             }
-                            .frame(maxWidth: .infinity, minHeight: 100)
+                            // .frame(minHeight: 150)
                         } else {
                             // Default Device Selection UI
                             HStack {
@@ -66,7 +53,7 @@ struct QuickShareTransferSheet: View {
                                 Text(Localizer.shared.text("quickshare.searching"))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity, minHeight: 100)
+                                    // .frame(minHeight: 150)
                             } else {
                                 ScrollView {
                                     VStack(spacing: 8) {
@@ -94,12 +81,10 @@ struct QuickShareTransferSheet: View {
                                 .frame(maxHeight: 150)
                             }
                             
-                            Button(Localizer.shared.text("quickshare.cancel")) {
+                            GlassButtonView(label: Localizer.shared.text("quickshare.cancel"), size: .large) {
                                 manager.stopDiscovery()
                                 appState.showingQuickShareTransfer = false
                             }
-                            .buttonStyle(.link)
-                            .frame(maxWidth: .infinity, alignment: .center)
                         }
                     }
                 } else {
@@ -108,7 +93,8 @@ struct QuickShareTransferSheet: View {
             }
             .padding(20)
         }
-        .frame(width: 350)
+
+        .frame(minWidth: 350)
         .animation(.default, value: manager.transferState)
     }
 
@@ -168,23 +154,15 @@ struct QuickShareTransferSheet: View {
                     }
                     
                     HStack(spacing: 15) {
-                        Button(action: {
+                        GlassButtonView(label: Localizer.shared.text("quickshare.decline"), size: .large) {
                             manager.handleUserConsent(transferID: metadata.id, accepted: false)
-                        }) {
-                            Text(Localizer.shared.text("quickshare.decline"))
-                                .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.large)
+                        .foregroundStyle(.red)
                         
-                        Button(action: {
+                        GlassButtonView(label: Localizer.shared.text("quickshare.accept"), size: .large, primary: true) {
                             manager.handleUserConsent(transferID: metadata.id, accepted: true)
-                        }) {
-                            Text(Localizer.shared.text("quickshare.accept"))
-                                .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
+                        .foregroundStyle(.green)
                     }
                 }
             } else if manager.transferState == .sending {
@@ -216,17 +194,15 @@ struct QuickShareTransferSheet: View {
             }
             
             if manager.transferState == .finished {
-                Button(Localizer.shared.text("quickshare.done")) {
+                GlassButtonView(label: Localizer.shared.text("quickshare.done"), size: .large, primary: true) {
                     manager.stopDiscovery()
                     appState.showingQuickShareTransfer = false
                 }
-                .buttonStyle(.borderedProminent)
             } else if manager.transferState == .discovering {
-                Button(Localizer.shared.text("quickshare.cancel")) {
+                GlassButtonView(label: Localizer.shared.text("quickshare.cancel"), size: .large) {
                     manager.stopDiscovery()
                     appState.showingQuickShareTransfer = false
                 }
-                .buttonStyle(.bordered)
             }
         }
     }

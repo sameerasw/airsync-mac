@@ -37,9 +37,6 @@ class MenuBarManager: NSObject {
             statusButton.clickHandler = { [weak self] in
                 self?.togglePopover()
             }
-            statusButton.dragEnteredHandler = { [weak self] in
-                self?.showPopover()
-            }
             
             // Add statusButton as a subview of the statusItem's button to handle events
             button.addSubview(statusButton)
@@ -78,19 +75,6 @@ class MenuBarManager: NSObject {
         }
         .store(in: &cancellables)
         
-        // Ensure popover behavior stays open during Quick Share transfers
-        appState.$showingQuickShareTransfer
-            .receive(on: RunLoop.main)
-            .sink { [weak self] (showing: Bool) in
-                self?.popover?.behavior = showing ? .applicationDefined : .transient
-                if showing {
-                    let isShown = self?.popover?.isShown ?? false
-                    if !isShown {
-                        self?.showPopover()
-                    }
-                }
-            }
-            .store(in: &cancellables)
     }
     
     func updateStatusItem() {
@@ -216,9 +200,6 @@ class MenuBarStatusButton: NSView {
                 QuickShareManager.shared.transferURLs = urls
                 QuickShareManager.shared.startDiscovery()
                 AppState.shared.showingQuickShareTransfer = true
-                
-                // Ensure popover is shown if not already
-                MenuBarManager.shared.showPopover()
             }
             return true
         }

@@ -133,9 +133,6 @@ struct ScreenView: View {
             .easeInOut(duration: 0.28),
             value: appState.isMusicCardHidden
         )
-        .sheet(isPresented: $appState.showingQuickShareTransfer) {
-            QuickShareTransferSheet()
-        }
     }
 }
 

@@ -182,9 +182,6 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
         self.transferState = .incomingAwaitingConsent(transfer, device)
         AppState.shared.showingQuickShareTransfer = true
         
-        // Ensure popover is shown if not already
-        MenuBarManager.shared.showPopover()
-        
         let content = UNMutableNotificationContent()
         content.title = Localizer.shared.text("app.name")
         content.subtitle = String(format: Localizer.shared.text("quickshare.pin_code"), transfer.pinCode ?? "")

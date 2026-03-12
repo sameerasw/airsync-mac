@@ -233,9 +233,6 @@ struct MenubarView: View {
         .onDisappear {
             appState.isMenubarWindowOpen = false
         }
-        .sheet(isPresented: $appState.showingQuickShareTransfer) {
-            QuickShareTransferSheet()
-        }
     }
 }
 
