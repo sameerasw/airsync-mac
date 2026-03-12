@@ -188,7 +188,7 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
         content.title = "Quick Share"
         content.subtitle = String(format: Localizer.shared.text("pin_code"), transfer.pinCode ?? "")
         content.body = String(format: Localizer.shared.text("device_sending_files"), device.name, fileStr)
-        content.sound = .default
+        content.sound = UNNotificationSound(named: UNNotificationSoundName("Submarine.aiff"))
         content.categoryIdentifier = "INCOMING_TRANSFERS"
         content.userInfo = [
             "type": "quickshare",
