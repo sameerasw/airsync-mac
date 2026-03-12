@@ -314,6 +314,8 @@ public class NearbyConnection{
 			print("Sent keep-alive")
 			#endif
 			sendKeepAlive(ack: true)
+		}else if offlineFrame.hasV1 && offlineFrame.v1.hasType, case .bandwidthUpgradeNegotiation = offlineFrame.v1.type{
+			// Ignore bandwidth upgrade negotiation (not supported yet)
 		}else{
 			print("Unhandled offline frame encrypted: \(offlineFrame)")
 		}
@@ -426,16 +428,20 @@ public class NearbyConnection{
 		connectionClosed=true
 	}
 	
-	internal func sendDisconnectionAndDisconnect() throws{
+	internal func sendDisconnectionAndDisconnect(){
 		var offlineFrame=Location_Nearby_Connections_OfflineFrame()
 		offlineFrame.version = .v1
 		offlineFrame.v1.type = .disconnection
 		offlineFrame.v1.disconnection=Location_Nearby_Connections_DisconnectionFrame()
 		
-		if encryptionDone{
-			try encryptAndSendOfflineFrame(offlineFrame)
-		}else{
-			sendFrameAsync(try offlineFrame.serializedData())
+		do{
+			if encryptionDone{
+				try encryptAndSendOfflineFrame(offlineFrame)
+			}else{
+				sendFrameAsync(try offlineFrame.serializedData())
+			}
+		}catch{
+			print("[nearby] Error sending disconnection frame: \(error)")
 		}
 		disconnect()
 	}

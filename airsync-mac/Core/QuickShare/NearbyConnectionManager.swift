@@ -174,6 +174,7 @@ public protocol MainAppDelegate{
 	func obtainUserConsent(for transfer:TransferMetadata, from device:RemoteDeviceInfo)
 	func incomingTransfer(id:String, didFinishWith error:Error?)
 	func incomingTransferProgress(id:String, progress:Double)
+	func transferDidComplete(id:String)
 }
 
 public protocol ShareExtensionDelegate:AnyObject{
@@ -283,6 +284,11 @@ public class NearbyConnectionManager : NSObject, NetServiceDelegate, InboundNear
 		delegate.incomingTransferProgress(id: id, progress: progress)
 	}
 	
+	public func transferDidComplete(connection: InboundNearbyConnection) {
+		guard let delegate=mainAppDelegate else {return}
+		delegate.transferDidComplete(id: connection.id)
+	}
+	
 	public func submitUserConsent(transferID:String, accept:Bool){
 		guard let conn=activeConnections[transferID] else {return}
 		conn.submitUserConsent(accepted: accept)
@@ -319,8 +325,11 @@ public class NearbyConnectionManager : NSObject, NetServiceDelegate, InboundNear
 	}
 	
 	public func stopDeviceDiscovery(){
+		guard discoveryRefCount > 0 else {
+			print("[nearby] Attempted to stop discovery when count is already 0")
+			return
+		}
 		discoveryRefCount-=1
-		assert(discoveryRefCount>=0)
 		if discoveryRefCount==0{
 			browser?.cancel()
 			browser=nil

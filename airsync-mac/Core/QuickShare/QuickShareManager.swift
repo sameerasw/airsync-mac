@@ -126,7 +126,6 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     public func cancelActiveTransfer() {
         switch transferState {
         case .sending, .connecting, .awaitingPin:
-            NearbyConnectionManager.shared.stopDeviceDiscovery()
             transferState = .idle
             AppState.shared.showingQuickShareTransfer = false
         case .receiving:
@@ -214,19 +213,26 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
             UNUserNotificationCenter.current().add(request)
             
             self.transferState = .failed(error.localizedDescription)
-        } else {
-            self.transferState = .finished
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                AppState.shared.showingQuickShareTransfer = false
+                self.transferState = .idle
+            }
         }
         
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["transfer_" + id])
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["transfer_" + id])
         activeIncomingTransfers.removeValue(forKey: id)
+    }
+
+    public func transferDidComplete(id: String) {
+        print("[quickshare] Transfer \(id) completed on disk")
+        self.transferState = .finished
+        self.transferProgress = 1.0
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            if self.transferState == .finished || (error != nil && self.transferState == .failed(error!.localizedDescription)) {
-                AppState.shared.showingQuickShareTransfer = false
-                self.transferState = .idle
-            }
+            AppState.shared.showingQuickShareTransfer = false
+            self.transferState = .idle
         }
     }
     

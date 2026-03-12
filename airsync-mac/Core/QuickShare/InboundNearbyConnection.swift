@@ -85,9 +85,20 @@ public class InboundNearbyConnection: NearbyConnection{
 		case .sentConnectionResponse:
 			try processPairedKeyEncryptionFrame(frame)
 		case .sentPairedKeyResult:
-			try processPairedKeyResultFrame(frame)
+			if frame.v1.hasPairedKeyResult {
+				try processPairedKeyResultFrame(frame)
+			}
 		case .receivedPairedKeyResult:
-			try processIntroductionFrame(frame)
+			if frame.v1.hasIntroduction {
+				try processIntroductionFrame(frame)
+			} else {
+				print("Received non-introduction setup frame in receivedPairedKeyResult state: \(frame.v1.type)")
+			}
+		case .receivingFiles:
+			if frame.v1.type == .progressUpdate {
+				return
+			}
+			print("Unexpected frame in receivingFiles state: \(frame.v1.type)")
 		default:
 			print("Unexpected connection state in processTransferSetupFrame: \(currentState)")
 			print(frame)
@@ -110,13 +121,15 @@ public class InboundNearbyConnection: NearbyConnection{
 			fileInfo.progress?.completedUnitCount=transferredFiles[id]!.bytesTransferred
 			let progress = Double(transferredFiles[id]!.bytesTransferred) / Double(fileInfo.meta.size)
 			delegate?.incomingTransferProgress(connection: self, id: String(id), progress: progress)
-		}else if (frame.payloadChunk.flags & 1)==1{
-			try fileInfo.fileHandle?.close()
+		}
+		if (frame.payloadChunk.flags & 1)==1{
+			try? fileInfo.fileHandle?.close()
 			transferredFiles[id]!.fileHandle=nil
 			fileInfo.progress?.unpublish()
 			transferredFiles.removeValue(forKey: id)
 			if transferredFiles.isEmpty{
-				try sendDisconnectionAndDisconnect()
+				delegate?.transferDidComplete(connection: self)
+				sendDisconnectionAndDisconnect()
 			}
 		}
 	}
@@ -424,4 +437,5 @@ public protocol InboundNearbyConnectionDelegate{
 	func obtainUserConsent(for transfer:TransferMetadata, from device:RemoteDeviceInfo, connection:InboundNearbyConnection)
 	func connectionWasTerminated(connection:InboundNearbyConnection, error:Error?)
 	func incomingTransferProgress(connection:InboundNearbyConnection, id:String, progress:Double)
+	func transferDidComplete(connection:InboundNearbyConnection)
 }
