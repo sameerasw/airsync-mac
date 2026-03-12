@@ -1,6 +1,6 @@
 import Foundation
 import Network
-internal import Combine
+import Combine
 import SwiftUI
 
 struct DiscoveredDevice: Identifiable, Equatable, Hashable {

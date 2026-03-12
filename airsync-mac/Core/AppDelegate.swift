@@ -35,6 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Initialize Menu Bar Manager
         menuBarManager = MenuBarManager.shared
+
+        // Initialize Quick Share
+        _ = QuickShareManager.shared
         
         // Register Services Provider
         NSApp.servicesProvider = self

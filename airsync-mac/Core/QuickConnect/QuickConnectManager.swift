@@ -6,7 +6,7 @@
 //
 
 import Foundation
-internal import Combine
+import Combine
 
 /// Manages quick reconnection functionality for previously connected devices
 class QuickConnectManager: ObservableObject {
