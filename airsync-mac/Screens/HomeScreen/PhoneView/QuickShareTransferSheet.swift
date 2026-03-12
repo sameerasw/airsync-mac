@@ -108,10 +108,6 @@ struct QuickShareTransferSheet: View {
 
     private var transferStatusView: some View {
         VStack(spacing: 15) {
-            if manager.transferState != QuickShareManager.TransferState.idle {
-                Text(manager.transferState == QuickShareManager.TransferState.finished ? Localizer.shared.text("quickshare.finished") : Localizer.shared.text("quickshare.sending"))
-                    .font(.headline)
-            }
             
             if case .awaitingPin(let pin) = manager.transferState {
                 VStack(spacing: 5) {
@@ -122,6 +118,71 @@ struct QuickShareTransferSheet: View {
                         .padding()
                         .background(Color.secondary.opacity(0.1))
                         .cornerRadius(10)
+                }
+            } else if case .receiving = manager.transferState {
+                VStack(spacing: 8) {
+                    Text(Localizer.shared.text("quickshare.receiving"))
+                        .font(.headline)
+                    ProgressView(value: manager.transferProgress)
+                    Text("\(Int(manager.transferProgress * 100))%")
+                        .font(.caption)
+                }
+            } else if case .incomingAwaitingConsent(let metadata, let device) = manager.transferState {
+                VStack(spacing: 15) {
+                    Text(Localizer.shared.text("quickshare.title"))
+                        .font(.headline)
+                    
+                    VStack(spacing: 5) {
+                        Image(systemName: iconForDeviceType(device.type))
+                            .font(.system(size: 40))
+                            .padding(.bottom, 5)
+                        Text(device.name)
+                            .font(.subheadline).bold()
+                        
+                        let fileStr: String = {
+                            if let textTitle = metadata.textDescription {
+                                return textTitle
+                            } else if metadata.files.count == 1 {
+                                return metadata.files[0].name
+                            } else {
+                                return String(format: Localizer.shared.text("n_files"), metadata.files.count)
+                            }
+                        }()
+                        
+                        Text(fileStr)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    
+                    if let pin = metadata.pinCode {
+                        Text(pin)
+                            .font(.system(size: 24, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 15)
+                            .padding(.vertical, 8)
+                            .background(Color.secondary.opacity(0.1))
+                            .cornerRadius(8)
+                    }
+                    
+                    HStack(spacing: 15) {
+                        Button(action: {
+                            manager.handleUserConsent(transferID: metadata.id, accepted: false)
+                        }) {
+                            Text(Localizer.shared.text("quickshare.decline"))
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                        
+                        Button(action: {
+                            manager.handleUserConsent(transferID: metadata.id, accepted: true)
+                        }) {
+                            Text(Localizer.shared.text("quickshare.accept"))
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                    }
                 }
             } else if manager.transferState == .sending {
                 VStack(spacing: 8) {
@@ -151,18 +212,18 @@ struct QuickShareTransferSheet: View {
                 }
             }
             
-            if manager.transferState != .finished {
-                Button(Localizer.shared.text("quickshare.cancel")) {
-                    manager.stopDiscovery()
-                    appState.showingQuickShareTransfer = false
-                }
-                .buttonStyle(.bordered)
-            } else {
+            if manager.transferState == .finished {
                 Button(Localizer.shared.text("quickshare.done")) {
                     manager.stopDiscovery()
                     appState.showingQuickShareTransfer = false
                 }
                 .buttonStyle(.borderedProminent)
+            } else if manager.transferState == .discovering {
+                Button(Localizer.shared.text("quickshare.cancel")) {
+                    manager.stopDiscovery()
+                    appState.showingQuickShareTransfer = false
+                }
+                .buttonStyle(.bordered)
             }
         }
     }

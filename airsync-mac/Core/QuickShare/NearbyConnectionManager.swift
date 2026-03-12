@@ -13,7 +13,7 @@ import SwiftECC
 import BigInt
 @preconcurrency import SwiftProtobuf
 
-public struct RemoteDeviceInfo{
+public struct RemoteDeviceInfo: Equatable {
 	public let name:String
 	public let type:DeviceType
 	public let qrCodeData:Data?
@@ -69,7 +69,7 @@ public enum NearbyError:Error{
 	}
 }
 
-public struct TransferMetadata{
+public struct TransferMetadata: Equatable {
 	public let files:[FileMetadata]
 	public let id:String
 	public let pinCode:String?
@@ -83,7 +83,7 @@ public struct TransferMetadata{
 	}
 }
 
-public struct FileMetadata{
+public struct FileMetadata: Equatable {
 	public let name:String
 	public let size:Int64
 	public let mimeType:String
@@ -169,9 +169,11 @@ struct EndpointInfo{
 	}
 }
 
+
 public protocol MainAppDelegate{
 	func obtainUserConsent(for transfer:TransferMetadata, from device:RemoteDeviceInfo)
 	func incomingTransfer(id:String, didFinishWith error:Error?)
+	func incomingTransferProgress(id:String, progress:Double)
 }
 
 public protocol ShareExtensionDelegate:AnyObject{
@@ -276,9 +278,19 @@ public class NearbyConnectionManager : NSObject, NetServiceDelegate, InboundNear
 		activeConnections.removeValue(forKey: connection.id)
 	}
 	
+	public func incomingTransferProgress(connection: InboundNearbyConnection, id: String, progress: Double) {
+		guard let delegate=mainAppDelegate else {return}
+		delegate.incomingTransferProgress(id: id, progress: progress)
+	}
+	
 	public func submitUserConsent(transferID:String, accept:Bool){
 		guard let conn=activeConnections[transferID] else {return}
 		conn.submitUserConsent(accepted: accept)
+	}
+	
+	public func cancelIncomingTransfer(id:String){
+		guard let conn=activeConnections[id] else {return}
+		conn.cancel()
 	}
 	
 	public func startDeviceDiscovery(){

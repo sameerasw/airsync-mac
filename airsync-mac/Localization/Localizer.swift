@@ -4,8 +4,8 @@ import Combine
 
 /// Simple JSON-based localization loader.
 /// Loads `en.json` as base and overlays with current locale file if available.
-public final class Localizer: ObservableObject {
-    public static let shared = Localizer()
+final class Localizer: ObservableObject {
+    static let shared = Localizer()
 
     @Published private(set) var strings: [String: String] = [:]
     private var currentLocale: String = Locale.current.language.languageCode?.identifier ?? "en"

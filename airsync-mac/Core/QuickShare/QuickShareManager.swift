@@ -41,6 +41,8 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
         case connecting
         case awaitingPin(String)
         case sending
+        case receiving
+        case incomingAwaitingConsent(TransferMetadata, RemoteDeviceInfo)
         case finished
         case failed(String)
     }
@@ -112,8 +114,33 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
         NearbyConnectionManager.shared.removeShareExtensionDelegate(self)
         discoveredDevices.removeAll()
         self.autoTargetDeviceName = nil
-        if transferState == .discovering {
+        
+        switch transferState {
+        case .discovering, .connecting, .awaitingPin, .sending, .receiving, .incomingAwaitingConsent:
+            cancelActiveTransfer()
+        default:
+            break
+        }
+    }
+
+    public func cancelActiveTransfer() {
+        switch transferState {
+        case .sending, .connecting, .awaitingPin:
+            NearbyConnectionManager.shared.stopDeviceDiscovery()
             transferState = .idle
+            AppState.shared.showingQuickShareTransfer = false
+        case .receiving:
+            transferState = .idle
+            AppState.shared.showingQuickShareTransfer = false
+        case let .incomingAwaitingConsent(meta, _):
+            NearbyConnectionManager.shared.cancelIncomingTransfer(id: meta.id)
+            transferState = .idle
+            AppState.shared.showingQuickShareTransfer = false
+            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["transfer_" + meta.id])
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["transfer_" + meta.id])
+        default:
+            transferState = .idle
+            AppState.shared.showingQuickShareTransfer = false
         }
     }
 
@@ -152,6 +179,12 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
             fileStr = String(format: Localizer.shared.text("n_files"), transfer.files.count)
         }
         
+        self.transferState = .incomingAwaitingConsent(transfer, device)
+        AppState.shared.showingQuickShareTransfer = true
+        
+        // Ensure popover is shown if not already
+        MenuBarManager.shared.showPopover()
+        
         let content = UNMutableNotificationContent()
         content.title = "Quick Share"
         content.subtitle = String(format: Localizer.shared.text("pin_code"), transfer.pinCode ?? "")
@@ -179,16 +212,48 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
             content.sound = .default
             let request = UNNotificationRequest(identifier: "transfer_error_" + id, content: content, trigger: nil)
             UNUserNotificationCenter.current().add(request)
+            
+            self.transferState = .failed(error.localizedDescription)
+        } else {
+            self.transferState = .finished
         }
         
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["transfer_" + id])
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["transfer_" + id])
         activeIncomingTransfers.removeValue(forKey: id)
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            if self.transferState == .finished || (error != nil && self.transferState == .failed(error!.localizedDescription)) {
+                AppState.shared.showingQuickShareTransfer = false
+                self.transferState = .idle
+            }
+        }
     }
     
     public func handleUserConsent(transferID: String, accepted: Bool) {
         NearbyConnectionManager.shared.submitUserConsent(transferID: transferID, accept: accepted)
         if !accepted {
             activeIncomingTransfers.removeValue(forKey: transferID)
+            if case .incomingAwaitingConsent(let meta, _) = transferState, meta.id == transferID {
+                transferState = .idle
+                AppState.shared.showingQuickShareTransfer = false
+                UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["transfer_" + transferID])
+                UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["transfer_" + transferID])
+            }
+        } else {
+            if case .incomingAwaitingConsent(let meta, _) = transferState, meta.id == transferID {
+                transferState = .receiving
+                transferProgress = 0
+                UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["transfer_" + transferID])
+                UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["transfer_" + transferID])
+            }
+        }
+    }
+    
+    public func incomingTransferProgress(id: String, progress: Double) {
+        self.transferProgress = progress
+        if transferState != .receiving {
+            transferState = .receiving
         }
     }
     

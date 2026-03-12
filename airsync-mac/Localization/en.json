@@ -46,6 +46,7 @@
   "quickshare.cancel": "Cancel",
   "quickshare.done": "Done",
   "quickshare.sending": "Sending...",
+  "quickshare.receiving": "Receiving...",
   "quickshare.confirm_pin": "Confirm PIN on your device",
   "quickshare.finished": "Transfer Finished!",
   "quickshare.failed": "Transfer Failed",

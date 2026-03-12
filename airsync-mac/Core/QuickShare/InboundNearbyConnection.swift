@@ -63,7 +63,7 @@ public class InboundNearbyConnection: NearbyConnection{
 				let frame=try Location_Nearby_Connections_OfflineFrame(serializedData: frameData)
 				try processConnectionResponseFrame(frame)
 			default:
-				let smsg=try Securemessage_SecureMessage(serializedData: frameData)
+				let smsg=try Securemessage_SecureMessage(serializedBytes: frameData)
 				try decryptAndProcessReceivedSecureMessage(smsg)
 			}
 		}catch{
@@ -108,6 +108,8 @@ public class InboundNearbyConnection: NearbyConnection{
 			fileInfo.fileHandle?.write(frame.payloadChunk.body)
 			transferredFiles[id]!.bytesTransferred+=Int64(frame.payloadChunk.body.count)
 			fileInfo.progress?.completedUnitCount=transferredFiles[id]!.bytesTransferred
+			let progress = Double(transferredFiles[id]!.bytesTransferred) / Double(fileInfo.meta.size)
+			delegate?.incomingTransferProgress(connection: self, id: String(id), progress: progress)
 		}else if (frame.payloadChunk.flags & 1)==1{
 			try fileInfo.fileHandle?.close()
 			transferredFiles[id]!.fileHandle=nil
@@ -130,6 +132,8 @@ public class InboundNearbyConnection: NearbyConnection{
 			fileInfo.fileHandle?.write(payload)
 			transferredFiles[id]!.bytesTransferred+=Int64(payload.count)
 			fileInfo.progress?.completedUnitCount=transferredFiles[id]!.bytesTransferred
+			let progress = Double(transferredFiles[id]!.bytesTransferred) / Double(fileInfo.meta.size)
+			delegate?.incomingTransferProgress(connection: self, id: String(id), progress: progress)
 			try fileInfo.fileHandle?.close()
 			transferredFiles[id]!.fileHandle=nil
 			fileInfo.progress?.unpublish()
@@ -161,7 +165,7 @@ public class InboundNearbyConnection: NearbyConnection{
 		}
 		let clientInit:Securegcm_Ukey2ClientInit
 		do{
-			clientInit=try Securegcm_Ukey2ClientInit(serializedData: msg.messageData)
+			clientInit=try Securegcm_Ukey2ClientInit(serializedBytes: msg.messageData)
 		}catch{
 			sendUkey2Alert(type: .badMessageData)
 			throw NearbyError.ukey2
@@ -225,9 +229,9 @@ public class InboundNearbyConnection: NearbyConnection{
 		sha.update(data: raw)
 		guard cipherCommitment==Data(sha.finalize()) else { throw NearbyError.ukey2 }
 		
-		let clientFinish=try Securegcm_Ukey2ClientFinished(serializedData: msg.messageData)
+		let clientFinish=try Securegcm_Ukey2ClientFinished(serializedBytes: msg.messageData)
 		guard clientFinish.hasPublicKey else {throw NearbyError.requiredFieldMissing("ukey2clientFinish.publicKey") }
-		let clientKey=try Securemessage_GenericPublicKey(serializedData: clientFinish.publicKey)
+		let clientKey=try Securemessage_GenericPublicKey(serializedBytes: clientFinish.publicKey)
 		
 		try finalizeKeyExchange(peerKey: clientKey)
 		
@@ -346,13 +350,24 @@ public class InboundNearbyConnection: NearbyConnection{
 	}
 	
 	func submitUserConsent(accepted:Bool){
-		DispatchQueue.global(qos: .utility).async {
+		Task {
 			if accepted{
 				self.acceptTransfer()
 			}else{
 				self.rejectTransfer()
 			}
 		}
+	}
+	
+	public func cancel(){
+		if encryptionDone{
+			var cancel=Sharing_Nearby_Frame()
+			cancel.version = .v1
+			cancel.v1=Sharing_Nearby_V1Frame()
+			cancel.v1.type = .cancel
+			try? sendTransferSetupFrame(cancel)
+		}
+		try? sendDisconnectionAndDisconnect()
 	}
 	
 	private func acceptTransfer(){
@@ -408,4 +423,5 @@ public class InboundNearbyConnection: NearbyConnection{
 public protocol InboundNearbyConnectionDelegate{
 	func obtainUserConsent(for transfer:TransferMetadata, from device:RemoteDeviceInfo, connection:InboundNearbyConnection)
 	func connectionWasTerminated(connection:InboundNearbyConnection, error:Error?)
+	func incomingTransferProgress(connection:InboundNearbyConnection, id:String, progress:Double)
 }
