@@ -54,37 +54,10 @@ struct QuickShareTransferSheet: View {
                                     .controlSize(.small)
                             }
                             
-                            if manager.discoveredDevices.isEmpty {
-                                Text(Localizer.shared.text("quickshare.searching"))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    // .frame(minHeight: 150)
-                            } else {
-                                ScrollView {
-                                    VStack(spacing: 8) {
-                                        ForEach(manager.discoveredDevices, id: \.id) { device in
-                                            Button(action: { 
-                                                manager.sendFiles(urls: manager.transferURLs, to: device) 
-                                            }) {
-                                                HStack {
-                                                    Image(systemName: iconForDeviceType(device.type))
-                                                        .frame(width: 24)
-                                                    Text(device.name)
-                                                    Spacer()
-                                                    Image(systemName: "chevron.right")
-                                                        .font(.caption)
-                                                        .foregroundStyle(.secondary)
-                                                }
-                                                .padding(10)
-                                                .background(Color.secondary.opacity(0.1))
-                                                .cornerRadius(8)
-                                            }
-                                            .buttonStyle(.plain)
-                                        }
-                                    }
-                                }
-                                .frame(maxHeight: 150)
+                            RadarView(devices: manager.discoveredDevices) { device in
+                                manager.sendFiles(urls: manager.transferURLs, to: device)
                             }
+                            .frame(height: 250)
                             
                             GlassButtonView(label: Localizer.shared.text("quickshare.cancel"), size: .large) {
                                 manager.stopDiscovery()
