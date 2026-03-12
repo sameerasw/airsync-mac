@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 @MainActor
 struct QuickShareTransferSheet: View {
@@ -134,9 +135,6 @@ struct QuickShareTransferSheet: View {
                 }
             } else if case .incomingAwaitingConsent(let metadata, let device) = manager.transferState {
                 VStack(spacing: 15) {
-                    Text(Localizer.shared.text("quickshare.title"))
-                        .font(.headline)
-                    
                     VStack(spacing: 5) {
                         Image(systemName: iconForDeviceType(device.type))
                             .font(.system(size: 40))

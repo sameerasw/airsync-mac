@@ -169,14 +169,15 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
             return
         }
 
-        let fileStr: String
-        if let textTitle = transfer.textDescription {
-            fileStr = textTitle
-        } else if transfer.files.count == 1 {
-            fileStr = transfer.files[0].name
-        } else {
-            fileStr = String(format: Localizer.shared.text("n_files"), transfer.files.count)
-        }
+        let fileStr: String = {
+            if let textTitle = transfer.textDescription {
+                return textTitle
+            } else if transfer.files.count == 1 {
+                return transfer.files[0].name
+            } else {
+                return String(format: Localizer.shared.text("quickshare.n_files"), transfer.files.count)
+            }
+        }()
         
         self.transferState = .incomingAwaitingConsent(transfer, device)
         AppState.shared.showingQuickShareTransfer = true
@@ -185,9 +186,9 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
         MenuBarManager.shared.showPopover()
         
         let content = UNMutableNotificationContent()
-        content.title = "Quick Share"
-        content.subtitle = String(format: Localizer.shared.text("pin_code"), transfer.pinCode ?? "")
-        content.body = String(format: Localizer.shared.text("device_sending_files"), device.name, fileStr)
+        content.title = Localizer.shared.text("app.name")
+        content.subtitle = String(format: Localizer.shared.text("quickshare.pin_code"), transfer.pinCode ?? "")
+        content.body = String(format: Localizer.shared.text("quickshare.device_sending_files"), device.name, fileStr)
         content.sound = UNNotificationSound(named: UNNotificationSoundName("Submarine.aiff"))
         content.categoryIdentifier = "INCOMING_TRANSFERS"
         content.userInfo = [

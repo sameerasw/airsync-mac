@@ -50,5 +50,8 @@
   "quickshare.confirm_pin": "Confirm PIN on your device",
   "quickshare.finished": "Transfer Finished!",
   "quickshare.failed": "Transfer Failed",
+  "quickshare.pin_code": "PIN: %@",
+  "quickshare.device_sending_files": "%1$@ is sending %2$@",
+  "quickshare.n_files": "%d files",
   "settings.quickshare": "Quick Share"
 }
