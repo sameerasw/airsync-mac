@@ -54,6 +54,7 @@ class AppState: ObservableObject {
         self.dismissNotif = UserDefaults.standard.bool(forKey: "dismissNotif")
         
         self.autoAcceptQuickShare = UserDefaults.standard.bool(forKey: "autoAcceptQuickShare")
+        self.quickShareEnabled = UserDefaults.standard.object(forKey: "quickShareEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "quickShareEnabled")
 
         let savedNotificationMode = UserDefaults.standard.string(forKey: "callNotificationMode") ?? CallNotificationMode.popup.rawValue
         self.callNotificationMode = CallNotificationMode(rawValue: savedNotificationMode) ?? .popup
@@ -328,6 +329,12 @@ class AppState: ObservableObject {
     @Published var autoAcceptQuickShare: Bool {
         didSet {
             UserDefaults.standard.set(autoAcceptQuickShare, forKey: "autoAcceptQuickShare")
+        }
+    }
+
+    @Published var quickShareEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(quickShareEnabled, forKey: "quickShareEnabled")
         }
     }
 

@@ -113,8 +113,9 @@ struct MenubarView: View {
                                 panel.canChooseDirectories = false
                                 
                                 if panel.runModal() == .OK {
+                                    let targetName = appState.device?.name
+                                    QuickShareManager.shared.startDiscovery(autoTargetName: targetName)
                                     QuickShareManager.shared.transferURLs = panel.urls
-                                    QuickShareManager.shared.startDiscovery()
                                     appState.showingQuickShareTransfer = true
                                 }
                             }
@@ -225,7 +226,7 @@ struct MenubarView: View {
         }
         .frame(minWidth: minWidthTabs)
         .frame(maxWidth: .infinity)
-        .dropTarget(appState: appState)
+        .dropTarget(appState: appState, autoTargetName: appState.device?.name)
         .onAppear {
             appState.isMenubarWindowOpen = true
         }

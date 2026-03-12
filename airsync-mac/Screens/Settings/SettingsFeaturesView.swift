@@ -111,7 +111,6 @@ struct SettingsFeaturesView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         ExpandableLicenseSection(title: "ADB Console", content: "[" + (UserDefaults.standard.lastADBCommand ?? "[]") + "] " + result)
                     }
-                    .transition(.opacity)
                 }
 
                 HStack {
@@ -400,6 +399,33 @@ struct SettingsFeaturesView: View {
                 }
 
                 SettingsToggleView(name: "Ring for calls", icon: "speaker.wave.3", isOn: $appState.ringForCalls)
+            }
+            .padding()
+            .background(.background.opacity(0.3))
+            .cornerRadius(12.0)
+
+            // Quick Share
+            VStack {
+                HStack {
+                    Label(Localizer.shared.text("quickshare.title"), systemImage: "bolt.horizontal.circle")
+                    Spacer()
+                    Toggle("", isOn: $appState.quickShareEnabled)
+                        .toggleStyle(.switch)
+                }
+
+                if appState.quickShareEnabled {
+                    HStack {
+                        Label(Localizer.shared.text("quickshare.settings.autoAccept"), systemImage: "checkmark.shield")
+                        Spacer()
+                        Toggle("", isOn: $appState.autoAcceptQuickShare)
+                            .toggleStyle(.switch)
+                    }
+                    
+                    Text(String(format: Localizer.shared.text("quickshare.settings.discoverable"), QuickShareManager.shared.deviceName))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
             .padding()
             .background(.background.opacity(0.3))

@@ -24,52 +24,78 @@ struct QuickShareTransferSheet: View {
 
             if manager.transferState == .discovering {
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text("Select a device")
-                            .font(.subheadline)
-                        Spacer()
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                    
-                    if manager.discoveredDevices.isEmpty {
-                        Text("Searching for nearby devices...")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, minHeight: 100)
-                    } else {
-                        ScrollView {
-                            VStack(spacing: 8) {
-                                ForEach(manager.discoveredDevices, id: \.id) { device in
-                                    Button(action: { 
-                                        manager.sendFiles(urls: manager.transferURLs, to: device) 
-                                    }) {
-                                        HStack {
-                                            Image(systemName: iconForDeviceType(device.type))
-                                                .frame(width: 24)
-                                            Text(device.name)
-                                            Spacer()
-                                            Image(systemName: "chevron.right")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        .padding(10)
-                                        .background(Color.secondary.opacity(0.1))
-                                        .cornerRadius(8)
-                                    }
-                                    .buttonStyle(.plain)
+                    if let targetName = manager.autoTargetDeviceName {
+                        // Special Auto-Targeting UI for Menubar
+                        VStack(spacing: 20) {
+                            HStack {
+                                Text(String(format: Localizer.shared.text("quickshare.waiting_for"), targetName))
+                                    .font(.subheadline)
+                                Spacer()
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                            
+                            HStack(spacing: 12) {
+                                GlassButtonView(label: Localizer.shared.text("quickshare.more_devices")) {
+                                    manager.autoTargetDeviceName = nil
+                                }
+                                
+                                GlassButtonView(label: Localizer.shared.text("quickshare.cancel")) {
+                                    manager.stopDiscovery()
+                                    appState.showingQuickShareTransfer = false
                                 }
                             }
                         }
-                        .frame(maxHeight: 150)
+                        .frame(maxWidth: .infinity, minHeight: 100)
+                    } else {
+                        // Default Device Selection UI
+                        HStack {
+                            Text(Localizer.shared.text("quickshare.select_device"))
+                                .font(.subheadline)
+                            Spacer()
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        
+                        if manager.discoveredDevices.isEmpty {
+                            Text(Localizer.shared.text("quickshare.searching"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, minHeight: 100)
+                        } else {
+                            ScrollView {
+                                VStack(spacing: 8) {
+                                    ForEach(manager.discoveredDevices, id: \.id) { device in
+                                        Button(action: { 
+                                            manager.sendFiles(urls: manager.transferURLs, to: device) 
+                                        }) {
+                                            HStack {
+                                                Image(systemName: iconForDeviceType(device.type))
+                                                    .frame(width: 24)
+                                                Text(device.name)
+                                                Spacer()
+                                                Image(systemName: "chevron.right")
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                            .padding(10)
+                                            .background(Color.secondary.opacity(0.1))
+                                            .cornerRadius(8)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                            }
+                            .frame(maxHeight: 150)
+                        }
+                        
+                        Button(Localizer.shared.text("quickshare.cancel")) {
+                            manager.stopDiscovery()
+                            appState.showingQuickShareTransfer = false
+                        }
+                        .buttonStyle(.link)
+                        .frame(maxWidth: .infinity, alignment: .center)
                     }
-                    
-                    Button("Cancel") {
-                        manager.stopDiscovery()
-                        appState.showingQuickShareTransfer = false
-                    }
-                    .buttonStyle(.link)
-                    .frame(maxWidth: .infinity, alignment: .center)
                 }
             } else {
                 transferStatusView
@@ -82,12 +108,14 @@ struct QuickShareTransferSheet: View {
 
     private var transferStatusView: some View {
         VStack(spacing: 15) {
-            Text("Sending...")
-                .font(.headline)
+            if manager.transferState != QuickShareManager.TransferState.idle {
+                Text(manager.transferState == QuickShareManager.TransferState.finished ? Localizer.shared.text("quickshare.finished") : Localizer.shared.text("quickshare.sending"))
+                    .font(.headline)
+            }
             
             if case .awaitingPin(let pin) = manager.transferState {
                 VStack(spacing: 5) {
-                    Text("Confirm PIN on your device")
+                    Text(Localizer.shared.text("quickshare.confirm_pin"))
                         .font(.subheadline)
                     Text(pin)
                         .font(.system(size: 32, weight: .bold, design: .monospaced))
@@ -106,7 +134,7 @@ struct QuickShareTransferSheet: View {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 48))
                         .foregroundStyle(.green)
-                    Text("Transfer Finished!")
+                    Text(Localizer.shared.text("quickshare.finished"))
                         .font(.headline)
                 }
             } else if case .failed(let error) = manager.transferState {
@@ -114,7 +142,7 @@ struct QuickShareTransferSheet: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 48))
                         .foregroundStyle(.red)
-                    Text("Transfer Failed")
+                    Text(Localizer.shared.text("quickshare.failed"))
                         .font(.headline)
                     Text(error)
                         .font(.caption)
@@ -124,13 +152,13 @@ struct QuickShareTransferSheet: View {
             }
             
             if manager.transferState != .finished {
-                Button("Cancel") {
+                Button(Localizer.shared.text("quickshare.cancel")) {
                     manager.stopDiscovery()
                     appState.showingQuickShareTransfer = false
                 }
                 .buttonStyle(.bordered)
             } else {
-                Button("Done") {
+                Button(Localizer.shared.text("quickshare.done")) {
                     manager.stopDiscovery()
                     appState.showingQuickShareTransfer = false
                 }

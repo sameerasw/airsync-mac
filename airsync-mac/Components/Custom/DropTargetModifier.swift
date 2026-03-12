@@ -7,10 +7,12 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import Foundation
 
 struct DropTargetModifier: ViewModifier {
     @State private var isTargeted = false
     let appState: AppState
+    var autoTargetName: String? = nil
 
     func body(content: Content) -> some View {
         content
@@ -39,26 +41,44 @@ struct DropTargetModifier: ViewModifier {
             return
         }
 
-        for provider in providers {
-            if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
-                provider.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) { item, error in
-                    if let text = item as? String ?? (item as? Data).flatMap({ String(data: $0, encoding: .utf8) }) {
-                        DispatchQueue.main.async {
-                            sendTextToDevice(text)
-                        }
-                    }
-                }
-                return
-            } else if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
-                    guard let url = (item as? URL) ?? (item as? Data).flatMap({ URL(dataRepresentation: $0, relativeTo: nil) }) else { return }
+        let group = DispatchGroup()
+        // Collect URLs in a thread-safe way
+        var urls: [URL] = []
+        let urlLock = NSLock()
+        var text: String?
+        let textLock = NSLock()
 
-                    // Initiate file transfer
-                    DispatchQueue.main.async {
-                         WebSocketServer.shared.sendFile(url: url)
+        for provider in providers {
+            if provider.canLoadObject(ofClass: URL.self) {
+                group.enter()
+                _ = provider.loadObject(ofClass: URL.self) { url, error in
+                    if let url = url {
+                        urlLock.lock()
+                        urls.append(url)
+                        urlLock.unlock()
                     }
+                    group.leave()
                 }
-                return
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+                group.enter()
+                provider.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) { item, error in
+                    if let s = item as? String ?? (item as? Data).flatMap({ String(data: $0, encoding: .utf8) }) {
+                        textLock.lock()
+                        text = s
+                        textLock.unlock()
+                    }
+                    group.leave()
+                }
+            }
+        }
+
+        group.notify(queue: .main) {
+            if !urls.isEmpty {
+                QuickShareManager.shared.startDiscovery(autoTargetName: self.autoTargetName)
+                QuickShareManager.shared.transferURLs = urls
+                appState.showingQuickShareTransfer = true
+            } else if let text = text {
+                sendTextToDevice(text)
             }
         }
     }
@@ -88,7 +108,7 @@ struct DropTargetOverlay: View {
 }
 
 extension View {
-    func dropTarget(appState: AppState) -> some View {
-        self.modifier(DropTargetModifier(appState: appState))
+    func dropTarget(appState: AppState, autoTargetName: String? = nil) -> some View {
+        self.modifier(DropTargetModifier(appState: appState, autoTargetName: autoTargetName))
     }
 }

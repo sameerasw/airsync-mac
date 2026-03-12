@@ -16,7 +16,6 @@ struct QuickShareTransferInfo {
 @MainActor
 public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, ShareExtensionDelegate {
     public static let shared = QuickShareManager()
-    
     @Published public var isEnabled: Bool = UserDefaults.standard.bool(forKey: "quickShareEnabled") {
         didSet {
             UserDefaults.standard.set(isEnabled, forKey: "quickShareEnabled")
@@ -34,6 +33,7 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     @Published public var transferProgress: Double = 0
     @Published public var lastPinCode: String?
     @Published public var transferURLs: [URL] = []
+    @Published public var autoTargetDeviceName: String?
     
     public enum TransferState: Equatable {
         case idle
@@ -98,8 +98,10 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     
     // MARK: - Outbound Discovery
     
-    public func startDiscovery() {
+    public func startDiscovery(autoTargetName: String? = nil) {
         discoveredDevices.removeAll()
+        transferURLs.removeAll() // Clear old URLs
+        self.autoTargetDeviceName = autoTargetName
         transferState = .discovering
         NearbyConnectionManager.shared.addShareExtensionDelegate(self)
         NearbyConnectionManager.shared.startDeviceDiscovery()
@@ -109,6 +111,7 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
         NearbyConnectionManager.shared.stopDeviceDiscovery()
         NearbyConnectionManager.shared.removeShareExtensionDelegate(self)
         discoveredDevices.removeAll()
+        self.autoTargetDeviceName = nil
         if transferState == .discovering {
             transferState = .idle
         }
@@ -194,6 +197,13 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     public func addDevice(device: RemoteDeviceInfo) {
         if !discoveredDevices.contains(where: { $0.id == device.id }) {
             discoveredDevices.append(device)
+            
+            // If auto-targeting is active and name matches, start transfer
+            if let targetName = autoTargetDeviceName, device.name == targetName {
+                print("[quickshare] Auto-targeting found device '\(device.name)', starting transfer")
+                self.autoTargetDeviceName = nil // Clear so it doesn't trigger again
+                sendFiles(urls: self.transferURLs, to: device)
+            }
         }
     }
     
@@ -212,6 +222,10 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     
     public func connectionFailed(with error: Error) {
         transferState = .failed(error.localizedDescription)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            AppState.shared.showingQuickShareTransfer = false
+            self.transferState = .idle
+        }
     }
     
     public func transferAccepted() {
@@ -225,6 +239,7 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     public func transferFinished() {
         transferState = .finished
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            AppState.shared.showingQuickShareTransfer = false
             self.transferState = .idle
         }
     }

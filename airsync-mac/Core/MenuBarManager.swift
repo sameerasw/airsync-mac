@@ -65,17 +65,32 @@ class MenuBarManager: NSObject {
     
     private func setupBindings() {
         // Update menu bar when appState changes
-        Publishers.Merge4(
+        Publishers.Merge5(
             appState.$device.map { _ in () },
             appState.$notifications.map { _ in () },
             appState.$status.map { _ in () },
-            appState.$showMenubarText.map { _ in () }
+            appState.$showMenubarText.map { _ in () },
+            appState.$showingQuickShareTransfer.map { _ in () }
         )
         .receive(on: RunLoop.main)
         .sink { [weak self] in
             self?.updateStatusItem()
         }
         .store(in: &cancellables)
+        
+        // Ensure popover behavior stays open during Quick Share transfers
+        appState.$showingQuickShareTransfer
+            .receive(on: RunLoop.main)
+            .sink { [weak self] (showing: Bool) in
+                self?.popover?.behavior = showing ? .applicationDefined : .transient
+                if showing {
+                    let isShown = self?.popover?.isShown ?? false
+                    if !isShown {
+                        self?.showPopover()
+                    }
+                }
+            }
+            .store(in: &cancellables)
     }
     
     func updateStatusItem() {
@@ -190,5 +205,32 @@ class MenuBarStatusButton: NSView {
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard AppState.shared.device != nil else { return [] }
         return .copy
+    }
+    
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let pboard = sender.draggingPasteboard
+        
+        // Handle file URLs
+        if let urls = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
+            DispatchQueue.main.async {
+                QuickShareManager.shared.transferURLs = urls
+                QuickShareManager.shared.startDiscovery()
+                AppState.shared.showingQuickShareTransfer = true
+                
+                // Ensure popover is shown if not already
+                MenuBarManager.shared.showPopover()
+            }
+            return true
+        }
+        
+        // Handle strings
+        if let strings = pboard.readObjects(forClasses: [NSString.self], options: nil) as? [String], let text = strings.first {
+            DispatchQueue.main.async {
+                AppState.shared.sendClipboardToAndroid(text: text)
+            }
+            return true
+        }
+        
+        return false
     }
 }
