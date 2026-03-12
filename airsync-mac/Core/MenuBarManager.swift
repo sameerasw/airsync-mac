@@ -7,7 +7,7 @@
 
 import SwiftUI
 import AppKit
-internal import Combine
+import Combine
 
 class MenuBarManager: NSObject {
     static let shared = MenuBarManager()
@@ -17,6 +17,7 @@ class MenuBarManager: NSObject {
     private var eventMonitor: Any?
     private var cancellables = Set<AnyCancellable>()
     private var appState = AppState.shared
+    private var temporaryDragLabel: String?
     
     private let statusButton: MenuBarStatusButton = {
         let view = MenuBarStatusButton(frame: NSRect(x: 0, y: 0, width: 22, height: 22))
@@ -36,9 +37,6 @@ class MenuBarManager: NSObject {
             statusButton.statusItem = statusItem
             statusButton.clickHandler = { [weak self] in
                 self?.togglePopover()
-            }
-            statusButton.dragEnteredHandler = { [weak self] in
-                self?.showPopover()
             }
             
             // Add statusButton as a subview of the statusItem's button to handle events
@@ -65,17 +63,19 @@ class MenuBarManager: NSObject {
     
     private func setupBindings() {
         // Update menu bar when appState changes
-        Publishers.Merge4(
+        Publishers.Merge5(
             appState.$device.map { _ in () },
             appState.$notifications.map { _ in () },
             appState.$status.map { _ in () },
-            appState.$showMenubarText.map { _ in () }
+            appState.$showMenubarText.map { _ in () },
+            appState.$showingQuickShareTransfer.map { _ in () }
         )
         .receive(on: RunLoop.main)
         .sink { [weak self] in
             self?.updateStatusItem()
         }
         .store(in: &cancellables)
+        
     }
     
     func updateStatusItem() {
@@ -90,11 +90,23 @@ class MenuBarManager: NSObject {
         button.imagePosition = .imageLeft
         
         // Update text if enabled
-        if appState.showMenubarText, let text = getDeviceStatusText() {
+        if let dragLabel = temporaryDragLabel {
+            button.title = dragLabel
+        } else if appState.showMenubarText, let text = getDeviceStatusText() {
             button.title = text
         } else {
             button.title = ""
         }
+    }
+    
+    func showDragLabel(_ label: String) {
+        temporaryDragLabel = label
+        updateStatusItem()
+    }
+    
+    func clearDragLabel() {
+        temporaryDragLabel = nil
+        updateStatusItem()
     }
     
     private func getDeviceStatusText() -> String? {
@@ -165,6 +177,7 @@ class MenuBarStatusButton: NSView {
     var statusItem: NSStatusItem?
     var clickHandler: (() -> Void)?
     var dragEnteredHandler: (() -> Void)?
+    var dragExitedHandler: (() -> Void)?
     
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -182,13 +195,60 @@ class MenuBarStatusButton: NSView {
     // MARK: - Drag and Drop
     
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard AppState.shared.device != nil else { return [] }
+        updateDragLabel()
         dragEnteredHandler?()
         return .copy
     }
     
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard AppState.shared.device != nil else { return [] }
+        updateDragLabel()
         return .copy
+    }
+    
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        MenuBarManager.shared.clearDragLabel()
+        dragExitedHandler?()
+    }
+    
+    private func updateDragLabel() {
+        let optionPressed = NSEvent.modifierFlags.contains(.option)
+        let label: String
+        if optionPressed {
+            label = Localizer.shared.text("quickshare.drop.pick_device")
+        } else if let deviceName = AppState.shared.device?.name {
+            label = String(format: Localizer.shared.text("quickshare.drop.send_to"), deviceName)
+        } else {
+            label = Localizer.shared.text("quickshare.drop.pick_device")
+        }
+        MenuBarManager.shared.showDragLabel(label)
+    }
+    
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        MenuBarManager.shared.clearDragLabel()
+        let pboard = sender.draggingPasteboard
+        
+        // Handle file URLs
+        if let urls = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
+            DispatchQueue.main.async {
+                let optionPressed = NSEvent.modifierFlags.contains(.option)
+                let connectedDeviceName = AppState.shared.device?.name
+                let autoTargetName = (!optionPressed) ? connectedDeviceName : nil
+                
+                QuickShareManager.shared.transferURLs = urls
+                QuickShareManager.shared.startDiscovery(autoTargetName: autoTargetName)
+                AppState.shared.showingQuickShareTransfer = true
+            }
+            return true
+        }
+        
+        // Handle strings
+        if let strings = pboard.readObjects(forClasses: [NSString.self], options: nil) as? [String], let text = strings.first {
+            DispatchQueue.main.async {
+                AppState.shared.sendClipboardToAndroid(text: text)
+            }
+            return true
+        }
+        
+        return false
     }
 }

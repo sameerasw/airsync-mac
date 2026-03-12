@@ -5,7 +5,7 @@
 //  Created by Sameera Sandakelum on 2025-09-17.
 //
 import Foundation
-internal import Combine
+import Combine
 import CryptoKit
 
 class MacInfoSyncManager: ObservableObject {

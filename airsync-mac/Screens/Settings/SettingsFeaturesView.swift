@@ -111,7 +111,6 @@ struct SettingsFeaturesView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         ExpandableLicenseSection(title: "ADB Console", content: "[" + (UserDefaults.standard.lastADBCommand ?? "[]") + "] " + result)
                     }
-                    .transition(.opacity)
                 }
 
                 HStack {

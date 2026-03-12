@@ -9,7 +9,7 @@ import Foundation
 import Swifter
 import CryptoKit
 import UserNotifications
-internal import Combine
+import Combine
 
 class WebSocketServer: ObservableObject {
     static let shared = WebSocketServer()

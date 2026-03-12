@@ -88,6 +88,10 @@ For commercial licensing inquiries or special use cases, contact: mail@sameerasw
 © 2025 sameerasw.com. All Rights Reserved.
 
 """)
+            ExpandableLicenseSection(title: "Library: QuickShare", content: """
+Huge thanks to the NearDrop project (https://github.com/grishka/NearDrop) for providing the foundation and implementation ideas that made Quick Share possible in AirSync. We are grateful for this amazing project!
+""")
+
             ExpandableLicenseSection(title: "Library: QRCode License", content: """
 MIT License
 
