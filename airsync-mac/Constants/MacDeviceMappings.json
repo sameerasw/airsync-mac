@@ -17,6 +17,10 @@
     "Mac17,3": "MacBook Air (13-inch, M5, 2026)",
     "Mac17,4": "MacBook Air (15-inch, M5, 2026)"
   },
+  "MacBook Neo": {
+    "Mac17,5": "MacBook Neo (13-inch, 2026)",
+    "Mac17,5_icon": "macbook.gen1"
+  },
   "MacBook Pro": {
     "MacBookPro15,1": "MacBook Pro (15-inch, 2018/2019)",
     "MacBookPro15,1_icon": "macbook.gen1",
