@@ -50,16 +50,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         if !urls.isEmpty {
-            QuickShareManager.shared.startDiscovery(autoTargetName: nil)
             QuickShareManager.shared.transferURLs = urls
+            QuickShareManager.shared.startDiscovery(autoTargetName: nil)
             AppState.shared.showingQuickShareTransfer = true
         }
     }
 
     @objc func handleServices(_ pboard: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
         if let urls = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
-            QuickShareManager.shared.startDiscovery(autoTargetName: nil)
             QuickShareManager.shared.transferURLs = urls
+            QuickShareManager.shared.startDiscovery(autoTargetName: nil)
             AppState.shared.showingQuickShareTransfer = true
         }
     }

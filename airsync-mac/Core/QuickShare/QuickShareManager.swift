@@ -102,7 +102,6 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     
     public func startDiscovery(autoTargetName: String? = nil) {
         discoveredDevices.removeAll()
-        transferURLs.removeAll() // Clear old URLs
         self.autoTargetDeviceName = autoTargetName
         transferState = .discovering
         NearbyConnectionManager.shared.addShareExtensionDelegate(self)

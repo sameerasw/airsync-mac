@@ -107,8 +107,8 @@ struct QuickShareDropDelegate: DropDelegate {
                 let connectedDeviceName = appState.device?.name
                 let targetName = (!optionPressed) ? connectedDeviceName : nil
                 
-                QuickShareManager.shared.startDiscovery(autoTargetName: targetName)
                 QuickShareManager.shared.transferURLs = urls
+                QuickShareManager.shared.startDiscovery(autoTargetName: targetName)
                 appState.showingQuickShareTransfer = true
             } else if let text = text {
                 appState.sendClipboardToAndroid(text: text)
