@@ -17,7 +17,7 @@ struct WelcomeView: View {
     var body: some View {
         VStack(spacing: 24) {
             VStack(spacing: 16) {
-                AnimatedAppIconCarousel(iconSize: 140, cornerRadius: 24)
+                RotatingAppIconView(size: 140)
 
                 Text(UserDefaults.standard.isReturningUser ? "Welcome Back to AirSync!" : "AirSync")
                     .font(.system(size: UserDefaults.standard.isReturningUser ? 30 : 50, weight: .bold, design: .rounded))

@@ -102,11 +102,13 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     
     public func startDiscovery(autoTargetName: String? = nil) {
         discoveredDevices.removeAll()
-        transferURLs.removeAll() // Clear old URLs
         self.autoTargetDeviceName = autoTargetName
         transferState = .discovering
         NearbyConnectionManager.shared.addShareExtensionDelegate(self)
         NearbyConnectionManager.shared.startDeviceDiscovery()
+        
+        // Trigger Quick Share mode on any connected AirSync device
+        WebSocketServer.shared.sendQuickShareTrigger()
     }
     
     public func stopDiscovery() {
@@ -149,6 +151,14 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
         guard let deviceID = device.id else { return }
         transferState = .connecting(deviceID)
         transferProgress = 0
+        
+        // Trigger Quick Share mode on Android if it's the connected device
+        if let connectedDevice = AppState.shared.device,
+           connectedDevice.name == device.name {
+            print("[quickshare] Target device matches connected device, sending WebSocket trigger")
+            WebSocketServer.shared.sendQuickShareTrigger()
+        }
+        
         NearbyConnectionManager.shared.startOutgoingTransfer(deviceID: deviceID, delegate: self, urls: urls)
     }
     

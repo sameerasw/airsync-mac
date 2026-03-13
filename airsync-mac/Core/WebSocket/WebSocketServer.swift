@@ -206,6 +206,10 @@ class WebSocketServer: ObservableObject {
                 self.lock.unlock()
                 print("[websocket] Session \(sessionId) connected.")
                 
+                if self.primarySessionID == nil {
+                    self.primarySessionID = sessionId
+                }
+                
                 if sessionCount == 1 {
                     MacRemoteManager.shared.startVolumeMonitoring()
                     self.startPing()
