@@ -57,6 +57,11 @@ extension WebSocketServer {
         sendMessage(type: "disconnectRequest", data: [:])
     }
 
+    func sendQuickShareTrigger() {
+        // print("[websocket] Quick Share trigger requested")
+        sendMessage(type: "startQuickShare", data: [:])
+    }
+
     func sendRefreshAdbPortsRequest() {
         sendMessage(type: "refreshAdbPorts", data: [:])
     }

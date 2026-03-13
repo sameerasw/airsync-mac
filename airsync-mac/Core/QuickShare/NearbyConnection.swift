@@ -56,6 +56,7 @@ public class NearbyConnection{
 	nonisolated deinit {}
 	
 	func start(){
+		print("[nearby] Starting connection to \(connection.endpoint)")
 		connection.stateUpdateHandler={ [weak self] state in
 			Task { @MainActor in
 				guard let self=self else { return }
@@ -64,12 +65,11 @@ public class NearbyConnection{
 					self.receiveFrameAsync()
 				} else if case .failed(let err) = state {
 					self.lastError=err
-					print("Error opening socket: \(err)")
+					print("[nearby] Error opening socket: \(err)")
 					self.handleConnectionClosure()
 				}
 			}
 		}
-		//connection.start(queue: .global(qos: .utility))
 		connection.start(queue: NearbyConnection.dispatchQueue)
 	}
 	
