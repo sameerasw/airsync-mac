@@ -304,6 +304,9 @@ Source: https://github.com/Genymobile/scrcpy
 This app communicates with the media-control cli the use install via Homebrew. Huge thanks tot he amazing project giving us the ability to create awesome features <3
 Source: https://github.com/ungive/media-control
 """)
+            ExpandableLicenseSection(title: "App Icons: @Syntrop2k2 on Telegram", content: """
+A greatful appreciation to the creator of the awesome new Material Expressive design inspired app icons @Syntrop2k2 on the Telegram community in @TIDWIB)
+""")
         }
     }
 }
