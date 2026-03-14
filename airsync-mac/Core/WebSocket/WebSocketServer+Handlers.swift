@@ -717,8 +717,10 @@ extension WebSocketServer {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
         let savedAppPackages = Array(AppState.shared.androidApps.keys)
 
+        let modelId = DeviceTypeUtil.modelIdentifier()
         let macInfo = MacInfo(
             name: macName,
+            modelIdentifier: modelId,
             categoryType: categoryType,
             exactDeviceName: exactDeviceName,
             isPlusSubscription: isPlusSubscription,
@@ -729,7 +731,7 @@ extension WebSocketServer {
         do {
             let jsonData = try JSONEncoder().encode(macInfo)
             if var jsonDict = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
-                jsonDict["model"] = exactDeviceName
+                jsonDict["model"] = modelId
                 jsonDict["type"] = categoryType
                 jsonDict["isPlus"] = isPlusSubscription
 
