@@ -40,7 +40,7 @@
 		</dict>
 	</dict>
 	<key>ForceUpdateKey</key>
-	<string>004</string>
+	<string>005</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
