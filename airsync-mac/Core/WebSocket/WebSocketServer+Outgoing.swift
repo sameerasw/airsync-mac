@@ -8,6 +8,14 @@ import Swifter
 import CryptoKit
 
 extension WebSocketServer {
+    private func messageTypeForLog(_ message: String) -> String {
+        guard let data = message.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = obj["type"] as? String else {
+            return "non_json"
+        }
+        return type
+    }
     
     // MARK: - Sending Helpers
 
@@ -20,18 +28,30 @@ extension WebSocketServer {
 
     func sendToFirstAvailable(message: String) {
         lock.lock()
-        guard let pId = primarySessionID,
-              let session = activeSessions.first(where: { ObjectIdentifier($0) == pId }) else {
-            lock.unlock()
-            return
-        }
+        let pId = primarySessionID
+        let session = pId != nil ? activeSessions.first(where: { ObjectIdentifier($0) == pId }) : nil
         let key = symmetricKey
         lock.unlock()
-        
+        let type = messageTypeForLog(message)
+
+        let outgoing: String
         if let key = key, let encrypted = encryptMessage(message, using: key) {
-            session.writeText(encrypted)
+            outgoing = encrypted
         } else {
-            session.writeText(message)
+            outgoing = message
+        }
+
+        if let session = session {
+            // Local session available — send directly
+            print("[transport] TX via LAN type=\(type)")
+            session.writeText(outgoing)
+        } else if AirBridgeClient.shared.connectionState == .relayActive {
+            // No local session, but AirBridge relay is active — tunnel through relay
+            print("[transport] TX via RELAY type=\(type)")
+            AirBridgeClient.shared.sendText(outgoing)
+        } else {
+            // No connection available at all
+            print("[transport] DROP TX type=\(type) no local session or relay")
         }
     }
 
@@ -58,6 +78,10 @@ extension WebSocketServer {
     }
 
     func sendRefreshAdbPortsRequest() {
+        guard hasActiveLocalSession() else {
+            print("[adb] Skipping refreshAdbPorts: no active local session")
+            return
+        }
         sendMessage(type: "refreshAdbPorts", data: [:])
     }
 

@@ -47,11 +47,17 @@ struct SettingsView: View {
                         }
                         .onChange(of: appState.selectedNetworkAdapterName) { _, _ in
                             currentIPAddress = WebSocketServer.shared.getLocalIPAddress(adapterName: appState.selectedNetworkAdapterName) ?? "N/A"
-                            WebSocketServer.shared.stop()
                             if let port = UInt16(port) {
-                                WebSocketServer.shared.start(port: port)
+                                WebSocketServer.shared.requestRestart(
+                                    reason: "Network adapter selection changed",
+                                    delay: 0.2,
+                                    port: port
+                                )
                             } else {
-                                WebSocketServer.shared.start()
+                                WebSocketServer.shared.requestRestart(
+                                    reason: "Network adapter selection changed",
+                                    delay: 0.2
+                                )
                             }
                             appState.shouldRefreshQR = true
                         }
@@ -99,7 +105,14 @@ struct SettingsView: View {
                         )
                     }
 
-                    // 2. Features
+                    // 2.5 AirBridge Relay
+                    headerSection(title: "AirBridge Relay", icon: "antenna.radiowaves.left.and.right")
+                    AirBridgeSettingsView()
+                        .padding()
+                        .background(.background.opacity(0.3))
+                        .cornerRadius(12.0)
+
+                    // 3. Features
                     headerSection(title: "Features", icon: "square.grid.2x2")
                     SettingsFeaturesView()
                     

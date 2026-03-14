@@ -55,15 +55,38 @@ extension WebSocketServer {
             let isStale = now.timeIntervalSince(lastDate) > timeout
             
             if isStale {
+                // If relay is currently active, avoid hard restart: stale local sessions
+                // can happen during transport switch (LAN <-> relay).
+                if AirBridgeClient.shared.connectionState == .relayActive {
+                    print("[websocket] Session \(sessionId) is stale while relay is active. Cleaning up stale local session only.")
+                    self.lock.lock()
+                    self.activeSessions.removeAll(where: { ObjectIdentifier($0) == sessionId })
+                    self.lastActivity.removeValue(forKey: sessionId)
+                    if self.primarySessionID == sessionId {
+                        self.primarySessionID = nil
+                    }
+                    let sessionCount = self.activeSessions.count
+                    self.lock.unlock()
+
+                    if sessionCount == 0 {
+                        MacRemoteManager.shared.stopVolumeMonitoring()
+                        self.stopPing()
+                    }
+                    continue
+                }
+
                 print("[websocket] Session \(sessionId) is stale. Performing hard reset and discovery restart.")
                 DispatchQueue.main.async {
                     // Disconnect and restart
                     AppState.shared.disconnectDevice()
                     ADBConnector.disconnectADB()
                     AppState.shared.adbConnected = false
-                    
-                    self.stop()
-                    self.start(port: self.localPort ?? Defaults.serverPort)
+
+                    self.requestRestart(
+                        reason: "Ping timeout / stale session",
+                        delay: 0.35,
+                        port: self.localPort ?? Defaults.serverPort
+                    )
                 }
                 return
             }

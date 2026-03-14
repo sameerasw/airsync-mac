@@ -490,6 +490,11 @@ class AirSyncConnectADBCommand: NSScriptCommand {
             return "Connected"
         }
 
+        // ADB is supported only on direct LAN sessions, not relay mode.
+        guard WebSocketServer.shared.hasActiveLocalSession() else {
+            return "ADB works only on local LAN connections. Relay mode is not supported for ADB."
+        }
+
         // Start ADB connection (like the Connect ADB button in settings)
         DispatchQueue.main.async {
             ADBConnector.connectToADB(ip: device.ipAddress)

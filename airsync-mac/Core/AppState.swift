@@ -27,6 +27,11 @@ class AppState: ObservableObject {
     @Published var isOS26: Bool = true
 
     init() {
+        // Batch-load all Keychain items up front (single password prompt)
+        // before any subsystem (WebSocketServer, AirBridge, Trial) tries
+        // to read individual keys and triggers multiple prompts.
+        KeychainStorage.preload()
+
         self.isPlus = false
 
         let adbPortValue = UserDefaults.standard.integer(forKey: "adbPort")
@@ -75,6 +80,8 @@ class AppState: ObservableObject {
         
         self.isCrashReportingEnabled = UserDefaults.standard.object(forKey: "isCrashReportingEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "isCrashReportingEnabled")
 
+        self.airBridgeEnabled = UserDefaults.standard.bool(forKey: "airBridgeEnabled")
+
         let savedAdapterName = UserDefaults.standard.string(forKey: "selectedNetworkAdapterName")
         let validatedAdapter = AppState.validateAndGetNetworkAdapter(savedName: savedAdapterName)
         self.selectedNetworkAdapterName = validatedAdapter
@@ -114,6 +121,11 @@ class AppState: ObservableObject {
         
         // Ensure dock icon visibility is applied on launch
         updateDockIconVisibility()
+
+        // Auto-connect to AirBridge relay if previously enabled
+        if airBridgeEnabled {
+            AirBridgeClient.shared.connect()
+        }
     }
 
     @Published var minAndroidVersion = Bundle.main.infoDictionary?["AndroidVersion"] as? String ?? "2.0.0"
@@ -353,6 +365,19 @@ class AppState: ObservableObject {
     @Published var isCrashReportingEnabled: Bool {
         didSet {
             UserDefaults.standard.set(isCrashReportingEnabled, forKey: "isCrashReportingEnabled")
+        }
+    }
+
+    @Published var airBridgeEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(airBridgeEnabled, forKey: "airBridgeEnabled")
+            // Connection is managed explicitly:
+            // - Onboarding: connects after "Continue" (test passes + credentials saved)
+            // - Settings: connects on "Save & Reconnect"
+            // We only auto-disconnect here when the user turns AirBridge off.
+            if !airBridgeEnabled {
+                AirBridgeClient.shared.disconnect()
+            }
         }
     }
 

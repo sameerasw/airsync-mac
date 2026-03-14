@@ -59,6 +59,11 @@ struct SettingsFeaturesView: View {
                                 systemImage: appState.adbConnecting ? "hourglass" : "play.circle",
                                 action: {
                                     if !appState.adbConnecting {
+                                        guard WebSocketServer.shared.hasActiveLocalSession() else {
+                                            appState.adbConnectionResult = "ADB works only on local LAN connections. Relay mode is not supported for ADB."
+                                            appState.manualAdbConnectionPending = false
+                                            return
+                                        }
                                         appState.adbConnectionResult = "" // Clear console
                                         appState.manualAdbConnectionPending = true
                                         WebSocketServer.shared.sendRefreshAdbPortsRequest()
@@ -67,7 +72,7 @@ struct SettingsFeaturesView: View {
                                 }
                             )
                             .disabled(
-                                appState.device == nil || appState.adbConnecting || !AppState.shared.isPlus
+                                appState.device == nil || appState.adbConnecting || !AppState.shared.isPlus || !WebSocketServer.shared.hasActiveLocalSession()
                             )
                         }
 

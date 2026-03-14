@@ -163,8 +163,11 @@ extension WebSocketServer {
                 }
                 
                 DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-                    self.stop()
-                    self.start(port: Defaults.serverPort)
+                    self.requestRestart(
+                        reason: "Network IP changed",
+                        delay: 0.2,
+                        port: Defaults.serverPort
+                    )
                 }
             } else if lastIP == nil {
                 DispatchQueue.main.async {

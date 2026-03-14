@@ -47,7 +47,7 @@ extension WebSocketServer {
         case .fileTransferInit:
             handleFileTransferInit(message)
         case .fileChunk:
-            handleFileChunk(message, session: session)
+            handleFileChunk(message)
         case .fileChunkAck:
             handleFileChunkAck(message)
         case .fileTransferComplete:
@@ -66,6 +66,65 @@ extension WebSocketServer {
             handleBrowseData(message)
         case .volumeControl, .macVolume, .toggleAppNotif, .browseLs, .wakeUpRequest, .macMediaControlResponse, .macInfo, .callControl:
             // Outgoing or unexpected messages
+            break
+        case .authChallenge, .authResponse, .authResult:
+            // Handled in WebSocketServer.swift auth layer before this switch
+            break
+        }
+    }
+
+    /// Relay-only router used when no local WebSocket session is available.
+    /// Kept in this file so private handlers remain encapsulated.
+    func handleRelayOnlyMessage(_ message: Message) {
+        switch message.type {
+        case .notification:
+            handleNotification(message)
+        case .status:
+            handleStatusUpdate(message)
+        case .clipboardUpdate:
+            handleClipboardUpdate(message)
+        case .callEvent:
+            handleCallEvent(message)
+        case .remoteControl:
+            handleRemoteControl(message)
+        case .macMediaControl:
+            handleMacMediaControlRequest(message)
+        case .fileTransferInit:
+            handleFileTransferInit(message)
+        case .fileChunk:
+            handleFileChunk(message)
+        case .fileTransferComplete:
+            handleFileTransferComplete(message)
+        case .fileChunkAck:
+            handleFileChunkAck(message)
+        case .transferVerified:
+            handleTransferVerified(message)
+        case .fileTransferCancel:
+            handleFileTransferCancel(message)
+        case .appIcons:
+            handleAppIcons(message)
+        case .browseData:
+            handleBrowseData(message)
+        case .notificationUpdate:
+            handleNotificationUpdate(message)
+        case .notificationActionResponse:
+            handleNotificationActionResponse(message)
+        case .dismissalResponse:
+            handleDismissalResponse(message)
+        case .mediaControlResponse:
+            handleMediaControlResponse(message)
+        case .callControlResponse:
+            handleCallControlResponse(message)
+        case .device:
+            // handled upstream in WebSocketServer.handleRelayedMessageInternal
+            break
+        case .macInfo:
+            // outbound from Mac -> Android in normal flow, ignore inbound
+            break
+        case .volumeControl, .macVolume, .toggleAppNotif, .browseLs, .wakeUpRequest, .macMediaControlResponse, .callControl, .notificationAction:
+            break
+        case .authChallenge, .authResponse, .authResult:
+            // Handled upstream in LAN auth layer; ignore in relay-only context
             break
         }
     }
@@ -142,6 +201,13 @@ extension WebSocketServer {
             }
 
             if (!AppState.shared.adbConnected && (AppState.shared.adbEnabled || AppState.shared.manualAdbConnectionPending || AppState.shared.wiredAdbEnabled) && AppState.shared.isPlus) {
+                // Security hardening: ADB auto-connect must only happen on direct LAN sessions,
+                // never through the relay transport.
+                guard self.hasActiveLocalSession() else {
+                    AppState.shared.manualAdbConnectionPending = false
+                    print("[adb] Skipping ADB auto-connect: no active local session (relay-only connection)")
+                    return
+                }
                 if AppState.shared.wiredAdbEnabled {
                     ADBConnector.getWiredDeviceSerial(completion: { serial in
                         if let serial = serial {
@@ -354,6 +420,7 @@ extension WebSocketServer {
             let io = IncomingFileIO(tempUrl: tempFile, fileHandle: handle, chunkSize: chunkSize)
             self.lock.lock()
             incomingFiles[id] = io
+            incomingReceivedChunks[id] = []
             if let checksum = checksum {
                 incomingFilesChecksum[id] = checksum
             }
@@ -367,7 +434,7 @@ extension WebSocketServer {
 
     /// Handles incoming file chunks.
     /// Writes data to the temporary file handle on a serial queue to ensure thread safety.
-    private func handleFileChunk(_ message: Message, session: WebSocketSession) {
+    private func handleFileChunk(_ message: Message) {
         if let dict = message.data.value as? [String: Any],
            let id = dict["id"] as? String,
            let index = dict["index"] as? Int,
@@ -375,9 +442,17 @@ extension WebSocketServer {
             
             self.lock.lock()
             let io = incomingFiles[id]
+            let alreadyReceived = incomingReceivedChunks[id]?.contains(index) == true
+            if !alreadyReceived {
+                var received = incomingReceivedChunks[id] ?? []
+                received.insert(index)
+                incomingReceivedChunks[id] = received
+            }
             self.lock.unlock()
 
-            if let io = io, let data = Data(base64Encoded: chunkBase64, options: .ignoreUnknownCharacters) {
+            if !alreadyReceived,
+               let io = io,
+               let data = Data(base64Encoded: chunkBase64, options: .ignoreUnknownCharacters) {
                 fileQueue.async {
                     let offset = UInt64(index * io.chunkSize)
                     if let fh = io.fileHandle {
@@ -437,6 +512,7 @@ extension WebSocketServer {
                         try? FileManager.default.removeItem(at: state.tempUrl)
                         self.lock.lock()
                         self.incomingFiles.removeValue(forKey: id)
+                        self.incomingReceivedChunks.removeValue(forKey: id)
                         self.incomingFilesChecksum.removeValue(forKey: id)
                         self.lock.unlock()
                         return 
@@ -497,6 +573,7 @@ extension WebSocketServer {
                     
                     self.lock.lock()
                     self.incomingFiles.removeValue(forKey: id)
+                    self.incomingReceivedChunks.removeValue(forKey: id)
                     self.lock.unlock()
                 }
             }
@@ -693,6 +770,9 @@ extension WebSocketServer {
     private func handleFileTransferCancel(_ message: Message) {
         if let dict = message.data.value as? [String: Any],
            let id = dict["id"] as? String {
+            self.lock.lock()
+            self.incomingReceivedChunks.removeValue(forKey: id)
+            self.lock.unlock()
             DispatchQueue.main.async {
                 AppState.shared.stopTransferRemote(id: id)
             }

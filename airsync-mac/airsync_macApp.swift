@@ -25,6 +25,9 @@ struct airsync_macApp: App {
     @StateObject private var macInfoSyncManager = MacInfoSyncManager()
 
     init() {
+        // Pre-load ALL Keychain items in a single query so macOS only
+        // shows ONE password prompt instead of 5-8 individual prompts.
+        KeychainStorage.preload()
 
         let center = UNUserNotificationCenter.current()
         center.delegate = notificationDelegate

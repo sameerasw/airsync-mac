@@ -32,8 +32,10 @@ struct AppContentView: View {
                             .help("Feedback and How to?")
 
                             Button("Refresh", systemImage: "repeat") {
-                                WebSocketServer.shared.stop()
-                                WebSocketServer.shared.start()
+                                WebSocketServer.shared.requestRestart(
+                                    reason: "Manual refresh button",
+                                    delay: 0.2
+                                )
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                                     appState.shouldRefreshQR = true
                                 }
