@@ -20,7 +20,7 @@ struct ConnectionStatusPill: View {
                 // Network Connection Icon
                 Image(systemName: appState.isConnectedOverLocalNetwork ? "wifi" : "globe")
                     .contentTransition(.symbolEffect(.replace))
-                    .help(appState.isConnectedOverLocalNetwork ? "Local WiFi" : "Extended Connection (Tailscale)")
+                    .help(appState.isConnectedOverLocalNetwork ? "Local WiFi" : "AirBridge Relay")
                 
                 if appState.isPlus {
                     if appState.adbConnecting {
@@ -105,11 +105,19 @@ struct ConnectionPillPopover: View {
                     )
                     
                     ConnectionInfoText(
-                        label: "IP Address",
-                        icon: "wifi",
-                        text: currentIPAddress,
-                        activeIp: appState.activeMacIp
+                        label: "Transport",
+                        icon: appState.isConnectedOverLocalNetwork ? "wifi" : "globe",
+                        text: appState.isConnectedOverLocalNetwork ? "Local WiFi" : "AirBridge Relay"
                     )
+                    
+                    if appState.isConnectedOverLocalNetwork {
+                        ConnectionInfoText(
+                            label: "IP Address",
+                            icon: "network",
+                            text: currentIPAddress,
+                            activeIp: appState.activeMacIp
+                        )
+                    }
                     
                     if appState.isPlus && appState.adbConnected {
                         ConnectionInfoText(

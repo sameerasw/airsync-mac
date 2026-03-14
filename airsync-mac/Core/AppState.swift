@@ -196,9 +196,9 @@ class AppState: ObservableObject {
     @Published var recentApps: [AndroidApp] = []
     
     var isConnectedOverLocalNetwork: Bool {
-        guard let ip = device?.ipAddress else { return true }
-        // Tailscale IPs usually start with 100.
-        return !ip.hasPrefix("100.")
+        // Check if we have a direct LAN WebSocket session (true local connection).
+        // Falls back to false when only the AirBridge relay tunnel is active.
+        return WebSocketServer.shared.hasActiveLocalSession()
     }
 
     // Audio player for ringtone
