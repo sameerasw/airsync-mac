@@ -213,8 +213,8 @@ class MacInfoSyncManager: ObservableObject {
                 isPlaying: info.isPlaying ?? false,
                 title: info.title ?? "",
                 artist: info.artist ?? "",
-                volume: 50, // must match payload default
-                isMuted: false, // must match payload default
+                volume: MacRemoteManager.shared.lastVolumeLevel,
+                isMuted: MacRemoteManager.shared.lastVolumeLevel == 0,
                 albumArt: currentHash ?? "", // Use hash for snapshot comparison
                 likeStatus: "none" // must match payload default
             )

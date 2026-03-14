@@ -151,8 +151,8 @@ extension WebSocketServer {
                 "isPlaying": musicInfo.isPlaying ?? false,
                 "title": musicInfo.title ?? "",
                 "artist": musicInfo.artist ?? "",
-                "volume": 50,
-                "isMuted": false,
+                "volume": MacRemoteManager.shared.lastVolumeLevel,
+                "isMuted": MacRemoteManager.shared.lastVolumeLevel == 0,
                 "likeStatus": "none"
             ]
             
