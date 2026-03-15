@@ -64,7 +64,7 @@ extension WebSocketServer {
             handleRemoteControl(message)
         case .browseData:
             handleBrowseData(message)
-        case .volumeControl, .macVolume, .toggleAppNotif, .browseLs, .wakeUpRequest, .macMediaControlResponse, .macInfo, .callControl:
+        case .volumeControl, .macVolume, .toggleAppNotif, .browseLs, .wakeUpRequest, .macMediaControlResponse, .macInfo, .callControl, .ping, .pong:
             // Outgoing or unexpected messages
             break
         }
@@ -118,7 +118,7 @@ extension WebSocketServer {
         case .macInfo:
             // outbound from Mac -> Android in normal flow, ignore inbound
             break
-        case .volumeControl, .macVolume, .toggleAppNotif, .browseLs, .wakeUpRequest, .macMediaControlResponse, .callControl, .notificationAction:
+        case .volumeControl, .macVolume, .toggleAppNotif, .browseLs, .wakeUpRequest, .macMediaControlResponse, .callControl, .notificationAction, .ping, .pong:
             break
         }
     }
@@ -431,7 +431,7 @@ extension WebSocketServer {
            let chunkBase64 = dict["chunk"] as? String {
             
             self.lock.lock()
-            let io = incomingFiles[id]
+            var io = incomingFiles[id]
             let alreadyReceived = incomingReceivedChunks[id]?.contains(index) == true
             if !alreadyReceived {
                 var received = incomingReceivedChunks[id] ?? []
@@ -440,7 +440,7 @@ extension WebSocketServer {
             }
             self.lock.unlock()
 
-            if let io = io, let data = Data(base64Encoded: chunkBase64, options: .ignoreUnknownCharacters) {
+            if var io = io, let data = Data(base64Encoded: chunkBase64, options: .ignoreUnknownCharacters) {
                 fileQueue.async {
                     let offset = UInt64(index * io.chunkSize)
                     if let fh = io.fileHandle {
@@ -751,9 +751,17 @@ extension WebSocketServer {
             self.lock.lock()
             self.incomingReceivedChunks.removeValue(forKey: id)
             self.lock.unlock()
-            DispatchQueue.main.async {
-                AppState.shared.stopTransferRemote(id: id)
+            
+            // AppState.stopTransferRemote(id:) does not exist in v3.0.0.
+            // The logic to clean up file handles is sufficient here as handles are managed in incomingFiles map.
+            // We just ensure we remove the entry from our tracking.
+            self.lock.lock()
+            if let io = self.incomingFiles[id] {
+                io.fileHandle?.closeFile()
+                try? FileManager.default.removeItem(at: io.tempUrl)
+                self.incomingFiles.removeValue(forKey: id)
             }
+            self.lock.unlock()
         }
     }
 

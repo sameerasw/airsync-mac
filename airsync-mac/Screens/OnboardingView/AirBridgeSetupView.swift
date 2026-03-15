@@ -164,6 +164,7 @@ struct AirBridgeSetupView: View {
             switch result {
             case .success:
                 saveCredentials()
+                AirBridgeClient.shared.connect()
                 onNext()
             case .failure(let error):
                 testError = error.localizedDescription

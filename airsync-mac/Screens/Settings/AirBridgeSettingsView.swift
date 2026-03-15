@@ -142,13 +142,21 @@ struct AirBridgeSettingsView: View {
         }
         .onChange(of: appState.airBridgeEnabled) { enabled in
             if enabled {
-                // Generate credentials in memory only — Keychain is written on Save & Reconnect
-                if pairingId.isEmpty {
-                    pairingId = AirBridgeClient.generateShortId()
+                // Ensure default URL if missing
+                if airBridge.relayServerURL.isEmpty {
+                    airBridge.relayServerURL = "wss://airbridge.tornado.ovh/ws"
                 }
-                if secret.isEmpty {
-                    secret = AirBridgeClient.generateRandomSecret()
-                }
+                
+                // Ensure credentials exist (generates and saves if missing)
+                airBridge.ensureCredentialsExist()
+                
+                // Sync view state with the (possibly newly generated) credentials
+                loadCredentials()
+                
+                // Auto-connect immediately so the QR code is live
+                airBridge.connect()
+            } else {
+                airBridge.disconnect()
             }
         }
     }

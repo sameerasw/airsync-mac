@@ -40,6 +40,9 @@ enum MessageType: String, Codable {
     // file browser
     case browseLs
     case browseData
+    // relay keepalive
+    case ping
+    case pong
 }
 
 struct Message: Codable {

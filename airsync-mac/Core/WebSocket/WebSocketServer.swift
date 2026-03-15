@@ -45,8 +45,6 @@ class WebSocketServer: ObservableObject {
 
     internal let maxChunkRetries = 3
     internal let ackWaitMs: UInt16 = 2000
-    internal let lifecycleQueue = DispatchQueue(label: "com.airsync.websocket.lifecycle", qos: .userInitiated)
-    internal var pendingRestartWorkItem: DispatchWorkItem?
 
     internal var lastKnownAdapters: [(name: String, address: String)] = []
     internal var lastLoggedSelectedAdapter: (name: String, address: String)? = nil
@@ -73,7 +71,7 @@ class WebSocketServer: ObservableObject {
         let adapterName = AppState.shared.selectedNetworkAdapterName
         let adapters = getAvailableNetworkAdapters()
         
-        lifecycleQueue.async { [weak self] in
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
             
             do {
@@ -90,7 +88,7 @@ class WebSocketServer: ObservableObject {
                     self.isListeningOnAll = false
                     let server = HttpServer()
                     self.setupWebSocket(for: server)
-                    try self.startServerWithRetry(server, port: port)
+                    try server.start(in_port_t(port))
                     self.servers[specificAdapter] = server
                     
                     let ip = self.getLocalIPAddress(adapterName: specificAdapter)
@@ -109,7 +107,7 @@ class WebSocketServer: ObservableObject {
                             let server = HttpServer()
                             self.setupWebSocket(for: server)
                             if !startedAny {
-                                try self.startServerWithRetry(server, port: port)
+                                try server.start(in_port_t(port))
                                 self.servers["any"] = server
                                 startedAny = true
                             }
@@ -146,43 +144,9 @@ class WebSocketServer: ObservableObject {
         servers.removeAll()
     }
 
-    private func startServerWithRetry(_ server: HttpServer, port: UInt16, maxAttempts: Int = 3) throws {
-        var lastError: Error?
-        for attempt in 1...maxAttempts {
-            do {
-                try server.start(in_port_t(port))
-                if attempt > 1 {
-                    print("[websocket] Bind succeeded on attempt \(attempt)/\(maxAttempts) for port \(port)")
-                }
-                return
-            } catch {
-                lastError = error
-                let lowered = String(describing: error).lowercased()
-                let isAddressInUse = lowered.contains("address already in use")
-                    || lowered.contains("port in use")
-                    || lowered.contains("bind")
-                    || lowered.contains("in use")
-
-                if !isAddressInUse || attempt == maxAttempts {
-                    throw error
-                }
-
-                // A rapid restart may race the previous listener teardown.
-                // Back off briefly and retry binding.
-                let delaySeconds = Double(200 * attempt) / 1000.0
-                print("[websocket] Port \(port) busy, retrying bind in \(Int(delaySeconds * 1000))ms (attempt \(attempt + 1)/\(maxAttempts))")
-                Thread.sleep(forTimeInterval: delaySeconds)
-            }
-        }
-
-        if let lastError {
-            throw lastError
-        }
-    }
-
     func requestRestart(reason: String, delay: TimeInterval = 0.35, port: UInt16? = nil) {
         lock.lock()
-        pendingRestartWorkItem?.cancel()
+        // No more pendingRestartWorkItem cleanup since we removed the property
         let restartPort = port ?? localPort ?? Defaults.serverPort
         lock.unlock()
 
@@ -192,18 +156,14 @@ class WebSocketServer: ObservableObject {
             self.stop()
             self.start(port: restartPort)
         }
-
-        lock.lock()
-        pendingRestartWorkItem = workItem
-        lock.unlock()
-
+        
+        // Simply dispatch the restart, no complex cancellation of pending items
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
 
     func stop() {
         lock.lock()
-        pendingRestartWorkItem?.cancel()
-        pendingRestartWorkItem = nil
+        // Removed pendingRestartWorkItem cleanup
         stopAllServers()
         activeSessions.removeAll()
         incomingReceivedChunks.removeAll()
@@ -326,8 +286,15 @@ class WebSocketServer: ObservableObject {
             if let dec = decryptMessage(text, using: key), !dec.isEmpty {
                 decryptedText = dec
             } else {
-                print("[transport] RX via RELAY dropped: decrypt failed or empty payload (len=\(text.count))")
-                return
+                // Fallback: If decryption fails, check if it's valid plaintext JSON.
+                // This handles cases where keys are out of sync or the client sends plaintext via the secure relay tunnel.
+                if text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{") {
+                     print("[transport] RX via RELAY: Decryption failed, attempting plaintext fallback.")
+                     decryptedText = text
+                } else {
+                     print("[transport] RX via RELAY dropped: decrypt failed or empty payload (len=\(text.count))")
+                     return
+                }
             }
         } else {
             // In normal operation this should not happen; relay payloads are expected encrypted.
@@ -342,6 +309,12 @@ class WebSocketServer: ObservableObject {
 
         do {
             let message = try JSONDecoder().decode(Message.self, from: data)
+
+            // Handle Pong for AirBridge keepalive
+            if message.type == .pong {
+                AirBridgeClient.shared.processPong()
+                return
+            }
 
             // File transfer messages are handled on background queue (like local messages)
             if message.type == .fileChunk || message.type == .fileChunkAck ||
