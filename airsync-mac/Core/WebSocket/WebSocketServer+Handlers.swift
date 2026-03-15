@@ -67,9 +67,6 @@ extension WebSocketServer {
         case .volumeControl, .macVolume, .toggleAppNotif, .browseLs, .wakeUpRequest, .macMediaControlResponse, .macInfo, .callControl:
             // Outgoing or unexpected messages
             break
-        case .authChallenge, .authResponse, .authResult:
-            // Handled in WebSocketServer.swift auth layer before this switch
-            break
         }
     }
 
@@ -122,9 +119,6 @@ extension WebSocketServer {
             // outbound from Mac -> Android in normal flow, ignore inbound
             break
         case .volumeControl, .macVolume, .toggleAppNotif, .browseLs, .wakeUpRequest, .macMediaControlResponse, .callControl, .notificationAction:
-            break
-        case .authChallenge, .authResponse, .authResult:
-            // Handled upstream in LAN auth layer; ignore in relay-only context
             break
         }
     }

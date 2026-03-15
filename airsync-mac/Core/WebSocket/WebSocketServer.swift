@@ -51,10 +51,6 @@ class WebSocketServer: ObservableObject {
     internal var lastKnownAdapters: [(name: String, address: String)] = []
     internal var lastLoggedSelectedAdapter: (name: String, address: String)? = nil
 
-    // LAN authentication: tracks which sessions have completed HMAC challenge-response
-    internal var authenticatedSessions: Set<ObjectIdentifier> = []
-    internal var pendingChallenges: [ObjectIdentifier: Data] = [:]
-
     init() {
         loadOrGenerateSymmetricKey()
         setupWebSocket(for: server)
@@ -212,8 +208,6 @@ class WebSocketServer: ObservableObject {
         activeSessions.removeAll()
         incomingReceivedChunks.removeAll()
         primarySessionID = nil
-        authenticatedSessions.removeAll()
-        pendingChallenges.removeAll()
         resetReplayGuard()
         stopPing()
         lock.unlock()
@@ -255,18 +249,7 @@ class WebSocketServer: ObservableObject {
                         let message = try JSONDecoder().decode(Message.self, from: data)
                         self.lock.lock()
                         self.lastActivity[sessionId] = Date()
-                        let isAuthenticated = self.authenticatedSessions.contains(sessionId)
                         self.lock.unlock()
-
-                        // Gate: only authResponse is allowed before authentication completes
-                        if !isAuthenticated {
-                            if message.type == .authResponse {
-                                self.handleAuthResponse(message, session: session)
-                            } else {
-                                print("[websocket] Dropping message type=\(message.type.rawValue) from unauthenticated session \(sessionId)")
-                            }
-                            return
-                        }
                         
                         if message.type == .fileChunk || message.type == .fileChunkAck || message.type == .fileTransferComplete || message.type == .fileTransferInit {
                              self.handleMessage(message, session: session)
@@ -291,7 +274,7 @@ class WebSocketServer: ObservableObject {
                 self.activeSessions.append(session)
                 let sessionCount = self.activeSessions.count
                 self.lock.unlock()
-                print("[websocket] Session \(sessionId) connected, sending auth challenge.")
+                print("[websocket] Session \(sessionId) connected.")
                 
                 if self.primarySessionID == nil {
                     self.primarySessionID = sessionId
@@ -301,9 +284,6 @@ class WebSocketServer: ObservableObject {
                     MacRemoteManager.shared.startVolumeMonitoring()
                     self.startPing()
                 }
-
-                // Send HMAC challenge for LAN authentication
-                self.sendAuthChallenge(to: session)
             },
             disconnected: { [weak self] session in
                 guard let self = self else { return }
@@ -313,8 +293,6 @@ class WebSocketServer: ObservableObject {
                 let sessionCount = self.activeSessions.count
                 let wasPrimary = (sessionId == self.primarySessionID)
                 if wasPrimary { self.primarySessionID = nil }
-                self.authenticatedSessions.remove(sessionId)
-                self.pendingChallenges.removeValue(forKey: sessionId)
                 self.lock.unlock()
                 
                 if sessionCount == 0 {
@@ -536,122 +514,6 @@ class WebSocketServer: ObservableObject {
         }
     }
 
-    // MARK: - LAN Authentication (HMAC Challenge-Response)
-
-    /// Generates a random 32-byte nonce and sends it as an authChallenge to the connecting session.
-    func sendAuthChallenge(to session: WebSocketSession) {
-        var nonceBytes = [UInt8](repeating: 0, count: 32)
-        _ = SecRandomCopyBytes(kSecRandomDefault, nonceBytes.count, &nonceBytes)
-        let nonceData = Data(nonceBytes)
-        let nonceHex = nonceData.map { String(format: "%02x", $0) }.joined()
-
-        let sessionId = ObjectIdentifier(session)
-        lock.lock()
-        pendingChallenges[sessionId] = nonceData
-        lock.unlock()
-
-        let challengeJson = """
-        {"type":"authChallenge","data":{"nonce":"\(nonceHex)"}}
-        """
-
-        if let key = symmetricKey, let encrypted = encryptMessage(challengeJson, using: key) {
-            session.writeText(encrypted)
-        } else {
-            session.writeText(challengeJson)
-        }
-        print("[auth] Sent challenge to session \(sessionId)")
-
-        // Auto-close session after 10 seconds if not authenticated
-        DispatchQueue.global().asyncAfter(deadline: .now() + 10.0) { [weak self] in
-            guard let self = self else { return }
-            self.lock.lock()
-            let stillPending = self.pendingChallenges[sessionId] != nil
-            let notAuthenticated = !self.authenticatedSessions.contains(sessionId)
-            self.lock.unlock()
-            if stillPending && notAuthenticated {
-                print("[auth] Session \(sessionId) failed to authenticate in time, closing.")
-                session.writeBinary([UInt8]()) // triggers disconnect
-            }
-        }
-    }
-
-    /// Verifies the authResponse HMAC from the client using constant-time comparison.
-    func handleAuthResponse(_ message: Message, session: WebSocketSession) {
-        let sessionId = ObjectIdentifier(session)
-
-        guard let dict = message.data.value as? [String: Any],
-              let hmacHex = dict["hmac"] as? String else {
-            print("[auth] Invalid authResponse from \(sessionId)")
-            sendAuthResult(to: session, success: false, reason: "Invalid response format")
-            return
-        }
-
-        lock.lock()
-        guard let nonceData = pendingChallenges.removeValue(forKey: sessionId) else {
-            lock.unlock()
-            print("[auth] No pending challenge for \(sessionId)")
-            sendAuthResult(to: session, success: false, reason: "No pending challenge")
-            return
-        }
-        lock.unlock()
-
-        guard let key = symmetricKey else {
-            print("[auth] No symmetric key available for verification")
-            sendAuthResult(to: session, success: false, reason: "Server configuration error")
-            return
-        }
-
-        // Compute expected HMAC-SHA256(symmetricKey, nonce)
-        let hmacKey = SymmetricKey(data: key.withUnsafeBytes { Data($0) })
-        let expectedHMAC = HMAC<SHA256>.authenticationCode(for: nonceData, using: hmacKey)
-        let expectedHex = Data(expectedHMAC).map { String(format: "%02x", $0) }.joined()
-
-        // Constant-time comparison
-        let receivedBytes = Array(hmacHex.utf8)
-        let expectedBytes = Array(expectedHex.utf8)
-        let lengthMatch = receivedBytes.count == expectedBytes.count
-        var diff: UInt8 = 0
-        let count = min(receivedBytes.count, expectedBytes.count)
-        for i in 0..<count {
-            diff |= receivedBytes[i] ^ expectedBytes[i]
-        }
-        let isValid = lengthMatch && diff == 0
-
-        if isValid {
-            lock.lock()
-            authenticatedSessions.insert(sessionId)
-            lock.unlock()
-            print("[auth] Session \(sessionId) authenticated successfully")
-            sendAuthResult(to: session, success: true, reason: nil)
-        } else {
-            print("[auth] HMAC verification failed for session \(sessionId)")
-            sendAuthResult(to: session, success: false, reason: "Authentication failed")
-            // Close the connection after a brief delay
-            DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
-                session.writeBinary([UInt8]())
-            }
-        }
-    }
-
-    /// Sends the authResult message back to the client.
-    private func sendAuthResult(to session: WebSocketSession, success: Bool, reason: String?) {
-        let resultDict: [String: Any] = [
-            "type": "authResult",
-            "data": [
-                "success": success,
-                "reason": reason ?? ""
-            ]
-        ]
-        if let jsonData = try? JSONSerialization.data(withJSONObject: resultDict),
-           let jsonString = String(data: jsonData, encoding: .utf8) {
-            if let key = symmetricKey, let encrypted = encryptMessage(jsonString, using: key) {
-                session.writeText(encrypted)
-            } else {
-                session.writeText(jsonString)
-            }
-        }
-    }
-    
     func wakeUpLastConnectedDevice() {
         QuickConnectManager.shared.wakeUpLastConnectedDevice()
     }

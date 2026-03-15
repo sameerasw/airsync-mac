@@ -40,10 +40,6 @@ enum MessageType: String, Codable {
     // file browser
     case browseLs
     case browseData
-    // LAN authentication (challenge-response)
-    case authChallenge
-    case authResponse
-    case authResult
 }
 
 struct Message: Codable {
