@@ -9,7 +9,7 @@ import Foundation
 import Swifter
 import CryptoKit
 import UserNotifications
-import Combine
+internal import Combine
 
 class WebSocketServer: ObservableObject {
     static let shared = WebSocketServer()
@@ -421,12 +421,26 @@ class WebSocketServer: ObservableObject {
         let isPlusSubscription = AppState.shared.isPlus
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
 
+        // Enhanced device info matching standard LAN handshake
+        let modelId = DeviceTypeUtil.modelIdentifier()
+        let categoryTypeRaw = DeviceTypeUtil.deviceTypeDescription()
+        let exactDeviceNameRaw = DeviceTypeUtil.deviceFullDescription()
+        let categoryType = categoryTypeRaw.isEmpty ? "Mac" : categoryTypeRaw
+        let exactDeviceName = exactDeviceNameRaw.isEmpty ? categoryType : exactDeviceNameRaw
+        let savedAppPackages = Array(AppState.shared.androidApps.keys)
+
         let messageDict: [String: Any] = [
             "type": "macInfo",
             "data": [
                 "name": macName,
                 "isPlus": isPlusSubscription,
-                "version": appVersion
+                "isPlusSubscription": isPlusSubscription, // Essential for Android check
+                "version": appVersion,
+                "model": modelId,
+                "type": categoryType,
+                "categoryType": categoryType,
+                "exactDeviceName": exactDeviceName,
+                "savedAppPackages": savedAppPackages
             ]
         ]
 

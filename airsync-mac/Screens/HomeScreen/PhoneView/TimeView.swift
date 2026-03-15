@@ -6,7 +6,7 @@
 //
 
 import SwiftUI
-import Combine
+internal import Combine
 import CoreText
 
 // MARK: - CoreText -> Path helper (macOS-safe)

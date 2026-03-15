@@ -18,6 +18,13 @@ class AirBridgeClient: ObservableObject {
     // MARK: - Published State
 
     @Published var connectionState: AirBridgeConnectionState = .disconnected
+    @Published var isPeerConnected: Bool = false
+
+    // Ping mechanism
+    private var pingTimer: Timer?
+    private var lastPongReceived: Date = .distantPast
+    private let pingInterval: TimeInterval = 8.0
+    private let peerTimeout: TimeInterval = 20.0
 
     // MARK: - Configuration
     //
@@ -431,6 +438,7 @@ class AirBridgeClient: ObservableObject {
                 print("[airbridge] Relay tunnel established!")
                 DispatchQueue.main.async {
                     self.connectionState = .relayActive
+                    self.startPingLoop()
                 }
                 return
 
@@ -464,6 +472,39 @@ class AirBridgeClient: ObservableObject {
         WebSocketServer.shared.handleRelayedBinaryMessage(data)
     }
 
+    private func startPingLoop() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.pingTimer?.invalidate()
+            self.lastPongReceived = Date() // Assume alive on start
+            
+            self.pingTimer = Timer.scheduledTimer(withTimeInterval: self.pingInterval, repeats: true) { [weak self] _ in
+                guard let self = self else { return }
+                
+                // 1. Check for timeout
+                let timeSinceLastPong = Date().timeIntervalSince(self.lastPongReceived)
+                if self.isPeerConnected && timeSinceLastPong > self.peerTimeout {
+                    print("[airbridge] Peer ping timeout (\(Int(timeSinceLastPong))s > \(Int(self.peerTimeout))s). Marking disconnected.")
+                    self.isPeerConnected = false
+                }
+                
+                // 2. Send Ping
+                let pingJson = "{\"type\":\"ping\"}"
+                self.sendText(pingJson)
+            }
+        }
+    }
+    
+    func processPong() {
+        DispatchQueue.main.async {
+            if !self.isPeerConnected {
+                print("[airbridge] Peer connected via relay (pong received).")
+            }
+            self.lastPongReceived = Date()
+            self.isPeerConnected = true
+        }
+    }
+
     // MARK: - Reconnect
 
     private func scheduleReconnect() {
@@ -491,6 +532,14 @@ class AirBridgeClient: ObservableObject {
         webSocketTask = nil
         urlSession?.invalidateAndCancel()
         urlSession = nil
+        
+        // Clean up ping timer
+        DispatchQueue.main.async { [weak self] in
+            self?.pingTimer?.invalidate()
+            self?.pingTimer = nil
+            self?.isPeerConnected = false
+        }
+        
         print("[airbridge] Torn down: \(reason)")
     }
 

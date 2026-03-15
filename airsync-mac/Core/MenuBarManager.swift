@@ -7,7 +7,7 @@
 
 import SwiftUI
 import AppKit
-import Combine
+internal import Combine
 
 class MenuBarManager: NSObject {
     static let shared = MenuBarManager()

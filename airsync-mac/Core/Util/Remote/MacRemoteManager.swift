@@ -10,7 +10,7 @@ import Cocoa
 import Carbon
 import AudioToolbox
 import CoreGraphics
-import Combine
+internal import Combine
 
 class MacRemoteManager: ObservableObject {
     static let shared = MacRemoteManager()

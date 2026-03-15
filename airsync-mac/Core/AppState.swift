@@ -7,7 +7,7 @@
 import SwiftUI
 import Foundation
 import Cocoa
-import Combine
+internal import Combine
 import UserNotifications
 import AVFoundation
 

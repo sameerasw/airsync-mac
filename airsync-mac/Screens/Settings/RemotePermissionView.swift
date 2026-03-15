@@ -6,7 +6,7 @@
 //
 
 import SwiftUI
-import Combine
+internal import Combine
 
 struct RemotePermissionView: View {
     @Environment(\.dismiss) var dismiss

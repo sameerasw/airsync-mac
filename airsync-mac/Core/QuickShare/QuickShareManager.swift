@@ -6,7 +6,7 @@
 import Foundation
 import SwiftUI
 import UserNotifications
-@preconcurrency import Combine
+public import Combine
 
 struct QuickShareTransferInfo {
     let device: RemoteDeviceInfo
@@ -340,3 +340,4 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
         }
     }
 }
+
