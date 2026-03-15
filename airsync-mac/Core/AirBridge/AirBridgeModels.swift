@@ -2,7 +2,7 @@
 //  AirBridgeModels.swift
 //  airsync-mac
 //
-//  Created by AI Assistant.
+//  Created by tornado-bunk and an AI Assistant.
 //
 
 import Foundation
@@ -47,8 +47,7 @@ struct AirBridgeErrorMessage: Codable {
 
 // MARK: - Keychain Config Blob (consolidated storage)
 
-/// All AirBridge credentials stored as a single Keychain entry to minimise
-/// password prompts under ad-hoc code signing.
+/// All AirBridge credentials stored as a single Keychain entry to minimise password prompts
 struct AirBridgeConfigBlob: Codable {
     let url: String
     let pid: String

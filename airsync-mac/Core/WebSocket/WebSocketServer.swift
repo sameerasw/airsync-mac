@@ -9,7 +9,7 @@ import Foundation
 import Swifter
 import CryptoKit
 import UserNotifications
-internal import Combine
+import Combine
 
 class WebSocketServer: ObservableObject {
     static let shared = WebSocketServer()
@@ -40,7 +40,6 @@ class WebSocketServer: ObservableObject {
 
     internal var incomingFiles: [String: IncomingFileIO] = [:]
     internal var incomingFilesChecksum: [String: String] = [:]
-    internal var incomingReceivedChunks: [String: Set<Int>] = [:]
     internal var outgoingAcks: [String: Set<Int>] = [:]
 
     internal let maxChunkRetries = 3
@@ -146,7 +145,6 @@ class WebSocketServer: ObservableObject {
 
     func requestRestart(reason: String, delay: TimeInterval = 0.35, port: UInt16? = nil) {
         lock.lock()
-        // No more pendingRestartWorkItem cleanup since we removed the property
         let restartPort = port ?? localPort ?? Defaults.serverPort
         lock.unlock()
 
@@ -157,18 +155,14 @@ class WebSocketServer: ObservableObject {
             self.start(port: restartPort)
         }
         
-        // Simply dispatch the restart, no complex cancellation of pending items
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
 
     func stop() {
         lock.lock()
-        // Removed pendingRestartWorkItem cleanup
         stopAllServers()
         activeSessions.removeAll()
-        incomingReceivedChunks.removeAll()
         primarySessionID = nil
-        resetReplayGuard()
         stopPing()
         lock.unlock()
         DispatchQueue.main.async { AppState.shared.webSocketStatus = .stopped }
@@ -189,7 +183,6 @@ class WebSocketServer: ObservableObject {
         server["/socket"] = websocket(
             text: { [weak self] session, text in
                 guard let self = self else { return }
-                let sessionId = ObjectIdentifier(session)
                 let decryptedText: String
                 if let key = self.symmetricKey {
                     decryptedText = decryptMessage(text, using: key) ?? ""
@@ -199,7 +192,7 @@ class WebSocketServer: ObservableObject {
 
                 if decryptedText.contains("\"type\":\"pong\"") {
                     self.lock.lock()
-                    self.lastActivity[sessionId] = Date()
+                    self.lastActivity[ObjectIdentifier(session)] = Date()
                     self.lock.unlock()
                     return
                 }
@@ -208,7 +201,7 @@ class WebSocketServer: ObservableObject {
                     do {
                         let message = try JSONDecoder().decode(Message.self, from: data)
                         self.lock.lock()
-                        self.lastActivity[sessionId] = Date()
+                        self.lastActivity[ObjectIdentifier(session)] = Date()
                         self.lock.unlock()
                         
                         if message.type == .fileChunk || message.type == .fileChunkAck || message.type == .fileTransferComplete || message.type == .fileTransferInit {
@@ -216,6 +209,7 @@ class WebSocketServer: ObservableObject {
                         } else {
                             DispatchQueue.main.async { self.handleMessage(message, session: session) }
                         }
+                        DispatchQueue.main.async { self.handleMessage(message, session: session) }
                     } catch {
                         print("[websocket] JSON decode failed: \(error)")
                     }
@@ -247,11 +241,10 @@ class WebSocketServer: ObservableObject {
             },
             disconnected: { [weak self] session in
                 guard let self = self else { return }
-                let sessionId = ObjectIdentifier(session)
                 self.lock.lock()
                 self.activeSessions.removeAll(where: { $0 === session })
                 let sessionCount = self.activeSessions.count
-                let wasPrimary = (sessionId == self.primarySessionID)
+                let wasPrimary = (ObjectIdentifier(session) == self.primarySessionID)
                 if wasPrimary { self.primarySessionID = nil }
                 self.lock.unlock()
                 
@@ -316,26 +309,15 @@ class WebSocketServer: ObservableObject {
                 return
             }
 
-            // File transfer messages are handled on background queue (like local messages)
-            if message.type == .fileChunk || message.type == .fileChunkAck ||
-               message.type == .fileTransferComplete || message.type == .fileTransferInit {
+            DispatchQueue.main.async {
                 self.handleRelayedMessageInternal(message)
-            } else {
-                DispatchQueue.main.async {
-                    self.handleRelayedMessageInternal(message)
-                }
             }
         } catch {
             print("[airbridge] Failed to decode relayed message: \(error)")
         }
     }
 
-    /// Handles a binary message received from the AirBridge relay.
-    func handleRelayedBinaryMessage(_ data: Data) {
-        // Binary relay data — currently unused in the AirSync protocol
-        // (file transfers use base64 JSON), but ready for future E2EE binary payloads
-        print("[airbridge] Received binary relay data (\(data.count) bytes)")
-    }
+
 
     /// Internal router for relayed messages.
     /// Uses an existing local session when available, otherwise handles messages directly.
@@ -457,36 +439,21 @@ class WebSocketServer: ObservableObject {
     // MARK: - Crypto Helpers
     
     func loadOrGenerateSymmetricKey() {
-        let keychainKey = "encryptionKey"
-
-        // 1. Try loading from Keychain first
-        if let keyData = KeychainStorage.data(for: keychainKey) {
-            symmetricKey = SymmetricKey(data: keyData)
-            return
-        }
-
-        // 2. Migrate from UserDefaults if present (one-time migration)
         let defaults = UserDefaults.standard
-        if let savedKey = defaults.string(forKey: keychainKey),
+        if let savedKey = defaults.string(forKey: "encryptionKey"),
            let keyData = Data(base64Encoded: savedKey) {
-            KeychainStorage.setData(keyData, for: keychainKey)
-            defaults.removeObject(forKey: keychainKey)
             symmetricKey = SymmetricKey(data: keyData)
-            print("[crypto] Migrated encryption key from UserDefaults to Keychain")
-            return
-        }
-
-        // 3. Generate a new key and store in Keychain
-        let base64Key = generateSymmetricKey()
-        if let keyData = Data(base64Encoded: base64Key) {
-            KeychainStorage.setData(keyData, for: keychainKey)
-            symmetricKey = SymmetricKey(data: keyData)
+        } else {
+            let base64Key = generateSymmetricKey()
+            defaults.set(base64Key, forKey: "encryptionKey")
+            if let keyData = Data(base64Encoded: base64Key) {
+                symmetricKey = SymmetricKey(data: keyData)
+            }
         }
     }
 
     func resetSymmetricKey() {
-        KeychainStorage.delete(key: "encryptionKey")
-        resetReplayGuard()
+        UserDefaults.standard.removeObject(forKey: "encryptionKey")
         loadOrGenerateSymmetricKey()
     }
 

@@ -1,6 +1,6 @@
 import Foundation
 import SwiftUI
-internal import Combine
+import Combine
 
 @MainActor
 final class TrialManager: ObservableObject {
@@ -319,33 +319,26 @@ final class TrialManager: ObservableObject {
         let key = "trial-device-identifier"
         let hardwareId = HardwareInfo.hardwareUUID()
 
-        // 1. Hardware UUID is available (the common path on real Macs).
-        //    Use UserDefaults as a "have we written this to Keychain?" flag
-        //    to avoid a Keychain write (and password prompt) on every launch.
+        // 1. If we have a hardware ID, prioritize it as the most stable identifier
         if let hwId = hardwareId {
-            let alreadySaved = UserDefaults.standard.trialDeviceIdentifier
-            if alreadySaved == hwId {
-                // Already persisted — no Keychain access needed.
-                return hwId
-            }
-            // First time or hardware changed — write once, then remember.
             KeychainStorage.set(hwId, for: key)
             UserDefaults.standard.trialDeviceIdentifier = hwId
             return hwId
         }
 
-        // 2. Fallback: try UserDefaults (no Keychain prompt)
-        if let stored = UserDefaults.standard.trialDeviceIdentifier, !stored.isEmpty {
-            return stored
-        }
-
-        // 3. Fallback: existing Keychain identifier (one-time prompt)
+        // 2. Fallback to existing Keychain identifier
         if let existing = KeychainStorage.string(for: key) {
             UserDefaults.standard.trialDeviceIdentifier = existing
             return existing
         }
 
-        // 4. Final fallback: new random UUID
+        // 3. Fallback to existing UserDefaults identifier
+        if let stored = UserDefaults.standard.trialDeviceIdentifier, !stored.isEmpty {
+            KeychainStorage.set(stored, for: key)
+            return stored
+        }
+
+        // 4. Final Fallback: New random UUID
         let newIdentifier = UUID().uuidString
         KeychainStorage.set(newIdentifier, for: key)
         UserDefaults.standard.trialDeviceIdentifier = newIdentifier

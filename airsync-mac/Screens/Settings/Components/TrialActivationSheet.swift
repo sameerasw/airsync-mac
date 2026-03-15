@@ -1,5 +1,5 @@
 import SwiftUI
-internal import Combine
+import Combine
 
 struct TrialActivationSheet: View {
     @ObservedObject var manager: TrialManager

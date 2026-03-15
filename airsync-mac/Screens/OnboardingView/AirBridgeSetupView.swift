@@ -2,7 +2,7 @@
 //  AirBridgeSetupView.swift
 //  AirSync
 //
-//  Created by AI Assistant.
+//  Created by tornado-bunk and an AI Assistant.
 //
 
 import SwiftUI
@@ -60,7 +60,7 @@ struct AirBridgeSetupView: View {
                                 HStack {
                                     Label("Server URL", systemImage: "server.rack")
                                         .frame(width: 100, alignment: .leading)
-                                    TextField("wss://airbridge", text: $relayURL)
+                                    TextField("airbridge.yourdomain.com", text: $relayURL)
                                         .textFieldStyle(.roundedBorder)
                                 }
 

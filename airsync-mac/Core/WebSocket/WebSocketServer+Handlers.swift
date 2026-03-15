@@ -47,7 +47,7 @@ extension WebSocketServer {
         case .fileTransferInit:
             handleFileTransferInit(message)
         case .fileChunk:
-            handleFileChunk(message)
+            handleFileChunk(message, session: session)
         case .fileChunkAck:
             handleFileChunkAck(message)
         case .fileTransferComplete:
@@ -86,18 +86,6 @@ extension WebSocketServer {
             handleRemoteControl(message)
         case .macMediaControl:
             handleMacMediaControlRequest(message)
-        case .fileTransferInit:
-            handleFileTransferInit(message)
-        case .fileChunk:
-            handleFileChunk(message)
-        case .fileTransferComplete:
-            handleFileTransferComplete(message)
-        case .fileChunkAck:
-            handleFileChunkAck(message)
-        case .transferVerified:
-            handleTransferVerified(message)
-        case .fileTransferCancel:
-            handleFileTransferCancel(message)
         case .appIcons:
             handleAppIcons(message)
         case .browseData:
@@ -118,7 +106,7 @@ extension WebSocketServer {
         case .macInfo:
             // outbound from Mac -> Android in normal flow, ignore inbound
             break
-        case .volumeControl, .macVolume, .toggleAppNotif, .browseLs, .wakeUpRequest, .macMediaControlResponse, .callControl, .notificationAction, .ping, .pong:
+        case .volumeControl, .macVolume, .toggleAppNotif, .browseLs, .wakeUpRequest, .macMediaControlResponse, .callControl, .notificationAction, .ping, .pong, .fileTransferInit, .fileChunk, .fileChunkAck, .fileTransferComplete, .transferVerified, .fileTransferCancel:
             break
         }
     }
@@ -414,7 +402,6 @@ extension WebSocketServer {
             let io = IncomingFileIO(id: id, name: name, size: size, mime: mime, tempUrl: tempFile, fileHandle: handle, chunkSize: chunkSize)
             self.lock.lock()
             incomingFiles[id] = io
-            incomingReceivedChunks[id] = []
             if let checksum = checksum {
                 incomingFilesChecksum[id] = checksum
             }
@@ -424,20 +411,14 @@ extension WebSocketServer {
 
     /// Handles incoming file chunks.
     /// Writes data to the temporary file handle on a serial queue to ensure thread safety.
-    private func handleFileChunk(_ message: Message) {
+    private func handleFileChunk(_ message: Message, session: WebSocketSession) {
         if let dict = message.data.value as? [String: Any],
            let id = dict["id"] as? String,
            let index = dict["index"] as? Int,
            let chunkBase64 = dict["chunk"] as? String {
             
             self.lock.lock()
-            var io = incomingFiles[id]
-            let alreadyReceived = incomingReceivedChunks[id]?.contains(index) == true
-            if !alreadyReceived {
-                var received = incomingReceivedChunks[id] ?? []
-                received.insert(index)
-                incomingReceivedChunks[id] = received
-            }
+            let io = incomingFiles[id]
             self.lock.unlock()
 
             if var io = io, let data = Data(base64Encoded: chunkBase64, options: .ignoreUnknownCharacters) {
@@ -492,7 +473,6 @@ extension WebSocketServer {
                         try? FileManager.default.removeItem(at: state.tempUrl)
                         self.lock.lock()
                         self.incomingFiles.removeValue(forKey: id)
-                        self.incomingReceivedChunks.removeValue(forKey: id)
                         self.incomingFilesChecksum.removeValue(forKey: id)
                         self.lock.unlock()
                         return 
@@ -552,7 +532,6 @@ extension WebSocketServer {
                     
                     self.lock.lock()
                     self.incomingFiles.removeValue(forKey: id)
-                    self.incomingReceivedChunks.removeValue(forKey: id)
                     self.lock.unlock()
                 }
             }
@@ -748,20 +727,7 @@ extension WebSocketServer {
     private func handleFileTransferCancel(_ message: Message) {
         if let dict = message.data.value as? [String: Any],
            let id = dict["id"] as? String {
-            self.lock.lock()
-            self.incomingReceivedChunks.removeValue(forKey: id)
-            self.lock.unlock()
-            
-            // AppState.stopTransferRemote(id:) does not exist in v3.0.0.
-            // The logic to clean up file handles is sufficient here as handles are managed in incomingFiles map.
-            // We just ensure we remove the entry from our tracking.
-            self.lock.lock()
-            if let io = self.incomingFiles[id] {
-                io.fileHandle?.closeFile()
-                try? FileManager.default.removeItem(at: io.tempUrl)
-                self.incomingFiles.removeValue(forKey: id)
-            }
-            self.lock.unlock()
+            print("[websocket] Transfer \(id) cancelled by remote.")
         }
     }
 

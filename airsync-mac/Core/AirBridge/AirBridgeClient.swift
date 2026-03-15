@@ -2,14 +2,14 @@
 //  AirBridgeClient.swift
 //  airsync-mac
 //
-//  Created by AI Assistant.
+//  Created by tornado-bunk and an AI Assistant.
 //  WebSocket client that connects to a self-hosted AirBridge relay server.
 //  When a direct LAN connection is unavailable, messages are tunneled through
 //  the relay to reach the Android device.
 //
 
 import Foundation
-internal import Combine
+import Combine
 import CryptoKit
 
 class AirBridgeClient: ObservableObject {
@@ -28,28 +28,16 @@ class AirBridgeClient: ObservableObject {
 
     // MARK: - Configuration
     //
-    // With ad-hoc ("Sign to Run Locally") code signing, every Keychain call
-    // triggers a macOS password prompt.  Only the secret (the actual credential)
-    // is stored in Keychain.  The relay URL and pairing ID are non-sensitive
-    // config and live in UserDefaults (zero prompts).
-    //
     // The secret is cached in memory after the first Keychain read so that
     // subsequent accesses never hit the Keychain again.
 
     private static let keychainKeySecret = "airBridgeSecret"
 
-    // Legacy keys — used only for one-time migration, then deleted.
-    private static let legacyKeyRelayURL  = "airBridgeRelayURL"
-    private static let legacyKeyPairingId = "airBridgePairingId"
-    private static let legacyKeySecret    = "airBridgeSecret"     // same key, kept for clarity
-    private static let legacyKeyConfig    = "airBridgeConfig"     // consolidated blob (if any)
-
-    // In-memory cache for the secret (the only Keychain item).
+    // In-memory cache for the secret
     private var _cachedSecret: String?
     private var _secretLoaded = false
 
-    /// Loads the secret from Keychain **once**, including one-time migration
-    /// from the old 3-key or consolidated-blob layout.
+    /// Loads the secret from Keychain once
     private func loadSecretIfNeeded() {
         guard !_secretLoaded else { return }
         _secretLoaded = true
@@ -57,42 +45,6 @@ class AirBridgeClient: ObservableObject {
         // Current key
         if let s = KeychainStorage.string(for: Self.keychainKeySecret) {
             _cachedSecret = s
-
-            // Migrate URL/pairingId from legacy Keychain keys to UserDefaults (if present)
-            migrateLegacyKeysIfNeeded()
-            return
-        }
-
-        // One-time migration from consolidated JSON blob
-        if let json = KeychainStorage.string(for: Self.legacyKeyConfig),
-           let data = json.data(using: .utf8),
-           let blob = try? JSONDecoder().decode(AirBridgeConfigBlob.self, from: data) {
-            _cachedSecret = blob.sec
-            // Move URL and pairingId to UserDefaults
-            if !blob.url.isEmpty { UserDefaults.standard.set(blob.url, forKey: "airBridgeRelayURL") }
-            if !blob.pid.isEmpty { UserDefaults.standard.set(blob.pid, forKey: "airBridgePairingId") }
-            // Write secret under its own key and remove the blob
-            if !blob.sec.isEmpty { KeychainStorage.set(blob.sec, for: Self.keychainKeySecret) }
-            KeychainStorage.delete(key: Self.legacyKeyConfig)
-            return
-        }
-
-        migrateLegacyKeysIfNeeded()
-    }
-
-    /// Migrates URL and pairingId from legacy Keychain keys to UserDefaults,
-    /// then deletes the legacy Keychain entries.
-    private func migrateLegacyKeysIfNeeded() {
-        // Only run once — if URL is already in UserDefaults, skip.
-        guard UserDefaults.standard.string(forKey: "airBridgeRelayURL") == nil else { return }
-
-        if let oldURL = KeychainStorage.string(for: Self.legacyKeyRelayURL), !oldURL.isEmpty {
-            UserDefaults.standard.set(oldURL, forKey: "airBridgeRelayURL")
-            KeychainStorage.delete(key: Self.legacyKeyRelayURL)
-        }
-        if let oldPid = KeychainStorage.string(for: Self.legacyKeyPairingId), !oldPid.isEmpty {
-            UserDefaults.standard.set(oldPid, forKey: "airBridgePairingId")
-            KeychainStorage.delete(key: Self.legacyKeyPairingId)
         }
     }
 
@@ -112,7 +64,6 @@ class AirBridgeClient: ObservableObject {
     }
 
     /// Batch-update all three credentials.  Only the secret write touches Keychain
-    /// (one password prompt).  URL and pairingId go to UserDefaults (zero prompts).
     func saveAllCredentials(url: String, pairingId: String, secret: String) {
         UserDefaults.standard.set(url, forKey: "airBridgeRelayURL")
         UserDefaults.standard.set(pairingId, forKey: "airBridgePairingId")
@@ -217,7 +168,7 @@ class AirBridgeClient: ObservableObject {
             return
         }
 
-        // SHA-256 hash the secret (same logic as hashedSecret(), but for arbitrary input)
+        // SHA-256 hash the secret
         let secretHash: String = {
             let data = Data(secret.utf8)
             let hash = SHA256.hash(data: data)
@@ -266,8 +217,7 @@ class AirBridgeClient: ObservableObject {
             return
         }
 
-        // Send registration — the server silently accepts registrations without
-        // replying until a peer connects, so a successful send = server is alive.
+        // Send registration — the server silently accepts registrations without replying until a peer connects, so a successful send = server is alive.
         task.send(.string(regJSON)) { sendError in
             if let sendError = sendError {
                 settle(.failure(sendError))
@@ -294,7 +244,7 @@ class AirBridgeClient: ObservableObject {
     }
 
     /// Regenerates pairing credentials together so an ID and secret always stay in sync.
-    /// PairingId goes to UserDefaults, secret to Keychain (one prompt).
+    /// PairingId goes to UserDefaults, secret to Keychain.
     func regeneratePairingCredentials() {
         pairingId = Self.generateShortId()
         let newSecret = Self.generateRandomSecret()
@@ -318,7 +268,7 @@ class AirBridgeClient: ObservableObject {
             return
         }
 
-        // Ensure credentials exist before connecting (lazy generation)
+        // Ensure credentials exist before connecting
         ensureCredentialsExist()
 
         // Normalize URL: ensure it ends with /ws and has wss:// or ws:// prefix
@@ -467,9 +417,8 @@ class AirBridgeClient: ObservableObject {
     }
 
     private func handleBinaryMessage(_ data: Data) {
-        // Binary data from the relay = raw encrypted payload from Android
-        print("[airbridge] Relaying binary message from Android (\(data.count) bytes)")
-        WebSocketServer.shared.handleRelayedBinaryMessage(data)
+        // Binary data from the relay is currently unused in the AirSync protocol
+        print("[airbridge] Received binary message from Android (\(data.count) bytes) - Ignored")
     }
 
     private func startPingLoop() {
@@ -558,7 +507,7 @@ class AirBridgeClient: ObservableObject {
 
         let isPrivate = isPrivateHost(host)
 
-        // SECURITY: If user explicitly provided ws://, only allow it for private/localhost hosts.
+        // If user explicitly provided ws://, only allow it for private/localhost hosts.
         // Upgrade to wss:// for public hosts to prevent cleartext transport over the internet.
         if url.hasPrefix("ws://") && !url.hasPrefix("wss://") && !isPrivate {
             print("[airbridge] SECURITY: Upgrading ws:// to wss:// for public host: \(host)")
@@ -600,7 +549,7 @@ class AirBridgeClient: ObservableObject {
         return false
     }
 
-    /// Generates a 32-char lowercase hex ID (128-bit entropy, e.g. "a3f8b2c1e9d0471f8a2b3c4d5e6f7890")
+    /// Generates a 32-char lowercase hex ID (128-bit entropy)
     static func generateShortId() -> String {
         var bytes = [UInt8](repeating: 0, count: 16) // 16 bytes = 128 bits
         _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)

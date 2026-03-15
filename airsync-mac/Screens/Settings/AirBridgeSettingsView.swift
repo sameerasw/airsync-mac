@@ -2,7 +2,7 @@
 //  AirBridgeSettingsView.swift
 //  airsync-mac
 //
-//  Created by AI Assistant.
+//  Created by tornado-bunk and an AI Assistant.
 //
 
 import SwiftUI
@@ -144,7 +144,7 @@ struct AirBridgeSettingsView: View {
             if enabled {
                 // Ensure default URL if missing
                 if airBridge.relayServerURL.isEmpty {
-                    airBridge.relayServerURL = "wss://airbridge.tornado.ovh/ws"
+                    airBridge.relayServerURL = "wss://airbridge.yourdomain.com/ws"
                 }
                 
                 // Ensure credentials exist (generates and saves if missing)

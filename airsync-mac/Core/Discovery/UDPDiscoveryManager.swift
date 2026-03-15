@@ -1,6 +1,6 @@
 import Foundation
 import Network
-internal import Combine
+import Combine
 import SwiftUI
 
 struct DiscoveredDevice: Identifiable, Equatable, Hashable {
@@ -96,13 +96,12 @@ class UDPDiscoveryManager: ObservableObject {
     }
     
     @objc private func handleSystemWake() {
-        print("[Discovery] System wake detected. Initiating recovery sequence...")
+        print("[Discovery] System wake detected.")
         
-        // 1. Immediate burst (might fail if network not ready, but harmless)
+        // 1. Immediate burst
         broadcastBurst()
         
         // 2. Schedule a series of recovery actions to catch the network as it comes up
-        // Wi-Fi usually takes 2-5 seconds to reconnect after sleep.
         
         // T+2s: Force WebSocket Server to re-evaluate network binding
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {

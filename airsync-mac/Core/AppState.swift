@@ -7,7 +7,7 @@
 import SwiftUI
 import Foundation
 import Cocoa
-internal import Combine
+import Combine
 import UserNotifications
 import AVFoundation
 
@@ -27,9 +27,7 @@ class AppState: ObservableObject {
     @Published var isOS26: Bool = true
 
     init() {
-        // Batch-load all Keychain items up front (single password prompt)
-        // before any subsystem (WebSocketServer, AirBridge, Trial) tries
-        // to read individual keys and triggers multiple prompts.
+        // Load all Keychain items up front before any subsystem tries to read individual keys and triggers multiple prompts.
         KeychainStorage.preload()
 
         self.isPlus = false
@@ -197,7 +195,7 @@ class AppState: ObservableObject {
     @Published var recentApps: [AndroidApp] = []
     
     var isConnectedOverLocalNetwork: Bool {
-        // Check if we have a direct LAN WebSocket session (true local connection).
+        // Check if we have a direct LAN WebSocket session
         // Falls back to false when only the AirBridge relay tunnel is active.
         return WebSocketServer.shared.hasActiveLocalSession()
     }
@@ -379,8 +377,8 @@ class AppState: ObservableObject {
         didSet {
             UserDefaults.standard.set(airBridgeEnabled, forKey: "airBridgeEnabled")
             // Connection is managed explicitly:
-            // - Onboarding: connects after "Continue" (test passes + credentials saved)
-            // - Settings: connects on "Save & Reconnect"
+            // Onboarding: connects after "Continue"
+            // Settings: connects on "Save & Reconnect"
             // We only auto-disconnect here when the user turns AirBridge off.
             if !airBridgeEnabled {
                 AirBridgeClient.shared.disconnect()

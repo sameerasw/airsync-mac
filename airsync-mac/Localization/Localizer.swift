@@ -1,6 +1,6 @@
 import Foundation
 import SwiftUI
-internal import Combine
+import Combine
 
 /// Simple JSON-based localization loader.
 /// Loads `en.json` as base and overlays with current locale file if available.
