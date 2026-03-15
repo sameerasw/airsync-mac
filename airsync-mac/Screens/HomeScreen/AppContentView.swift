@@ -84,24 +84,6 @@ struct AppContentView: View {
                     }
                     .tag(TabIdentifier.apps)
 
-                // Transfers Tab
-                TransfersView()
-                    .tabItem {
-                        Image(systemName: "tray.and.arrow.up")
-                        //                        Label("Transfers", systemImage: "tray.and.arrow.up")
-                    }
-                    .tag(TabIdentifier.transfers)
-                    .toolbar {
-                        ToolbarItem(placement: .primaryAction) {
-                            Button {
-                                AppState.shared.removeCompletedTransfers()
-                            } label: {
-                                Label("Clear completed", systemImage: "trash")
-                            }
-                            .help("Remove all completed transfers from the list")
-                            .keyboardShortcut(.delete, modifiers: .command)
-                        }
-                    }
             }
 
             // Settings Tab

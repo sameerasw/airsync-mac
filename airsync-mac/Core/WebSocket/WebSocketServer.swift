@@ -9,7 +9,7 @@ import Foundation
 import Swifter
 import CryptoKit
 import UserNotifications
-internal import Combine
+import Combine
 
 class WebSocketServer: ObservableObject {
     static let shared = WebSocketServer()
@@ -292,6 +292,10 @@ class WebSocketServer: ObservableObject {
                 let sessionCount = self.activeSessions.count
                 self.lock.unlock()
                 print("[websocket] Session \(sessionId) connected, sending auth challenge.")
+                
+                if self.primarySessionID == nil {
+                    self.primarySessionID = sessionId
+                }
                 
                 if sessionCount == 1 {
                     MacRemoteManager.shared.startVolumeMonitoring()

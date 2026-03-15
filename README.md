@@ -1,7 +1,7 @@
  # AirSync macOS
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/fdc68d4f-162f-4599-bc52-5920b23dc0a2" />
+  <img src="https://github.com/user-attachments/assets/68b1b5d1-90a8-44aa-94b4-b239c879ba91" />
 </p>
 
 [![AirSync demo](https://img.youtube.com/vi/HDv0Hu9z294?si=dgycryP1T8QvPJYa/0.jpg)](https://www.youtube.com/watch?v=HDv0Hu9z294?si=dgycryP1T8QvPJYa) | [Read Documentation and How-To](https://airsync.notion.site/) | [Help translating AirSync to your language on crowdin!](https://crwd.in/airsync/612ea64319db322fa1ed070574109c242534446)

@@ -8,6 +8,7 @@
 import SwiftUI
 import UserNotifications
 
+@MainActor
 class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didRemoveDeliveredNotifications identifiers: [String]) {
@@ -46,6 +47,15 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             // Remove the notification
             DispatchQueue.main.async {
                 AppState.shared.removeCallEventById(eventId)
+            }
+        }
+        // Handle Quick Share notification actions
+        else if notificationType == "quickshare" {
+            let transferID = userInfo["transferID"] as? String ?? ""
+            if response.actionIdentifier == "QUICKSHARE_ACCEPT" {
+                QuickShareManager.shared.handleUserConsent(transferID: transferID, accepted: true)
+            } else if response.actionIdentifier == "QUICKSHARE_DECLINE" {
+                QuickShareManager.shared.handleUserConsent(transferID: transferID, accepted: false)
             }
         }
         // Handle link open

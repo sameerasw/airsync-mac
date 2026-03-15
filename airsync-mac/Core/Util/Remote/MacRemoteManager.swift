@@ -10,7 +10,7 @@ import Cocoa
 import Carbon
 import AudioToolbox
 import CoreGraphics
-internal import Combine
+import Combine
 
 class MacRemoteManager: ObservableObject {
     static let shared = MacRemoteManager()
@@ -411,7 +411,7 @@ class MacRemoteManager: ObservableObject {
     private func notifyVolumeChange() {
         DispatchQueue.main.async {
             // Send update via WebSocket
-            let levelInt = Int(self.lastVolumeLevel * 100)
+            let levelInt = self.lastVolumeLevel
             print("[MacRemoteManager] Notifying volume change: \(levelInt)%")
             WebSocketServer.shared.sendMacVolumeUpdate(level: levelInt)
         }

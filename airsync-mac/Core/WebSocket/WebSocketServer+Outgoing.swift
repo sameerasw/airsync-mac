@@ -77,6 +77,11 @@ extension WebSocketServer {
         sendMessage(type: "disconnectRequest", data: [:])
     }
 
+    func sendQuickShareTrigger() {
+        // print("[websocket] Quick Share trigger requested")
+        sendMessage(type: "startQuickShare", data: [:])
+    }
+
     func sendRefreshAdbPortsRequest() {
         guard hasActiveLocalSession() else {
             print("[adb] Skipping refreshAdbPorts: no active local session")
@@ -170,8 +175,8 @@ extension WebSocketServer {
                 "isPlaying": musicInfo.isPlaying ?? false,
                 "title": musicInfo.title ?? "",
                 "artist": musicInfo.artist ?? "",
-                "volume": 50,
-                "isMuted": false,
+                "volume": MacRemoteManager.shared.lastVolumeLevel,
+                "isMuted": MacRemoteManager.shared.lastVolumeLevel == 0,
                 "likeStatus": "none"
             ]
             
@@ -249,7 +254,6 @@ extension WebSocketServer {
             try? fileHandle.seek(toOffset: 0)
 
             let transferId = UUID().uuidString
-            AppState.shared.startOutgoingTransfer(id: transferId, name: fileName, size: totalSize, mime: mime, chunkSize: chunkSize)
 
             let initMessage = FileTransferProtocol.buildInit(id: transferId, name: fileName, size: Int64(totalSize), mime: mime, chunkSize: chunkSize, checksum: checksum, isClipboard: isClipboard)
             self.sendToFirstAvailable(message: initMessage)
@@ -276,24 +280,11 @@ extension WebSocketServer {
                     baseIndex += 1
                 }
 
-                let bytesAcked = min(baseIndex * chunkSize, totalSize)
-                DispatchQueue.main.async {
-                    AppState.shared.updateOutgoingProgress(id: transferId, bytesTransferred: bytesAcked)
-                }
+                let _ = min(baseIndex * chunkSize, totalSize)
 
                 if baseIndex >= totalChunks { break }
 
                 while nextIndexToSend < totalChunks && (nextIndexToSend - baseIndex) < windowSize {
-                    var isCancelled = false
-                     DispatchQueue.main.sync {
-                        if let t = AppState.shared.transfers[transferId], t.status != .inProgress {
-                            isCancelled = true
-                        }
-                     }
-                    if isCancelled {
-                        transferFailed = true
-                        break
-                    }
 
                     // sendChunkAt logic
                     let offset = UInt64(nextIndexToSend * chunkSize)
@@ -316,13 +307,7 @@ extension WebSocketServer {
                     if acked.contains(idx) { continue }
                     let elapsedMs = now.timeIntervalSince(entry.lastSent) * 1000.0
                     if elapsedMs > Double(self.ackWaitMs) {
-                        if entry.attempts >= self.maxChunkRetries {
-                             DispatchQueue.main.async {
-                                AppState.shared.failTransfer(id: transferId, reason: "Multiple retries failed for chunk \(idx)")
-                             }
-                            transferFailed = true
-                            break
-                        }
+                             print("[websocket] Multiple retries failed for chunk \(idx)")
                         let chunkMessage = FileTransferProtocol.buildChunk(id: transferId, index: idx, base64Chunk: entry.payload)
                         self.sendToFirstAvailable(message: chunkMessage)
                         sentBuffer[idx] = (payload: entry.payload, attempts: entry.attempts + 1, lastSent: Date())
@@ -334,9 +319,6 @@ extension WebSocketServer {
             try? fileHandle.close()
             
             if !transferFailed {
-                 DispatchQueue.main.async {
-                    AppState.shared.updateOutgoingProgress(id: transferId, bytesTransferred: totalSize)
-                 }
                 let completeMessage = FileTransferProtocol.buildComplete(id: transferId, name: fileName, size: Int64(totalSize), checksum: checksum)
                 self.sendToFirstAvailable(message: completeMessage)
             }
