@@ -95,6 +95,8 @@ class AirBridgeClient: ObservableObject {
     private var isManuallyDisconnected = false
     private var receiveLoopActive = false
     private let queue = DispatchQueue(label: "com.airsync.airbridge", qos: .userInitiated)
+    private var connectionGeneration: Int = 0
+    private var pendingReconnectWorkItem: DispatchWorkItem?
 
     private init() {}
 
@@ -103,7 +105,9 @@ class AirBridgeClient: ObservableObject {
     /// Connects to the relay server. Does nothing if already connected or URL is empty.
     func connect() {
         queue.async { [weak self] in
-            self?.connectInternal()
+            guard let self = self else { return }
+            guard !self.receiveLoopActive || self.webSocketTask == nil else { return }
+            self.connectInternal()
         }
     }
 
@@ -112,6 +116,9 @@ class AirBridgeClient: ObservableObject {
         queue.async { [weak self] in
             guard let self = self else { return }
             self.isManuallyDisconnected = true
+            self.connectionGeneration += 1
+            self.pendingReconnectWorkItem?.cancel()
+            self.pendingReconnectWorkItem = nil
             self.tearDown(reason: "Manual disconnect")
             DispatchQueue.main.async {
                 self.connectionState = .disconnected
@@ -281,6 +288,10 @@ class AirBridgeClient: ObservableObject {
         }
 
         isManuallyDisconnected = false
+        pendingReconnectWorkItem?.cancel()
+        pendingReconnectWorkItem = nil
+        connectionGeneration += 1
+        let generation = connectionGeneration
         DispatchQueue.main.async { self.connectionState = .connecting }
 
         let config = URLSessionConfiguration.default
@@ -293,10 +304,10 @@ class AirBridgeClient: ObservableObject {
 
         // Start receiving messages
         receiveLoopActive = true
-        startReceiving()
+        startReceiving(expectedGeneration: generation)
 
         // Send registration
-        sendRegistration()
+        sendRegistration(expectedGeneration: generation)
     }
 
     /// Derives a SHA-256 hash of the raw secret so the plaintext never leaves the device.
@@ -307,7 +318,8 @@ class AirBridgeClient: ObservableObject {
         return hash.compactMap { String(format: "%02x", $0) }.joined()
     }
 
-    private func sendRegistration() {
+    private func sendRegistration(expectedGeneration: Int) {
+        guard expectedGeneration == connectionGeneration else { return }
         DispatchQueue.main.async { self.connectionState = .registering }
 
         let localIP = WebSocketServer.shared.getLocalIPAddress(
@@ -328,15 +340,19 @@ class AirBridgeClient: ObservableObject {
             let data = try JSONEncoder().encode(regMessage)
             if let jsonString = String(data: data, encoding: .utf8) {
                 webSocketTask?.send(.string(jsonString)) { [weak self] error in
-                    if let error = error {
-                        print("[airbridge] Registration send failed: \(error.localizedDescription)")
-                        self?.scheduleReconnect()
-                    } else {
-                        print("[airbridge] Registration sent for pairingId: \(self?.pairingId ?? "?")")
-                        DispatchQueue.main.async {
-                            self?.connectionState = .waitingForPeer
+                    guard let self = self else { return }
+                    self.queue.async {
+                        guard expectedGeneration == self.connectionGeneration else { return }
+                        if let error = error {
+                            print("[airbridge] Registration send failed: \(error.localizedDescription)")
+                            self.scheduleReconnect(sourceGeneration: expectedGeneration)
+                        } else {
+                            print("[airbridge] Registration sent for pairingId: \(self.pairingId)")
+                            DispatchQueue.main.async {
+                                self.connectionState = .waitingForPeer
+                            }
+                            self.reconnectAttempt = 0
                         }
-                        self?.reconnectAttempt = 0
                     }
                 }
             }
@@ -347,22 +363,23 @@ class AirBridgeClient: ObservableObject {
 
     // MARK: - Receive Loop
 
-    private func startReceiving() {
+    private func startReceiving(expectedGeneration: Int) {
         guard receiveLoopActive, let task = webSocketTask else { return }
 
         task.receive { [weak self] result in
-            guard let self = self, self.receiveLoopActive else { return }
-
-            switch result {
-            case .success(let message):
-                self.handleMessage(message)
-                // Continue receiving
-                self.startReceiving()
-
-            case .failure(let error):
-                print("[airbridge] Receive error: \(error.localizedDescription)")
-                self.receiveLoopActive = false
-                self.scheduleReconnect()
+            guard let self = self else { return }
+            self.queue.async {
+                guard self.receiveLoopActive, expectedGeneration == self.connectionGeneration else { return }
+                switch result {
+                case .success(let message):
+                    self.handleMessage(message)
+                    // Continue receiving
+                    self.startReceiving(expectedGeneration: expectedGeneration)
+                case .failure(let error):
+                    print("[airbridge] Receive error: \(error.localizedDescription)")
+                    self.receiveLoopActive = false
+                    self.scheduleReconnect(sourceGeneration: expectedGeneration)
+                }
             }
         }
     }
@@ -386,6 +403,11 @@ class AirBridgeClient: ObservableObject {
             switch baseMsg.action {
             case .relayStarted:
                 print("[airbridge] Relay tunnel established!")
+                queue.async { [weak self] in
+                    self?.pendingReconnectWorkItem?.cancel()
+                    self?.pendingReconnectWorkItem = nil
+                    self?.reconnectAttempt = 0
+                }
                 DispatchQueue.main.async {
                     self.connectionState = .relayActive
                     self.startPingLoop()
@@ -456,8 +478,12 @@ class AirBridgeClient: ObservableObject {
 
     // MARK: - Reconnect
 
-    private func scheduleReconnect() {
+    private func scheduleReconnect(sourceGeneration: Int) {
         guard !isManuallyDisconnected else { return }
+        guard sourceGeneration == connectionGeneration else {
+            print("[airbridge] Skipping reconnect from stale session \(sourceGeneration)")
+            return
+        }
 
         tearDown(reason: "Preparing reconnect")
 
@@ -469,10 +495,14 @@ class AirBridgeClient: ObservableObject {
             self.connectionState = .connecting
         }
 
-        queue.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self = self, !self.isManuallyDisconnected else { return }
+        pendingReconnectWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            guard !self.isManuallyDisconnected, sourceGeneration == self.connectionGeneration else { return }
             self.connectInternal()
         }
+        pendingReconnectWorkItem = work
+        queue.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     private func tearDown(reason: String) {

@@ -209,7 +209,6 @@ class WebSocketServer: ObservableObject {
                         } else {
                             DispatchQueue.main.async { self.handleMessage(message, session: session) }
                         }
-                        DispatchQueue.main.async { self.handleMessage(message, session: session) }
                     } catch {
                         print("[websocket] JSON decode failed: \(error)")
                     }
@@ -298,6 +297,24 @@ class WebSocketServer: ObservableObject {
         guard let data = decryptedText.data(using: .utf8) else {
             print("[transport] RX via RELAY dropped: UTF-8 conversion failed")
             return
+        }
+
+        // Accept keepalive packets that omit "data" (e.g. {"type":"pong"}).
+        if let jsonObj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let type = jsonObj["type"] as? String {
+            if type == MessageType.pong.rawValue {
+                AirBridgeClient.shared.processPong()
+                return
+            }
+            if type == MessageType.ping.rawValue {
+                let pongPayload = #"{"type":"pong"}"#
+                if let key = symmetricKey, let encrypted = encryptMessage(pongPayload, using: key) {
+                    AirBridgeClient.shared.sendText(encrypted)
+                } else {
+                    AirBridgeClient.shared.sendText(pongPayload)
+                }
+                return
+            }
         }
 
         do {
