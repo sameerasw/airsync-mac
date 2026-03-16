@@ -11,6 +11,7 @@
 import Foundation
 import Combine
 import CryptoKit
+import AppKit
 
 class AirBridgeClient: ObservableObject {
     static let shared = AirBridgeClient()
@@ -98,7 +99,16 @@ class AirBridgeClient: ObservableObject {
     private var connectionGeneration: Int = 0
     private var pendingReconnectWorkItem: DispatchWorkItem?
 
-    private init() {}
+    private init() {
+        // Observe system wake events so we can notify Android via relay and trigger a LAN reconnect.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            self?.handleWakeFromSleep()
+        }
+    }
 
     // MARK: - Public Interface
 
@@ -473,6 +483,16 @@ class AirBridgeClient: ObservableObject {
             }
             self.lastPongReceived = Date()
             self.isPeerConnected = true
+        }
+    }
+
+    /// Called when the Mac wakes from sleep; if the relay is active, notify Android so it can try LAN reconnect.
+    private func handleWakeFromSleep() {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            guard case .relayActive = self.connectionState else { return }
+            print("[airbridge] Mac woke from sleep while relay is active, sending macWake via relay")
+            WebSocketServer.shared.sendWakeViaRelay()
         }
     }
 

@@ -35,6 +35,16 @@ struct AirBridgeSettingsView: View {
                     Text(airBridge.connectionState.displayName)
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
+                    if case .relayActive = airBridge.connectionState, !airBridge.isPeerConnected {
+                        Text("Peer offline")
+                            .font(.system(size: 10, weight: .semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.orange.opacity(0.2))
+                            .foregroundStyle(.orange)
+                            .clipShape(Capsule())
+                            .help("Relay is active but no peer is currently connected.")
+                    }
                     Spacer()
 
                     if case .failed = airBridge.connectionState {

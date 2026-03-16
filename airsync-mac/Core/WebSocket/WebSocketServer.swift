@@ -453,6 +453,26 @@ class WebSocketServer: ObservableObject {
         }
     }
 
+    /// Sends a wake signal through the relay so Android can attempt a LAN reconnect.
+    func sendWakeViaRelay() {
+        let messageDict: [String: Any] = [
+            "type": "macWake",
+            "data": [:]
+        ]
+
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: messageDict),
+              let jsonString = String(data: jsonData, encoding: .utf8) else {
+            print("[airbridge] Failed to encode macWake message")
+            return
+        }
+
+        if let key = symmetricKey, let encrypted = encryptMessage(jsonString, using: key) {
+            AirBridgeClient.shared.sendText(encrypted)
+        } else {
+            AirBridgeClient.shared.sendText(jsonString)
+        }
+    }
+
     // MARK: - Crypto Helpers
     
     func loadOrGenerateSymmetricKey() {
