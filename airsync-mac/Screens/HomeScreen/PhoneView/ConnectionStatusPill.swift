@@ -21,6 +21,19 @@ struct ConnectionStatusPill: View {
                 Image(systemName: appState.isConnectedOverLocalNetwork ? "wifi" : "globe")
                     .contentTransition(.symbolEffect(.replace))
                     .help(appState.isConnectedOverLocalNetwork ? "Local WiFi" : "AirBridge Relay")
+
+                // Peer health badge when in relay mode
+                if !appState.isConnectedOverLocalNetwork,
+                   case .relayActive = AirBridgeClient.shared.connectionState {
+                    let online = AirBridgeClient.shared.isPeerConnected
+                    Text(online ? "Peer online" : "Peer offline")
+                        .font(.system(size: 10, weight: .semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background((online ? Color.green : Color.orange).opacity(0.2))
+                        .foregroundStyle(online ? Color.green : Color.orange)
+                        .clipShape(Capsule())
+                }
                 
                 if appState.isPlus {
                     if appState.adbConnecting {

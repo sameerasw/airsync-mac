@@ -22,6 +22,7 @@ class AppState: ObservableObject {
     private var clipboardCancellable: AnyCancellable?
     private var lastClipboardValue: String? = nil
     private var shouldSkipSave = false
+    private var subscriptions = Set<AnyCancellable>()
     private static let licenseDetailsKey = "licenseDetails"
 
     @Published var isOS26: Bool = true
@@ -104,6 +105,17 @@ class AppState: ObservableObject {
         if isClipboardSyncEnabled {
             startClipboardMonitoring()
         }
+
+        // Seed initial LAN state from current WebSocketServer snapshot.
+        self.isConnectedOverLocalNetwork = WebSocketServer.shared.hasActiveLocalSession()
+
+        // Subscribe to immediate LAN session events for UI reactivity.
+        WebSocketServer.shared.lanSessionEvents
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isActive in
+                self?.isConnectedOverLocalNetwork = isActive
+            }
+            .store(in: &subscriptions)
 
         #if SELF_COMPILED
         self.isPlus = true
@@ -194,11 +206,9 @@ class AppState: ObservableObject {
     
     @Published var recentApps: [AndroidApp] = []
     
-    var isConnectedOverLocalNetwork: Bool {
-        // Check if we have a direct LAN WebSocket session
-        // Falls back to false when only the AirBridge relay tunnel is active.
-        return WebSocketServer.shared.hasActiveLocalSession()
-    }
+    // Reactive snapshot of whether we currently have a direct LAN WebSocket session.
+    // Updated via WebSocketServer.lanSessionEvents so UI can flip icons instantly when transport changes.
+    @Published var isConnectedOverLocalNetwork: Bool = false
 
     // Audio player for ringtone
     private var ringtonePlayer: AVAudioPlayer?

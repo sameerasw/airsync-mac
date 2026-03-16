@@ -48,6 +48,10 @@ class WebSocketServer: ObservableObject {
     internal var lastKnownAdapters: [(name: String, address: String)] = []
     internal var lastLoggedSelectedAdapter: (name: String, address: String)? = nil
 
+    // Emits immediate events when the primary LAN WebSocket session starts or ends.
+    // Used by AppState/UI to update LAN vs relay indicators without polling.
+    internal let lanSessionEvents = PassthroughSubject<Bool, Never>() // true = started, false = ended
+
     init() {
         loadOrGenerateSymmetricKey()
         setupWebSocket(for: server)
@@ -226,17 +230,25 @@ class WebSocketServer: ObservableObject {
                 self.lastActivity[sessionId] = Date()
                 self.activeSessions.append(session)
                 let sessionCount = self.activeSessions.count
+                let becamePrimary: Bool
                 self.lock.unlock()
                 print("[websocket] Session \(sessionId) connected.")
                 
                 if self.primarySessionID == nil {
                     self.primarySessionID = sessionId
+                    becamePrimary = true
+                } else {
+                    becamePrimary = false
                 }
                 
                 if sessionCount == 1 {
                     MacRemoteManager.shared.startVolumeMonitoring()
                     self.startPing()
                 }
+
+                 if becamePrimary {
+                     self.lanSessionEvents.send(true)
+                 }
             },
             disconnected: { [weak self] session in
                 guard let self = self else { return }
@@ -253,6 +265,7 @@ class WebSocketServer: ObservableObject {
                 }
                 
                 if wasPrimary {
+                    self.lanSessionEvents.send(false)
                     DispatchQueue.main.async {
                         AppState.shared.disconnectDevice()
                         ADBConnector.disconnectADB()
