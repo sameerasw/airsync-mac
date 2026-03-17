@@ -43,6 +43,8 @@ enum MessageType: String, Codable {
     // relay keepalive
     case ping
     case pong
+    // peer transport hints
+    case peerTransport
 }
 
 struct Message: Codable {

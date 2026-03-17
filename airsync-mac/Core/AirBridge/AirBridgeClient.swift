@@ -22,7 +22,7 @@ class AirBridgeClient: ObservableObject {
     @Published var isPeerConnected: Bool = false
 
     // Ping mechanism
-    private var pingTimer: Timer?
+    private var pingTimer: DispatchSourceTimer?
     private var lastPongReceived: Date = .distantPast
     private let pingInterval: TimeInterval = 8.0
     private let peerTimeout: TimeInterval = 20.0
@@ -422,6 +422,10 @@ class AirBridgeClient: ObservableObject {
                     self.connectionState = .relayActive
                     self.startPingLoop()
                 }
+                // Relay can be active as a warm fallback while LAN is active; only advertise RELAY as primary when LAN is down.
+                if !WebSocketServer.shared.hasActiveLocalSession() {
+                    WebSocketServer.shared.sendPeerTransportStatus("relay")
+                }
                 return
 
             case .macInfo:
@@ -454,35 +458,45 @@ class AirBridgeClient: ObservableObject {
     }
 
     private func startPingLoop() {
-        DispatchQueue.main.async { [weak self] in
+        queue.async { [weak self] in
             guard let self = self else { return }
-            self.pingTimer?.invalidate()
-            self.lastPongReceived = Date() // Assume alive on start
-            
-            self.pingTimer = Timer.scheduledTimer(withTimeInterval: self.pingInterval, repeats: true) { [weak self] _ in
+            self.pingTimer?.cancel()
+            self.pingTimer = nil
+            self.lastPongReceived = Date()
+
+            let timer = DispatchSource.makeTimerSource(queue: self.queue)
+            timer.schedule(deadline: .now() + self.pingInterval, repeating: self.pingInterval)
+            timer.setEventHandler { [weak self] in
                 guard let self = self else { return }
-                
-                // 1. Check for timeout
+
                 let timeSinceLastPong = Date().timeIntervalSince(self.lastPongReceived)
-                if self.isPeerConnected && timeSinceLastPong > self.peerTimeout {
-                    print("[airbridge] Peer ping timeout (\(Int(timeSinceLastPong))s > \(Int(self.peerTimeout))s). Marking disconnected.")
-                    self.isPeerConnected = false
+                if timeSinceLastPong > self.peerTimeout {
+                    DispatchQueue.main.async {
+                        if self.isPeerConnected {
+                            print("[airbridge] Peer ping timeout (\(Int(timeSinceLastPong))s > \(Int(self.peerTimeout))s). Marking disconnected.")
+                            self.isPeerConnected = false
+                        }
+                    }
                 }
-                
-                // 2. Send Ping
+
                 let pingJson = "{\"type\":\"ping\"}"
                 self.sendText(pingJson)
             }
+            self.pingTimer = timer
+            timer.resume()
         }
     }
     
     func processPong() {
-        DispatchQueue.main.async {
-            if !self.isPeerConnected {
-                print("[airbridge] Peer connected via relay (pong received).")
-            }
+        queue.async { [weak self] in
+            guard let self = self else { return }
             self.lastPongReceived = Date()
-            self.isPeerConnected = true
+            DispatchQueue.main.async {
+                if !self.isPeerConnected {
+                    print("[airbridge] Peer connected via relay (pong received).")
+                }
+                self.isPeerConnected = true
+            }
         }
     }
 
@@ -533,10 +547,13 @@ class AirBridgeClient: ObservableObject {
         urlSession = nil
         
         // Clean up ping timer
-        DispatchQueue.main.async { [weak self] in
-            self?.pingTimer?.invalidate()
-            self?.pingTimer = nil
-            self?.isPeerConnected = false
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            self.pingTimer?.cancel()
+            self.pingTimer = nil
+            DispatchQueue.main.async {
+                self.isPeerConnected = false
+            }
         }
         
         print("[airbridge] Torn down: \(reason)")

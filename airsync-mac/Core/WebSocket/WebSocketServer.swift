@@ -248,6 +248,8 @@ class WebSocketServer: ObservableObject {
 
                  if becamePrimary {
                      self.lanSessionEvents.send(true)
+                     AppState.shared.updatePeerTransportHint("wifi")
+                     self.sendPeerTransportStatus("wifi")
                  }
             },
             disconnected: { [weak self] session in
@@ -266,6 +268,8 @@ class WebSocketServer: ObservableObject {
                 
                 if wasPrimary {
                     self.lanSessionEvents.send(false)
+                    AppState.shared.updatePeerTransportHint("relay")
+                    self.sendPeerTransportStatus("relay")
                     DispatchQueue.main.async {
                         AppState.shared.disconnectDevice()
                         ADBConnector.disconnectADB()
@@ -468,9 +472,19 @@ class WebSocketServer: ObservableObject {
 
     /// Sends a wake signal through the relay so Android can attempt a LAN reconnect.
     func sendWakeViaRelay() {
+        // Include current LAN endpoint hints so Android can reconnect without requiring a manual pair.
+        // getLocalIPAddress(adapterName:nil) returns a comma-separated list in auto-mode.
+        let adapter = AppState.shared.selectedNetworkAdapterName
+        let ipList = getLocalIPAddress(adapterName: adapter) ?? getLocalIPAddress(adapterName: nil) ?? ""
+        let port = Int(localPort ?? Defaults.serverPort)
+
         let messageDict: [String: Any] = [
             "type": "macWake",
-            "data": [:]
+            "data": [
+                "ips": ipList,
+                "port": port,
+                "adapter": adapter as Any
+            ]
         ]
 
         guard let jsonData = try? JSONSerialization.data(withJSONObject: messageDict),
@@ -478,6 +492,8 @@ class WebSocketServer: ObservableObject {
             print("[airbridge] Failed to encode macWake message")
             return
         }
+
+        print("[transport_sync] direction=mac->android type=macWake ips=\(ipList) port=\(port) adapter=\(adapter ?? "auto")")
 
         if let key = symmetricKey, let encrypted = encryptMessage(jsonString, using: key) {
             AirBridgeClient.shared.sendText(encrypted)

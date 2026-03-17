@@ -18,12 +18,12 @@ struct ConnectionStatusPill: View {
         }) {
             HStack(spacing: 8) {
                 // Network Connection Icon
-                Image(systemName: appState.isConnectedOverLocalNetwork ? "wifi" : "globe")
+                Image(systemName: appState.isEffectivelyLocalTransport ? "wifi" : "globe")
                     .contentTransition(.symbolEffect(.replace))
-                    .help(appState.isConnectedOverLocalNetwork ? "Local WiFi" : "AirBridge Relay")
+                    .help(appState.isEffectivelyLocalTransport ? "Local WiFi" : "AirBridge Relay")
 
                 // Peer health badge when in relay mode
-                if !appState.isConnectedOverLocalNetwork,
+                if !appState.isEffectivelyLocalTransport,
                    case .relayActive = AirBridgeClient.shared.connectionState {
                     let online = AirBridgeClient.shared.isPeerConnected
                     Text(online ? "Peer online" : "Peer offline")
@@ -78,7 +78,7 @@ struct ConnectionStatusPill: View {
             .scaleEffect(isHovered ? 1.05 : 1.0)
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appState.adbConnected)
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appState.adbConnectionMode)
-            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appState.isConnectedOverLocalNetwork)
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appState.isEffectivelyLocalTransport)
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: QuickShareManager.shared.isRunning)
         }
         .buttonStyle(.plain)
@@ -131,11 +131,11 @@ struct ConnectionPillPopover: View {
                     
                     ConnectionInfoText(
                         label: "Transport",
-                        icon: appState.isConnectedOverLocalNetwork ? "wifi" : "globe",
-                        text: appState.isConnectedOverLocalNetwork ? "Local WiFi" : "AirBridge Relay"
+                        icon: appState.isEffectivelyLocalTransport ? "wifi" : "globe",
+                        text: appState.isEffectivelyLocalTransport ? "Local WiFi" : "AirBridge Relay"
                     )
                     
-                    if appState.isConnectedOverLocalNetwork {
+                    if appState.isEffectivelyLocalTransport {
                         ConnectionInfoText(
                             label: "IP Address",
                             icon: "network",
@@ -182,7 +182,7 @@ struct ConnectionPillPopover: View {
                                 primary: false,
                                 action: {
                                     if !appState.adbConnecting {
-                                        guard WebSocketServer.shared.hasActiveLocalSession() else {
+                                        guard appState.isEffectivelyLocalTransport else {
                                             appState.adbConnectionResult = "ADB works only on local LAN connections. Relay mode is not supported for ADB."
                                             appState.manualAdbConnectionPending = false
                                             return

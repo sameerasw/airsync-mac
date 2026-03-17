@@ -77,6 +77,14 @@ extension WebSocketServer {
         sendMessage(type: "disconnectRequest", data: [:])
     }
 
+    func sendPeerTransportStatus(_ transport: String) {
+        sendMessage(type: "peerTransport", data: [
+            "source": "mac",
+            "transport": transport, // "wifi" | "relay"
+            "ts": Int(Date().timeIntervalSince1970 * 1000)
+        ])
+    }
+
     func sendQuickShareTrigger() {
         // print("[websocket] Quick Share trigger requested")
         sendMessage(type: "startQuickShare", data: [:])

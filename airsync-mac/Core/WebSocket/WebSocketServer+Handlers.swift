@@ -64,6 +64,8 @@ extension WebSocketServer {
             handleRemoteControl(message)
         case .browseData:
             handleBrowseData(message)
+        case .peerTransport:
+            handlePeerTransportUpdate(message)
         case .volumeControl, .macVolume, .toggleAppNotif, .browseLs, .wakeUpRequest, .macMediaControlResponse, .macInfo, .callControl, .ping, .pong:
             // Outgoing or unexpected messages
             break
@@ -100,6 +102,8 @@ extension WebSocketServer {
             handleMediaControlResponse(message)
         case .callControlResponse:
             handleCallControlResponse(message)
+        case .peerTransport:
+            handlePeerTransportUpdate(message)
         case .device:
             // handled upstream in WebSocketServer.handleRelayedMessageInternal
             break
@@ -631,6 +635,18 @@ extension WebSocketServer {
             default: break
             }
         }
+    }
+
+    private func handlePeerTransportUpdate(_ message: Message) {
+        guard let dict = message.data.value as? [String: Any] else { return }
+        let transport = dict["transport"] as? String
+        let source = dict["source"] as? String ?? "peer"
+
+        let oldHint = AppState.shared.peerTransportHint
+        AppState.shared.updatePeerTransportHint(transport)
+        let newHint = AppState.shared.peerTransportHint
+
+        print("[transport_sync] direction=android->mac source=\(source) transport_raw=\(transport ?? "nil") hint_old=\(oldHint.rawValue) hint_new=\(newHint.rawValue)")
     }
 
     private func handleMacMediaControlRequest(_ message: Message) {

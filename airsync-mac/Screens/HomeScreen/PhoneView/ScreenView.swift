@@ -55,11 +55,11 @@ struct ScreenView: View {
                         }
                     )
                     .disabled(
-                        !appState.isConnectedOverLocalNetwork &&
+                        !appState.isEffectivelyLocalTransport &&
                         AirBridgeClient.shared.connectionState == .relayActive
                     )
                     .help(
-                        (!appState.isConnectedOverLocalNetwork &&
+                        (!appState.isEffectivelyLocalTransport &&
                          AirBridgeClient.shared.connectionState == .relayActive)
                         ? "Quick Share is unavailable over relay connection"
                         : "Send files with Quick Share"

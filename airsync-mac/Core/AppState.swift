@@ -19,6 +19,12 @@ class AppState: ObservableObject {
         case wired
     }
 
+    enum PeerTransportHint: String {
+        case unknown
+        case wifi
+        case relay
+    }
+
     private var clipboardCancellable: AnyCancellable?
     private var lastClipboardValue: String? = nil
     private var shouldSkipSave = false
@@ -209,6 +215,30 @@ class AppState: ObservableObject {
     // Reactive snapshot of whether we currently have a direct LAN WebSocket session.
     // Updated via WebSocketServer.lanSessionEvents so UI can flip icons instantly when transport changes.
     @Published var isConnectedOverLocalNetwork: Bool = false
+    @Published var peerTransportHint: PeerTransportHint = .unknown
+
+    // Effective transport for UI/actions: explicit peer hint overrides stale local-session state.
+    var isEffectivelyLocalTransport: Bool {
+        switch peerTransportHint {
+        case .relay: return false
+        case .wifi: return true
+        case .unknown: return isConnectedOverLocalNetwork
+        }
+    }
+
+    func updatePeerTransportHint(_ transport: String?) {
+        let next: PeerTransportHint
+        switch transport?.lowercased() {
+        case "wifi": next = .wifi
+        case "relay": next = .relay
+        default: next = .unknown
+        }
+        if Thread.isMainThread {
+            peerTransportHint = next
+        } else {
+            DispatchQueue.main.async { self.peerTransportHint = next }
+        }
+    }
 
     // Audio player for ringtone
     private var ringtonePlayer: AVAudioPlayer?
@@ -704,6 +734,15 @@ class AppState: ObservableObject {
             self.notifications.removeAll()
             self.status = nil
             self.currentDeviceWallpaperBase64 = nil
+            // Preserve an accurate transport hint after device reset so UI actions
+            // (icon/Quick Share gating) do not fall back to stale LAN snapshots.
+            if self.isConnectedOverLocalNetwork {
+                self.peerTransportHint = .wifi
+            } else if AirBridgeClient.shared.connectionState == .relayActive {
+                self.peerTransportHint = .relay
+            } else {
+                self.peerTransportHint = .unknown
+            }
             
             // Clean up Quick Share state
             if QuickShareManager.shared.transferState != .idle {
