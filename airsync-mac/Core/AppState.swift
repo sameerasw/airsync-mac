@@ -736,7 +736,7 @@ class AppState: ObservableObject {
             self.currentDeviceWallpaperBase64 = nil
             // Preserve an accurate transport hint after device reset so UI actions
             // (icon/Quick Share gating) do not fall back to stale LAN snapshots.
-            if self.isConnectedOverLocalNetwork {
+            if WebSocketServer.shared.hasActiveLocalSession() {
                 self.peerTransportHint = .wifi
             } else if AirBridgeClient.shared.connectionState == .relayActive {
                 self.peerTransportHint = .relay

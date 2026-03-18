@@ -51,6 +51,7 @@ class WebSocketServer: ObservableObject {
     // Emits immediate events when the primary LAN WebSocket session starts or ends.
     // Used by AppState/UI to update LAN vs relay indicators without polling.
     internal let lanSessionEvents = PassthroughSubject<Bool, Never>() // true = started, false = ended
+    internal var lastPublishedLanState: Bool?
 
     init() {
         loadOrGenerateSymmetricKey()
@@ -169,6 +170,7 @@ class WebSocketServer: ObservableObject {
         primarySessionID = nil
         stopPing()
         lock.unlock()
+        publishLanTransportState(isActive: false, reason: "server_stop")
         DispatchQueue.main.async { AppState.shared.webSocketStatus = .stopped }
         stopNetworkMonitoring()
     }
@@ -179,6 +181,25 @@ class WebSocketServer: ObservableObject {
         defer { lock.unlock() }
         guard let pId = primarySessionID else { return false }
         return activeSessions.contains(where: { ObjectIdentifier($0) == pId })
+    }
+
+    /// Publishes LAN transport state changes in one place to keep UI and routing hints consistent.
+    internal func publishLanTransportState(isActive: Bool, reason: String) {
+        lock.lock()
+        let previous = lastPublishedLanState
+        if previous == isActive {
+            lock.unlock()
+            return
+        }
+        lastPublishedLanState = isActive
+        lock.unlock()
+
+        print("[transport_sync] direction=mac_local lan_state_old=\(previous.map(String.init) ?? "nil") lan_state_new=\(isActive) reason=\(reason)")
+        DispatchQueue.main.async {
+            self.lanSessionEvents.send(isActive)
+            AppState.shared.updatePeerTransportHint(isActive ? "wifi" : "relay")
+        }
+        sendPeerTransportStatus(isActive ? "wifi" : "relay")
     }
 
     /// Configures WebSocket routes and event callbacks.
@@ -247,9 +268,7 @@ class WebSocketServer: ObservableObject {
                 }
 
                  if becamePrimary {
-                     self.lanSessionEvents.send(true)
-                     AppState.shared.updatePeerTransportHint("wifi")
-                     self.sendPeerTransportStatus("wifi")
+                     self.publishLanTransportState(isActive: true, reason: "connected_primary_session")
                  }
             },
             disconnected: { [weak self] session in
@@ -267,9 +286,7 @@ class WebSocketServer: ObservableObject {
                 }
                 
                 if wasPrimary {
-                    self.lanSessionEvents.send(false)
-                    AppState.shared.updatePeerTransportHint("relay")
-                    self.sendPeerTransportStatus("relay")
+                    self.publishLanTransportState(isActive: false, reason: "disconnected_primary_session")
                     DispatchQueue.main.async {
                         AppState.shared.disconnectDevice()
                         ADBConnector.disconnectADB()
@@ -392,6 +409,7 @@ class WebSocketServer: ObservableObject {
         let pId = primarySessionID
         var session = pId != nil ? activeSessions.first(where: { ObjectIdentifier($0) == pId }) : nil
         var sessionCount = activeSessions.count
+        var evictedPrimaryAsStale = false
         if let s = session {
             let sid = ObjectIdentifier(s)
             let lastSeen = lastActivity[sid] ?? .distantPast
@@ -402,6 +420,7 @@ class WebSocketServer: ObservableObject {
                 lastActivity.removeValue(forKey: sid)
                 if primarySessionID == sid {
                     primarySessionID = nil
+                    evictedPrimaryAsStale = true
                 }
                 session = nil
                 sessionCount = activeSessions.count
@@ -409,6 +428,10 @@ class WebSocketServer: ObservableObject {
             }
         }
         lock.unlock()
+
+        if evictedPrimaryAsStale {
+            publishLanTransportState(isActive: false, reason: "stale_primary_evicted_during_relay_rx")
+        }
 
         if sessionCount == 0 {
             MacRemoteManager.shared.stopVolumeMonitoring()

@@ -62,11 +62,16 @@ extension WebSocketServer {
                     self.lock.lock()
                     self.activeSessions.removeAll(where: { ObjectIdentifier($0) == sessionId })
                     self.lastActivity.removeValue(forKey: sessionId)
+                    let evictedPrimary = (self.primarySessionID == sessionId)
                     if self.primarySessionID == sessionId {
                         self.primarySessionID = nil
                     }
                     let sessionCount = self.activeSessions.count
                     self.lock.unlock()
+
+                    if evictedPrimary {
+                        self.publishLanTransportState(isActive: false, reason: "stale_primary_evicted_by_ping")
+                    }
 
                     if sessionCount == 0 {
                         MacRemoteManager.shared.stopVolumeMonitoring()
