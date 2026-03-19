@@ -425,6 +425,7 @@ class AirBridgeClient: ObservableObject {
                 // Relay can be active as a warm fallback while LAN is active; only advertise RELAY as primary when LAN is down.
                 if !WebSocketServer.shared.hasActiveLocalSession() {
                     WebSocketServer.shared.sendPeerTransportStatus("relay")
+                    WebSocketServer.shared.sendTransportOffer(reason: "relay_started")
                 }
                 return
 

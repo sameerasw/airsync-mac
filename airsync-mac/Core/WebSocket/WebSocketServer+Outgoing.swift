@@ -85,6 +85,85 @@ extension WebSocketServer {
         ])
     }
 
+    func sendTransportOffer(reason: String, generation: Int64? = nil) {
+        let generationValue = generation ?? nextTransportGeneration()
+        beginTransportRound(generationValue, reason: "send_offer:\(reason)")
+        let ips = getLocalIPAddress(adapterName: AppState.shared.selectedNetworkAdapterName) ?? ""
+        let port = Int(localPort ?? Defaults.serverPort)
+        let candidates: [[String: Any]] = ips
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .map { ["ip": $0, "port": port, "type": "host"] }
+
+        sendMessage(type: "transportOffer", data: [
+            "source": "mac",
+            "generation": generationValue,
+            "candidates": candidates,
+            "port": port,
+            "ts": Int(Date().timeIntervalSince1970 * 1000),
+            "reason": reason
+        ])
+        print("[transport_sync] phase=offer source=mac generation=\(generationValue) reason=\(reason) candidates=\(candidates.count)")
+    }
+
+    func sendTransportAnswer(generation: Int64, reason: String) {
+        guard isTransportGenerationActive(generation) else {
+            print("[transport_sync] phase=answer_drop generation=\(generation) reason=inactive_generation")
+            return
+        }
+        let ips = getLocalIPAddress(adapterName: AppState.shared.selectedNetworkAdapterName) ?? ""
+        let port = Int(localPort ?? Defaults.serverPort)
+        let candidates: [[String: Any]] = ips
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .map { ["ip": $0, "port": port, "type": "host"] }
+
+        sendMessage(type: "transportAnswer", data: [
+            "source": "mac",
+            "generation": generation,
+            "candidates": candidates,
+            "port": port,
+            "ts": Int(Date().timeIntervalSince1970 * 1000),
+            "reason": reason
+        ])
+        print("[transport_sync] phase=answer source=mac generation=\(generation) reason=\(reason) candidates=\(candidates.count)")
+    }
+
+    func sendTransportCheckAck(generation: Int64, token: String) {
+        guard isTransportGenerationActive(generation) else {
+            print("[transport_sync] phase=check_ack_drop generation=\(generation) reason=inactive_generation")
+            return
+        }
+        sendMessage(type: "transportCheckAck", data: [
+            "source": "mac",
+            "generation": generation,
+            "token": token,
+            "ts": Int(Date().timeIntervalSince1970 * 1000)
+        ])
+        print("[transport_sync] phase=check_ack source=mac generation=\(generation)")
+    }
+
+    func sendTransportNominate(path: String, generation: Int64, reason: String) {
+        guard isTransportGenerationActive(generation) else {
+            print("[transport_sync] phase=nominate_drop generation=\(generation) reason=inactive_generation")
+            return
+        }
+        if path == "lan" && !isTransportGenerationValidated(generation) {
+            print("[transport_sync] phase=nominate_drop generation=\(generation) reason=not_validated")
+            return
+        }
+        sendMessage(type: "transportNominate", data: [
+            "source": "mac",
+            "generation": generation,
+            "path": path,
+            "ts": Int(Date().timeIntervalSince1970 * 1000),
+            "reason": reason
+        ])
+        print("[transport_sync] phase=nominate source=mac generation=\(generation) path=\(path) reason=\(reason)")
+    }
+
     func sendQuickShareTrigger() {
         // print("[websocket] Quick Share trigger requested")
         sendMessage(type: "startQuickShare", data: [:])

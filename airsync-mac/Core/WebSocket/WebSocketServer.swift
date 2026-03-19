@@ -47,6 +47,13 @@ class WebSocketServer: ObservableObject {
 
     internal var lastKnownAdapters: [(name: String, address: String)] = []
     internal var lastLoggedSelectedAdapter: (name: String, address: String)? = nil
+    internal let transportGenerationTTL: TimeInterval = 120
+    internal var transportGenerationCounter: Int64 = 0
+    internal var activeTransportGeneration: Int64 = 0
+    internal var activeTransportGenerationStartedAt: Date?
+    internal var validatedTransportGeneration: Int64 = 0
+    internal let lanDownDebounceSeconds: TimeInterval = 2.5
+    internal var pendingLanDownWorkItem: DispatchWorkItem?
 
     // Emits immediate events when the primary LAN WebSocket session starts or ends.
     // Used by AppState/UI to update LAN vs relay indicators without polling.
@@ -168,6 +175,8 @@ class WebSocketServer: ObservableObject {
         stopAllServers()
         activeSessions.removeAll()
         primarySessionID = nil
+        pendingLanDownWorkItem?.cancel()
+        pendingLanDownWorkItem = nil
         stopPing()
         lock.unlock()
         publishLanTransportState(isActive: false, reason: "server_stop")
@@ -185,6 +194,35 @@ class WebSocketServer: ObservableObject {
 
     /// Publishes LAN transport state changes in one place to keep UI and routing hints consistent.
     internal func publishLanTransportState(isActive: Bool, reason: String) {
+        // Debounce LAN-down transitions to avoid rapid relay<->lan oscillation when the
+        // local socket briefly stalls but recovers.
+        if !isActive {
+            lock.lock()
+            pendingLanDownWorkItem?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                if self.hasActiveLocalSession() {
+                    print("[transport_sync] direction=mac_local lan_state_debounce_skip=true reason=\(reason)")
+                    return
+                }
+                self.publishLanTransportStateNow(isActive: false, reason: "\(reason)_debounced")
+            }
+            pendingLanDownWorkItem = work
+            let debounce = lanDownDebounceSeconds
+            lock.unlock()
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + debounce, execute: work)
+            return
+        }
+
+        lock.lock()
+        pendingLanDownWorkItem?.cancel()
+        pendingLanDownWorkItem = nil
+        lock.unlock()
+        publishLanTransportStateNow(isActive: true, reason: reason)
+    }
+
+    private func publishLanTransportStateNow(isActive: Bool, reason: String) {
         lock.lock()
         let previous = lastPublishedLanState
         if previous == isActive {
@@ -200,6 +238,78 @@ class WebSocketServer: ObservableObject {
             AppState.shared.updatePeerTransportHint(isActive ? "wifi" : "relay")
         }
         sendPeerTransportStatus(isActive ? "wifi" : "relay")
+    }
+
+    internal func nextTransportGeneration() -> Int64 {
+        lock.lock()
+        transportGenerationCounter += 1
+        let value = transportGenerationCounter
+        lock.unlock()
+        return value
+    }
+
+    internal func beginTransportRound(_ generation: Int64, reason: String) {
+        guard generation > 0 else { return }
+        lock.lock()
+        activeTransportGeneration = generation
+        activeTransportGenerationStartedAt = Date()
+        validatedTransportGeneration = 0
+        lock.unlock()
+        print("[transport_sync] phase=round_begin generation=\(generation) reason=\(reason)")
+    }
+
+    internal func isTransportGenerationActive(_ generation: Int64) -> Bool {
+        guard generation > 0 else { return false }
+        lock.lock()
+        let current = activeTransportGeneration
+        let startedAt = activeTransportGenerationStartedAt
+        lock.unlock()
+        guard current == generation, let startedAt else { return false }
+        return Date().timeIntervalSince(startedAt) <= transportGenerationTTL
+    }
+
+    internal func acceptIncomingTransportGeneration(_ generation: Int64, reason: String) -> Bool {
+        guard generation > 0 else { return false }
+        lock.lock()
+        let current = activeTransportGeneration
+        let startedAt = activeTransportGenerationStartedAt
+        lock.unlock()
+
+        if current == 0 {
+            beginTransportRound(generation, reason: "incoming_init:\(reason)")
+            return true
+        }
+        if current == generation {
+            return true
+        }
+        // Compatibility bridge: older builds used timestamp-based generations.
+        // If we detect mixed formats, prefer the incoming monotonic counter round.
+        if current > 1_000_000_000_000 && generation < 1_000_000_000 {
+            beginTransportRound(generation, reason: "incoming_legacy_format_reset:\(reason)")
+            return true
+        }
+        if let startedAt, Date().timeIntervalSince(startedAt) > transportGenerationTTL, generation > current {
+            beginTransportRound(generation, reason: "incoming_rollover:\(reason)")
+            return true
+        }
+        print("[transport_sync] phase=drop_stale_generation incoming=\(generation) active=\(current) reason=\(reason)")
+        return false
+    }
+
+    internal func markTransportGenerationValidated(_ generation: Int64, reason: String) {
+        guard isTransportGenerationActive(generation) else { return }
+        lock.lock()
+        validatedTransportGeneration = generation
+        lock.unlock()
+        print("[transport_sync] phase=round_validated generation=\(generation) reason=\(reason)")
+    }
+
+    internal func isTransportGenerationValidated(_ generation: Int64) -> Bool {
+        guard generation > 0 else { return false }
+        lock.lock()
+        let validated = validatedTransportGeneration
+        lock.unlock()
+        return validated == generation
     }
 
     /// Configures WebSocket routes and event callbacks.
@@ -523,6 +633,9 @@ class WebSocketServer: ObservableObject {
         } else {
             AirBridgeClient.shared.sendText(jsonString)
         }
+
+        // Also emit a transport offer round so Android can immediately try LAN upgrade.
+        sendTransportOffer(reason: "mac_wake")
     }
 
     // MARK: - Crypto Helpers
