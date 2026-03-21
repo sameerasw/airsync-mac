@@ -19,21 +19,9 @@ struct ConnectionStatusPill: View {
             HStack(spacing: 8) {
                 // Network Connection Icon
                 Image(systemName: appState.isEffectivelyLocalTransport ? "wifi" : "globe")
+                    .foregroundStyle(connectionIconColor)
                     .contentTransition(.symbolEffect(.replace))
-                    .help(appState.isEffectivelyLocalTransport ? "Local WiFi" : "AirBridge Relay")
-
-                // Peer health badge when in relay mode
-                if !appState.isEffectivelyLocalTransport,
-                   case .relayActive = AirBridgeClient.shared.connectionState {
-                    let online = AirBridgeClient.shared.isPeerConnected
-                    Text(online ? "Peer online" : "Peer offline")
-                        .font(.system(size: 10, weight: .semibold))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background((online ? Color.green : Color.orange).opacity(0.2))
-                        .foregroundStyle(online ? Color.green : Color.orange)
-                        .clipShape(Capsule())
-                }
+                    .help(connectionIconHelp)
                 
                 if appState.isPlus {
                     if appState.adbConnecting {
@@ -108,6 +96,26 @@ struct ConnectionStatusPill: View {
         case .wireless, .none:
             return "Wireless ADB Connection"
         }
+    }
+
+    private var connectionIconColor: Color {
+        if appState.isEffectivelyLocalTransport {
+            return .primary
+        }
+        if case .relayActive = AirBridgeClient.shared.connectionState {
+            return AirBridgeClient.shared.isPeerConnected ? .green : .orange
+        }
+        return .primary
+    }
+
+    private var connectionIconHelp: String {
+        if appState.isEffectivelyLocalTransport {
+            return "Local WiFi"
+        }
+        if case .relayActive = AirBridgeClient.shared.connectionState {
+            return AirBridgeClient.shared.isPeerConnected ? "AirBridge Relay (peer online)" : "AirBridge Relay (peer offline)"
+        }
+        return "AirBridge Relay"
     }
 }
 
