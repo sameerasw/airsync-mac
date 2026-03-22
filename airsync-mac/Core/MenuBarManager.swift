@@ -153,7 +153,21 @@ class MenuBarManager: NSObject {
     func showPopover() {
         guard let button = statusItem?.button, let popover = popover else { return }
         if !popover.isShown {
+            NSApp.activate(ignoringOtherApps: true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+
+            if let popoverWindow = popover.contentViewController?.view.window {
+                popoverWindow.makeKeyAndOrderFront(nil)
+                popoverWindow.orderFrontRegardless()
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak popover] in
+                guard let popoverWindow = popover?.contentViewController?.view.window else { return }
+                NSApp.activate(ignoringOtherApps: true)
+                popoverWindow.makeKeyAndOrderFront(nil)
+                popoverWindow.orderFrontRegardless()
+            }
+
             appState.isMenubarWindowOpen = true
             
             // Monitor clicks outside to close
