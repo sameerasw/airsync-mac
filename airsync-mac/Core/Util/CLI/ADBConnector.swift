@@ -124,6 +124,57 @@ struct ADBConnector {
         connectionLock.unlock()
     }
 
+    /// Entry point used by UI actions.
+    /// Policy:
+    /// - Local LAN session: keep existing behavior (refresh ports and allow wireless/wired logic).
+    /// - Relay-only session: allow ONLY wired ADB, never wireless over relay.
+    static func requestConnectionFromCurrentTransport() {
+        DispatchQueue.main.async {
+            if AppState.shared.adbConnecting { return }
+
+            let hasLocalSession = WebSocketServer.shared.hasActiveLocalSession()
+            let isRelayOnly = !hasLocalSession && AirBridgeClient.shared.connectionState == .relayActive
+
+            // Default state for a fresh manual request
+            AppState.shared.adbConnectionResult = ""
+            AppState.shared.manualAdbConnectionPending = false
+
+            if isRelayOnly {
+                guard AppState.shared.wiredAdbEnabled else {
+                    AppState.shared.adbConnectionResult = "Relay mode allows only Wired ADB. Enable Wired ADB and connect via USB."
+                    return
+                }
+
+                AppState.shared.adbConnecting = true
+                AppState.shared.adbConnectionResult = "Searching wired ADB device (USB)..."
+
+                getWiredDeviceSerial { serial in
+                    DispatchQueue.main.async {
+                        AppState.shared.adbConnecting = false
+                        if let serial {
+                            AppState.shared.adbConnected = true
+                            AppState.shared.adbConnectionMode = .wired
+                            AppState.shared.adbConnectionResult = "Connected via Wired ADB (Serial: \(serial))"
+                        } else {
+                            AppState.shared.adbConnected = false
+                            AppState.shared.adbConnectionResult = "No wired ADB device detected. Connect USB and authorize debugging on the phone."
+                        }
+                    }
+                }
+                return
+            }
+
+            guard hasLocalSession else {
+                AppState.shared.adbConnectionResult = "No local LAN session available. Connect on LAN or use relay with Wired ADB enabled."
+                return
+            }
+
+            AppState.shared.manualAdbConnectionPending = true
+            WebSocketServer.shared.sendRefreshAdbPortsRequest()
+            AppState.shared.adbConnectionResult = "Refreshing latest ADB ports from device..."
+        }
+    }
+
     static func connectToADB(ip: String) {
         connectionLock.lock()
         if isConnecting {

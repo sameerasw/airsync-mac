@@ -190,15 +190,7 @@ struct ConnectionPillPopover: View {
                                 primary: false,
                                 action: {
                                     if !appState.adbConnecting {
-                                        guard appState.isEffectivelyLocalTransport else {
-                                            appState.adbConnectionResult = "ADB works only on local LAN connections. Relay mode is not supported for ADB."
-                                            appState.manualAdbConnectionPending = false
-                                            return
-                                        }
-                                        appState.adbConnectionResult = "" // Clear console
-                                        appState.manualAdbConnectionPending = true
-                                        WebSocketServer.shared.sendRefreshAdbPortsRequest()
-                                        appState.adbConnectionResult = "Refreshing latest ADB ports from device..."
+                                        ADBConnector.requestConnectionFromCurrentTransport()
                                     }
                                 }
                             )
