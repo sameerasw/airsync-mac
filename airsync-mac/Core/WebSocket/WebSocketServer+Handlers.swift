@@ -320,11 +320,17 @@ extension WebSocketServer {
                 let toRemove = existingPackages.subtracting(incomingPackages)
                 if !toRemove.isEmpty {
                     DispatchQueue.main.async {
+                        var pathsToRemove: [String] = []
                         for pkg in toRemove {
                             if let iconPath = AppState.shared.androidApps[pkg]?.iconUrl {
-                                try? FileManager.default.removeItem(atPath: iconPath)
+                                pathsToRemove.append(iconPath)
                             }
                             AppState.shared.androidApps.removeValue(forKey: pkg)
+                        }
+                        DispatchQueue.global(qos: .background).async {
+                            for path in pathsToRemove {
+                                try? FileManager.default.removeItem(atPath: path)
+                            }
                         }
                     }
                 }

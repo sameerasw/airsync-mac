@@ -1019,12 +1019,15 @@ class AppState: ObservableObject {
     }
 
     func saveAppsToDisk() {
+        let appsValues = Array(self.androidApps.values)
         let url = appIconsDirectory().appendingPathComponent("apps.json")
-        do {
-            let data = try JSONEncoder().encode(Array(AppState.shared.androidApps.values))
-            try data.write(to: url)
-        } catch {
-            print("[state] (apps) Error saving apps: \(error)")
+        DispatchQueue.global(qos: .background).async {
+            do {
+                let data = try JSONEncoder().encode(appsValues)
+                try data.write(to: url)
+            } catch {
+                print("[state] (apps) Error saving apps: \(error)")
+            }
         }
     }
 
