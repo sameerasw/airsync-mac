@@ -109,7 +109,7 @@ struct SettingsFeaturesView: View {
 
                 if let result = appState.adbConnectionResult {
                     VStack(alignment: .leading, spacing: 6) {
-                        ExpandableLicenseSection(title: "ADB Console", content: "[" + (UserDefaults.standard.lastADBCommand ?? "[]") + "] " + result)
+                        ExpandableLicenseSection(title: "ADB Console", content: "[" + (UserDefaults.standard.lastADBCommand ?? "[]") + "] " + result, copyable: true)
                     }
                 }
 
