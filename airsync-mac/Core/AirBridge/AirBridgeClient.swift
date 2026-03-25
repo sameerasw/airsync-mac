@@ -99,6 +99,9 @@ class AirBridgeClient: ObservableObject {
     private var connectionGeneration: Int = 0
     private var pendingReconnectWorkItem: DispatchWorkItem?
 
+    /// Tracks the nonce from the server's challenge message for HMAC computation
+    private var pendingNonce: String?
+
     private init() {
         // Observe system wake events so we can notify Android via relay and trigger a LAN reconnect.
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -158,16 +161,13 @@ class AirBridgeClient: ObservableObject {
 
     /// Tests connectivity to a relay server without affecting the live connection.
     ///
-    /// Opens an isolated WebSocket, sends a registration frame, and considers success
-    /// if both the WebSocket handshake and the send complete without error. The server
-    /// does **not** reply to a registration when the peer is not yet connected, so we
-    /// cannot wait for a response — a successful send is sufficient proof that the
-    /// relay is reachable and accepting connections.
+    /// Opens an isolated WebSocket, performs the 2-step HMAC challenge-response
+    /// handshake, and considers success if the handshake completes without error.
     ///
     /// - Parameters:
     ///   - url:       Raw relay URL (will be normalised, same as `relayServerURL`).
     ///   - pairingId: Pairing ID to register with.
-    ///   - secret:    Plain-text secret (will be SHA-256 hashed before sending).
+    ///   - secret:    Plain-text secret (will be SHA-256 hashed for HMAC).
     ///   - timeout:   Maximum seconds to wait (default 8 s).
     ///   - completion: Called on the **main thread** with `.success(())` or `.failure(error)`.
     func testConnectivity(
@@ -184,13 +184,6 @@ class AirBridgeClient: ObservableObject {
             }
             return
         }
-
-        // SHA-256 hash the secret
-        let secretHash: String = {
-            let data = Data(secret.utf8)
-            let hash = SHA256.hash(data: data)
-            return hash.compactMap { String(format: "%02x", $0) }.joined()
-        }()
 
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = timeout
@@ -218,28 +211,52 @@ class AirBridgeClient: ObservableObject {
             settle(.failure(ConnectivityError.timeout))
         }
 
-        // Build registration frame
-        let regMessage = AirBridgeRegisterMessage(
-            action: .register,
-            role: "mac",
-            pairingId: pairingId,
-            secret: secretHash,
-            localIp: "0.0.0.0",
-            port: 0
-        )
+        // Wait for challenge from server (step 1)
+        task.receive { [weak self] result in
+            guard self != nil else {
+                settle(.failure(ConnectivityError.timeout))
+                return
+            }
 
-        guard let regData = try? JSONEncoder().encode(regMessage),
-              let regJSON = String(data: regData, encoding: .utf8) else {
-            settle(.failure(ConnectivityError.encodingFailed))
-            return
-        }
+            switch result {
+            case .success(let message):
+                guard case .string(let text) = message,
+                      let data = text.data(using: .utf8),
+                      let challengeMsg = try? JSONDecoder().decode(AirBridgeChallengeMessage.self, from: data),
+                      challengeMsg.action == .challenge else {
+                    settle(.failure(ConnectivityError.encodingFailed))
+                    return
+                }
 
-        // Send registration — the server silently accepts registrations without replying until a peer connects, so a successful send = server is alive.
-        task.send(.string(regJSON)) { sendError in
-            if let sendError = sendError {
-                settle(.failure(sendError))
-            } else {
-                settle(.success(()))
+                // Compute HMAC (step 2)
+                let (sig, kInit) = Self.computeHMAC(secretRaw: secret, nonce: challengeMsg.nonce, pairingId: pairingId, role: "mac")
+
+                let regMessage = AirBridgeRegisterMessage(
+                    action: .register,
+                    role: "mac",
+                    pairingId: pairingId,
+                    sig: sig,
+                    kInit: kInit,
+                    localIp: "0.0.0.0",
+                    port: 0
+                )
+
+                guard let regData = try? JSONEncoder().encode(regMessage),
+                      let regJSON = String(data: regData, encoding: .utf8) else {
+                    settle(.failure(ConnectivityError.encodingFailed))
+                    return
+                }
+
+                task.send(.string(regJSON)) { sendError in
+                    if let sendError = sendError {
+                        settle(.failure(sendError))
+                    } else {
+                        settle(.success(()))
+                    }
+                }
+
+            case .failure(let error):
+                settle(.failure(error))
             }
         }
     }
@@ -276,6 +293,31 @@ class AirBridgeClient: ObservableObject {
         return "airbridge://\(urlEncoded)/\(pairingId)/\(secret)"
     }
 
+    // MARK: - HMAC Computation
+
+    /// Computes the HMAC-SHA256 signature and kInit for challenge-response auth.
+    /// - Parameters:
+    ///   - secretRaw: The plain-text secret from Keychain
+    ///   - nonce: The server-provided nonce from the challenge message
+    ///   - pairingId: The pairing ID
+    ///   - role: The client role ("mac" or "android")
+    /// - Returns: Tuple of (sig, kInit) both hex-encoded
+    static func computeHMAC(secretRaw: String, nonce: String, pairingId: String, role: String) -> (sig: String, kInit: String) {
+        // K = SHA256(secret_raw) as raw bytes
+        let kData = Data(SHA256.hash(data: Data(secretRaw.utf8)))
+        let key = SymmetricKey(data: kData)
+
+        // kInit = hex(K) — sent only for session bootstrap
+        let kInit = kData.map { String(format: "%02x", $0) }.joined()
+
+        // message = nonce|pairingId|role
+        let message = "\(nonce)|\(pairingId)|\(role)"
+        let mac = HMAC<SHA256>.authenticationCode(for: Data(message.utf8), using: key)
+        let sig = Data(mac).map { String(format: "%02x", $0) }.joined()
+
+        return (sig, kInit)
+    }
+
     // MARK: - Connection Logic
 
     private func connectInternal() {
@@ -300,6 +342,7 @@ class AirBridgeClient: ObservableObject {
         isManuallyDisconnected = false
         pendingReconnectWorkItem?.cancel()
         pendingReconnectWorkItem = nil
+        pendingNonce = nil
         connectionGeneration += 1
         let generation = connectionGeneration
         DispatchQueue.main.async { self.connectionState = .connecting }
@@ -312,25 +355,17 @@ class AirBridgeClient: ObservableObject {
         webSocketTask = urlSession?.webSocketTask(with: url)
         webSocketTask?.resume()
 
-        // Start receiving messages
+        // Start receiving messages — the first message should be the challenge
         receiveLoopActive = true
         startReceiving(expectedGeneration: generation)
-
-        // Send registration
-        sendRegistration(expectedGeneration: generation)
     }
 
-    /// Derives a SHA-256 hash of the raw secret so the plaintext never leaves the device.
-    /// The relay server only ever sees (and stores) this hash.
-    private func hashedSecret() -> String {
-        let data = Data(secret.utf8)
-        let hash = SHA256.hash(data: data)
-        return hash.compactMap { String(format: "%02x", $0) }.joined()
-    }
-
-    private func sendRegistration(expectedGeneration: Int) {
+    /// Handles the challenge message from the server and sends the HMAC register response.
+    private func handleChallenge(nonce: String, expectedGeneration: Int) {
         guard expectedGeneration == connectionGeneration else { return }
-        DispatchQueue.main.async { self.connectionState = .registering }
+        DispatchQueue.main.async { self.connectionState = .challengeReceived }
+
+        let (sig, kInit) = Self.computeHMAC(secretRaw: secret, nonce: nonce, pairingId: pairingId, role: "mac")
 
         let localIP = WebSocketServer.shared.getLocalIPAddress(
             adapterName: AppState.shared.selectedNetworkAdapterName
@@ -341,7 +376,8 @@ class AirBridgeClient: ObservableObject {
             action: .register,
             role: "mac",
             pairingId: pairingId,
-            secret: hashedSecret(),
+            sig: sig,
+            kInit: kInit,
             localIp: localIP,
             port: port
         )
@@ -349,6 +385,7 @@ class AirBridgeClient: ObservableObject {
         do {
             let data = try JSONEncoder().encode(regMessage)
             if let jsonString = String(data: data, encoding: .utf8) {
+                DispatchQueue.main.async { self.connectionState = .registering }
                 webSocketTask?.send(.string(jsonString)) { [weak self] error in
                     guard let self = self else { return }
                     self.queue.async {
@@ -357,7 +394,7 @@ class AirBridgeClient: ObservableObject {
                             print("[airbridge] Registration send failed: \(error.localizedDescription)")
                             self.scheduleReconnect(sourceGeneration: expectedGeneration)
                         } else {
-                            print("[airbridge] Registration sent for pairingId: \(self.pairingId)")
+                            print("[airbridge] Registration sent (HMAC auth) for pairingId: \(self.pairingId)")
                             DispatchQueue.main.async {
                                 self.connectionState = .waitingForPeer
                             }
@@ -382,7 +419,7 @@ class AirBridgeClient: ObservableObject {
                 guard self.receiveLoopActive, expectedGeneration == self.connectionGeneration else { return }
                 switch result {
                 case .success(let message):
-                    self.handleMessage(message)
+                    self.handleMessage(message, expectedGeneration: expectedGeneration)
                     // Continue receiving
                     self.startReceiving(expectedGeneration: expectedGeneration)
                 case .failure(let error):
@@ -394,10 +431,10 @@ class AirBridgeClient: ObservableObject {
         }
     }
 
-    private func handleMessage(_ message: URLSessionWebSocketTask.Message) {
+    private func handleMessage(_ message: URLSessionWebSocketTask.Message, expectedGeneration: Int) {
         switch message {
         case .string(let text):
-            handleTextMessage(text)
+            handleTextMessage(text, expectedGeneration: expectedGeneration)
         case .data(let data):
             handleBinaryMessage(data)
         @unknown default:
@@ -405,12 +442,22 @@ class AirBridgeClient: ObservableObject {
         }
     }
 
-    private func handleTextMessage(_ text: String) {
+    private func handleTextMessage(_ text: String, expectedGeneration: Int) {
         // First, try to parse as an AirBridge control message
         if let data = text.data(using: .utf8),
            let baseMsg = try? JSONDecoder().decode(AirBridgeBaseMessage.self, from: data) {
 
             switch baseMsg.action {
+            case .challenge:
+                // Server sent us a challenge — compute HMAC and respond with register
+                if let challengeMsg = try? JSONDecoder().decode(AirBridgeChallengeMessage.self, from: data) {
+                    print("[airbridge] Challenge received, computing HMAC...")
+                    handleChallenge(nonce: challengeMsg.nonce, expectedGeneration: expectedGeneration)
+                } else {
+                    print("[airbridge] Failed to decode challenge message")
+                }
+                return
+
             case .relayStarted:
                 print("[airbridge] Relay tunnel established!")
                 queue.async { [weak self] in
@@ -481,7 +528,13 @@ class AirBridgeClient: ObservableObject {
                 }
 
                 let pingJson = "{\"type\":\"ping\"}"
-                self.sendText(pingJson)
+                // Encrypt ping
+                if let key = WebSocketServer.shared.symmetricKey,
+                   let encrypted = encryptMessage(pingJson, using: key) {
+                    self.sendText(encrypted)
+                } else {
+                    self.sendText(pingJson)
+                }
             }
             self.pingTimer = timer
             timer.resume()
@@ -542,6 +595,7 @@ class AirBridgeClient: ObservableObject {
 
     private func tearDown(reason: String) {
         receiveLoopActive = false
+        pendingNonce = nil
         webSocketTask?.cancel(with: .goingAway, reason: reason.data(using: .utf8))
         webSocketTask = nil
         urlSession?.invalidateAndCancel()

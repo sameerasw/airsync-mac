@@ -12,6 +12,7 @@ import Foundation
 /// Actions supported by the AirBridge relay protocol.
 enum AirBridgeAction: String, Codable {
     case register       = "register"
+    case challenge      = "challenge"       // Server → Client: HMAC challenge with nonce
     case query          = "query"
     case macInfo        = "mac_info"
     case requestRelay   = "request_relay"
@@ -21,12 +22,13 @@ enum AirBridgeAction: String, Codable {
 
 // MARK: - Outgoing Messages
 
-/// Registration message sent by the Mac to the relay server upon connection.
+/// Registration message sent by the Mac to the relay server after receiving a challenge.
 struct AirBridgeRegisterMessage: Codable {
     let action: AirBridgeAction
     let role: String
     let pairingId: String
-    let secret: String
+    let sig: String       // HMAC-SHA256(K, nonce|pairingId|role) hex-encoded
+    let kInit: String     // SHA256(secret_raw) hex-encoded, for session bootstrap
     let localIp: String
     let port: Int
 }
@@ -37,6 +39,12 @@ struct AirBridgeRegisterMessage: Codable {
 struct AirBridgeBaseMessage: Codable {
     let action: AirBridgeAction
     let pairingId: String?
+}
+
+/// Challenge message received from the relay server immediately after WS connect.
+struct AirBridgeChallengeMessage: Codable {
+    let action: AirBridgeAction
+    let nonce: String
 }
 
 /// Error message received from the relay server.
@@ -60,6 +68,7 @@ struct AirBridgeConfigBlob: Codable {
 enum AirBridgeConnectionState: Equatable {
     case disconnected
     case connecting
+    case challengeReceived  // Received nonce, computing HMAC
     case registering
     case waitingForPeer
     case relayActive
@@ -67,12 +76,13 @@ enum AirBridgeConnectionState: Equatable {
 
     var displayName: String {
         switch self {
-        case .disconnected:     return "Disconnected"
-        case .connecting:       return "Connecting…"
-        case .registering:      return "Registering…"
-        case .waitingForPeer:   return "Waiting for Android…"
-        case .relayActive:      return "Relay Active"
-        case .failed(let err):  return "Error: \(err)"
+        case .disconnected:       return "Disconnected"
+        case .connecting:         return "Connecting…"
+        case .challengeReceived:  return "Authenticating…"
+        case .registering:        return "Registering…"
+        case .waitingForPeer:     return "Waiting for Android…"
+        case .relayActive:        return "Relay Active"
+        case .failed(let err):    return "Error: \(err)"
         }
     }
 

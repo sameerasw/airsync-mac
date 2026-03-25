@@ -190,6 +190,7 @@ struct AirBridgeSettingsView: View {
         switch airBridge.connectionState {
         case .disconnected:         return .gray
         case .connecting:           return .orange
+        case .challengeReceived:    return .orange
         case .registering:          return .orange
         case .waitingForPeer:       return .yellow
         case .relayActive:          return .green
