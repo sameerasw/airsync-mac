@@ -23,6 +23,25 @@ struct SentryInitializer {
             options.debug = true 
             
             options.sendDefaultPii = true
+            
+            options.beforeSend = { event in
+                if let exceptions = event.exceptions,
+                   let firstException = exceptions.first,
+                   firstException.type == "App Hanging" {
+                    
+                    let defaults = UserDefaults.standard
+                    let count = defaults.integer(forKey: "sentry_app_hang_count") + 1
+                    defaults.set(count, forKey: "sentry_app_hang_count")
+                    
+                    if count < 20 {
+                        return nil
+                    } else {
+                        defaults.set(0, forKey: "sentry_app_hang_count")
+                        return event
+                    }
+                }
+                return event
+            }
         }
         print("[SentryInitializer] Sentry initialized successfully.")
     }
