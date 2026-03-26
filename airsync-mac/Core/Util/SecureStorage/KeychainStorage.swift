@@ -17,7 +17,7 @@ import Security
 ///      preload read, writes within the same app session usually
 ///      succeed without an additional prompt.
 enum KeychainStorage {
-    private static let service = "com.sameerasw.airsync"
+    private static let service = "com.sameerasw.airsync.trial"
 
     /// In-memory cache: account key → raw Data value.
     private static var cache: [String: Data] = [:]

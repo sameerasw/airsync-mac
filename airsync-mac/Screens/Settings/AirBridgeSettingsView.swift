@@ -62,7 +62,7 @@ struct AirBridgeSettingsView: View {
                 HStack {
                     Label("Relay Server", systemImage: "server.rack")
                     Spacer()
-                    TextField("wss://airbridge", text: $relayURL)
+                    TextField("airbridge.yourdomain.com", text: $relayURL)
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 220)
                         .onSubmit { saveRelayURL() }

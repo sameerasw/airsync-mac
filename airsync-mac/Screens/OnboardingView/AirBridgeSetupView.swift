@@ -27,7 +27,7 @@ struct AirBridgeSetupView: View {
         VStack(spacing: 20) {
             ScrollView {
                 VStack(spacing: 20) {
-                    Text("AirBridge Relay")
+                    Text("AirBridge Relay (Beta)")
                         .font(.title)
                         .multilineTextAlignment(.center)
                         .padding()
