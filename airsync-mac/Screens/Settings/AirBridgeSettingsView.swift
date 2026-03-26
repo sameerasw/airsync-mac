@@ -20,7 +20,7 @@ struct AirBridgeSettingsView: View {
         VStack(spacing: 12) {
             // Toggle
             HStack {
-                Label("Enable AirBridge", systemImage: "antenna.radiowaves.left.and.right.circle.fill")
+                Label("Enable AirBridge (Beta)", systemImage: "antenna.radiowaves.left.and.right.circle.fill")
                 Spacer()
                 Toggle("", isOn: $appState.airBridgeEnabled)
                     .toggleStyle(.switch)

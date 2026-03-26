@@ -155,14 +155,13 @@ class WebSocketServer: ObservableObject {
         servers.removeAll()
     }
 
-    func requestRestart(reason: String, delay: TimeInterval = 0.35, port: UInt16? = nil) {
+    func requestRestart(reason _reason: String, delay: TimeInterval = 0.35, port: UInt16? = nil) {
         lock.lock()
         let restartPort = port ?? localPort ?? Defaults.serverPort
         lock.unlock()
 
         let workItem = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
-            print("[websocket] Restart requested: \(reason)")
             self.stop()
             self.start(port: restartPort)
         }
@@ -202,7 +201,6 @@ class WebSocketServer: ObservableObject {
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
                 if self.hasActiveLocalSession() {
-                    print("[transport_sync] direction=mac_local lan_state_debounce_skip=true reason=\(reason)")
                     return
                 }
                 self.publishLanTransportStateNow(isActive: false, reason: "\(reason)_debounced")
@@ -222,7 +220,7 @@ class WebSocketServer: ObservableObject {
         publishLanTransportStateNow(isActive: true, reason: reason)
     }
 
-    private func publishLanTransportStateNow(isActive: Bool, reason: String) {
+    private func publishLanTransportStateNow(isActive: Bool, reason _reason: String) {
         lock.lock()
         let previous = lastPublishedLanState
         if previous == isActive {
@@ -232,7 +230,6 @@ class WebSocketServer: ObservableObject {
         lastPublishedLanState = isActive
         lock.unlock()
 
-        print("[transport_sync] direction=mac_local lan_state_old=\(previous.map(String.init) ?? "nil") lan_state_new=\(isActive) reason=\(reason)")
         DispatchQueue.main.async {
             self.lanSessionEvents.send(isActive)
             AppState.shared.updatePeerTransportHint(isActive ? "wifi" : "relay")
@@ -248,14 +245,13 @@ class WebSocketServer: ObservableObject {
         return value
     }
 
-    internal func beginTransportRound(_ generation: Int64, reason: String) {
+    internal func beginTransportRound(_ generation: Int64, reason _reason: String) {
         guard generation > 0 else { return }
         lock.lock()
         activeTransportGeneration = generation
         activeTransportGenerationStartedAt = Date()
         validatedTransportGeneration = 0
         lock.unlock()
-        print("[transport_sync] phase=round_begin generation=\(generation) reason=\(reason)")
     }
 
     internal func isTransportGenerationActive(_ generation: Int64) -> Bool {
@@ -292,16 +288,14 @@ class WebSocketServer: ObservableObject {
             beginTransportRound(generation, reason: "incoming_rollover:\(reason)")
             return true
         }
-        print("[transport_sync] phase=drop_stale_generation incoming=\(generation) active=\(current) reason=\(reason)")
         return false
     }
 
-    internal func markTransportGenerationValidated(_ generation: Int64, reason: String) {
+    internal func markTransportGenerationValidated(_ generation: Int64, reason _reason: String) {
         guard isTransportGenerationActive(generation) else { return }
         lock.lock()
         validatedTransportGeneration = generation
         lock.unlock()
-        print("[transport_sync] phase=round_validated generation=\(generation) reason=\(reason)")
     }
 
     internal func isTransportGenerationValidated(_ generation: Int64) -> Bool {
@@ -425,16 +419,14 @@ class WebSocketServer: ObservableObject {
                 // Fallback: If decryption fails, check if it's valid plaintext JSON.
                 // This handles cases where keys are out of sync or the client sends plaintext via the secure relay tunnel.
                 if text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{") {
-                     print("[transport] RX via RELAY: Decryption failed, attempting plaintext fallback.")
                      decryptedText = text
                 } else {
-                     print("[transport] RX via RELAY dropped: decrypt failed or empty payload (len=\(text.count))")
+                     print("[transport] RX via RELAY dropped: decrypt failed or empty payload")
                      return
                 }
             }
         } else {
             // In normal operation this should not happen; relay payloads are expected encrypted.
-            print("[transport] RX via RELAY: no symmetric key on Mac, attempting plaintext parse")
             decryptedText = text
         }
 
@@ -534,7 +526,6 @@ class WebSocketServer: ObservableObject {
                 }
                 session = nil
                 sessionCount = activeSessions.count
-                print("[transport] Primary LAN session stale during relay RX; switched to relay-only routing")
             }
         }
         lock.unlock()
@@ -549,11 +540,9 @@ class WebSocketServer: ObservableObject {
         }
 
         if let session = session {
-            print("[transport] RX via RELAY routed to primary LAN session type=\(message.type.rawValue)")
             handleMessage(message, session: session)
         } else {
             // No local session — dispatch directly to AppState for non-session-critical messages
-            print("[transport] RX via RELAY handled in relay-only mode type=\(message.type.rawValue)")
             handleRelayedMessageWithoutSession(message)
         }
     }
@@ -625,8 +614,6 @@ class WebSocketServer: ObservableObject {
             print("[airbridge] Failed to encode macWake message")
             return
         }
-
-        print("[transport_sync] direction=mac->android type=macWake ips=\(ipList) port=\(port) adapter=\(adapter ?? "auto")")
 
         if let key = symmetricKey, let encrypted = encryptMessage(jsonString, using: key) {
             AirBridgeClient.shared.sendText(encrypted)

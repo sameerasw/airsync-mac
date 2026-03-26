@@ -50,11 +50,6 @@ enum KeychainStorage {
 
         guard status == errSecSuccess,
               let items = result as? [[String: Any]] else {
-            #if DEBUG
-            if status != errSecItemNotFound {
-                print("[Keychain] preload: SecItemCopyMatching returned \(status)")
-            }
-            #endif
             return
         }
 
@@ -67,9 +62,6 @@ enum KeychainStorage {
         }
         lock.unlock()
 
-        #if DEBUG
-        print("[Keychain] preload: cached \(items.count) item(s)")
-        #endif
     }
 
     // MARK: - Read

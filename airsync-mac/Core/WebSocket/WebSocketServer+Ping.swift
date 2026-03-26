@@ -58,7 +58,6 @@ extension WebSocketServer {
                 // If relay is currently active, avoid hard restart: stale local sessions
                 // can happen during transport switch (LAN <-> relay).
                 if AirBridgeClient.shared.connectionState == .relayActive {
-                    print("[websocket] Session \(sessionId) is stale while relay is active. Cleaning up stale local session only.")
                     self.lock.lock()
                     self.activeSessions.removeAll(where: { ObjectIdentifier($0) == sessionId })
                     self.lastActivity.removeValue(forKey: sessionId)

@@ -211,7 +211,6 @@ extension WebSocketServer {
                 // never through the relay transport.
                 guard self.hasActiveLocalSession() else {
                     AppState.shared.manualAdbConnectionPending = false
-                    print("[adb] Skipping ADB auto-connect: no active local session (relay-only connection)")
                     return
                 }
                 if AppState.shared.wiredAdbEnabled {
@@ -660,13 +659,7 @@ extension WebSocketServer {
     private func handlePeerTransportUpdate(_ message: Message) {
         guard let dict = message.data.value as? [String: Any] else { return }
         let transport = dict["transport"] as? String
-        let source = dict["source"] as? String ?? "peer"
-
-        let oldHint = AppState.shared.peerTransportHint
         AppState.shared.updatePeerTransportHint(transport)
-        let newHint = AppState.shared.peerTransportHint
-
-        print("[transport_sync] direction=android->mac source=\(source) transport_raw=\(transport ?? "nil") hint_old=\(oldHint.rawValue) hint_new=\(newHint.rawValue)")
     }
 
     private func isTransportMessageFresh(_ dict: [String: Any]) -> Bool {
@@ -732,15 +725,11 @@ extension WebSocketServer {
     private func handleTransportOffer(_ message: Message) {
         guard let dict = message.data.value as? [String: Any] else { return }
         let generation = dict["generation"] as? Int64 ?? Int64(dict["generation"] as? Int ?? 0)
-        let source = dict["source"] as? String ?? "peer"
-        print("[transport_sync] phase=offer_rx source=\(source) generation=\(generation)")
         guard isTransportMessageFresh(dict) else {
-            print("[transport_sync] phase=offer_drop generation=\(generation) reason=stale_ts")
             return
         }
         let candidateEval = evaluateTransportCandidates(dict)
         guard candidateEval.isValid else {
-            print("[transport_sync] phase=offer_drop generation=\(generation) reason=invalid_candidates details=\(candidateEval.reason)")
             return
         }
         guard acceptIncomingTransportGeneration(generation, reason: "offer_rx") else {
@@ -752,15 +741,11 @@ extension WebSocketServer {
     private func handleTransportAnswer(_ message: Message) {
         guard let dict = message.data.value as? [String: Any] else { return }
         let generation = dict["generation"] as? Int64 ?? Int64(dict["generation"] as? Int ?? 0)
-        let source = dict["source"] as? String ?? "peer"
-        print("[transport_sync] phase=answer_rx source=\(source) generation=\(generation)")
         guard isTransportMessageFresh(dict) else {
-            print("[transport_sync] phase=answer_drop generation=\(generation) reason=stale_ts")
             return
         }
         let candidateEval = evaluateTransportCandidates(dict)
         guard candidateEval.isValid else {
-            print("[transport_sync] phase=answer_drop generation=\(generation) reason=invalid_candidates details=\(candidateEval.reason)")
             return
         }
         _ = acceptIncomingTransportGeneration(generation, reason: "answer_rx")
@@ -777,10 +762,7 @@ extension WebSocketServer {
     private func handleTransportCheckAck(_ message: Message) {
         guard let dict = message.data.value as? [String: Any] else { return }
         let generation = dict["generation"] as? Int64 ?? Int64(dict["generation"] as? Int ?? 0)
-        let source = dict["source"] as? String ?? "peer"
-        print("[transport_sync] phase=check_ack_rx source=\(source) generation=\(generation)")
         guard isTransportGenerationActive(generation), hasActiveLocalSession() else {
-            print("[transport_sync] phase=check_ack_drop source=\(source) generation=\(generation) reason=inactive_or_no_lan")
             return
         }
         markTransportGenerationValidated(generation, reason: "check_ack_rx")
@@ -791,16 +773,12 @@ extension WebSocketServer {
     private func handleTransportNominate(_ message: Message) {
         guard let dict = message.data.value as? [String: Any] else { return }
         let generation = dict["generation"] as? Int64 ?? Int64(dict["generation"] as? Int ?? 0)
-        let source = dict["source"] as? String ?? "peer"
         let path = dict["path"] as? String ?? "relay"
-        print("[transport_sync] phase=nominate_rx source=\(source) generation=\(generation) path=\(path)")
         guard isTransportGenerationActive(generation) else {
-            print("[transport_sync] phase=nominate_drop source=\(source) generation=\(generation) reason=inactive_generation")
             return
         }
         if path == "lan" {
             guard hasActiveLocalSession(), isTransportGenerationValidated(generation) else {
-                print("[transport_sync] phase=nominate_drop source=\(source) generation=\(generation) reason=lan_not_validated")
                 return
             }
             AppState.shared.updatePeerTransportHint("wifi")

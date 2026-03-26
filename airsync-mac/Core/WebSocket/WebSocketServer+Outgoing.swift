@@ -8,14 +8,6 @@ import Swifter
 import CryptoKit
 
 extension WebSocketServer {
-    private func messageTypeForLog(_ message: String) -> String {
-        guard let data = message.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let type = obj["type"] as? String else {
-            return "non_json"
-        }
-        return type
-    }
     
     // MARK: - Sending Helpers
 
@@ -32,7 +24,6 @@ extension WebSocketServer {
         let session = pId != nil ? activeSessions.first(where: { ObjectIdentifier($0) == pId }) : nil
         let key = symmetricKey
         lock.unlock()
-        let type = messageTypeForLog(message)
 
         let outgoing: String
         if let key = key, let encrypted = encryptMessage(message, using: key) {
@@ -42,16 +33,9 @@ extension WebSocketServer {
         }
 
         if let session = session {
-            // Local session available — send directly
-            print("[transport] TX via LAN type=\(type)")
             session.writeText(outgoing)
         } else if AirBridgeClient.shared.connectionState == .relayActive {
-            // No local session, but AirBridge relay is active — tunnel through relay
-            print("[transport] TX via RELAY type=\(type)")
             AirBridgeClient.shared.sendText(outgoing)
-        } else {
-            // No connection available at all
-            print("[transport] DROP TX type=\(type) no local session or relay")
         }
     }
 
@@ -104,12 +88,10 @@ extension WebSocketServer {
             "ts": Int(Date().timeIntervalSince1970 * 1000),
             "reason": reason
         ])
-        print("[transport_sync] phase=offer source=mac generation=\(generationValue) reason=\(reason) candidates=\(candidates.count)")
     }
 
     func sendTransportAnswer(generation: Int64, reason: String) {
         guard isTransportGenerationActive(generation) else {
-            print("[transport_sync] phase=answer_drop generation=\(generation) reason=inactive_generation")
             return
         }
         let ips = getLocalIPAddress(adapterName: AppState.shared.selectedNetworkAdapterName) ?? ""
@@ -128,12 +110,10 @@ extension WebSocketServer {
             "ts": Int(Date().timeIntervalSince1970 * 1000),
             "reason": reason
         ])
-        print("[transport_sync] phase=answer source=mac generation=\(generation) reason=\(reason) candidates=\(candidates.count)")
     }
 
     func sendTransportCheckAck(generation: Int64, token: String) {
         guard isTransportGenerationActive(generation) else {
-            print("[transport_sync] phase=check_ack_drop generation=\(generation) reason=inactive_generation")
             return
         }
         sendMessage(type: "transportCheckAck", data: [
@@ -142,16 +122,13 @@ extension WebSocketServer {
             "token": token,
             "ts": Int(Date().timeIntervalSince1970 * 1000)
         ])
-        print("[transport_sync] phase=check_ack source=mac generation=\(generation)")
     }
 
     func sendTransportNominate(path: String, generation: Int64, reason: String) {
         guard isTransportGenerationActive(generation) else {
-            print("[transport_sync] phase=nominate_drop generation=\(generation) reason=inactive_generation")
             return
         }
         if path == "lan" && !isTransportGenerationValidated(generation) {
-            print("[transport_sync] phase=nominate_drop generation=\(generation) reason=not_validated")
             return
         }
         sendMessage(type: "transportNominate", data: [
@@ -161,7 +138,6 @@ extension WebSocketServer {
             "ts": Int(Date().timeIntervalSince1970 * 1000),
             "reason": reason
         ])
-        print("[transport_sync] phase=nominate source=mac generation=\(generation) path=\(path) reason=\(reason)")
     }
 
     func sendQuickShareTrigger() {
@@ -171,7 +147,6 @@ extension WebSocketServer {
 
     func sendRefreshAdbPortsRequest() {
         guard hasActiveLocalSession() else {
-            print("[adb] Skipping refreshAdbPorts: no active local session")
             return
         }
         sendMessage(type: "refreshAdbPorts", data: [:])

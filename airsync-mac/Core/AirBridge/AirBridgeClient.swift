@@ -322,7 +322,6 @@ class AirBridgeClient: ObservableObject {
 
     private func connectInternal() {
         guard !relayServerURL.isEmpty else {
-            print("[airbridge] Relay URL is empty, skipping connection")
             DispatchQueue.main.async { self.connectionState = .disconnected }
             return
         }
@@ -334,7 +333,7 @@ class AirBridgeClient: ObservableObject {
         let normalizedURL = normalizeRelayURL(relayServerURL)
 
         guard let url = URL(string: normalizedURL) else {
-            print("[airbridge] Invalid relay URL: \(normalizedURL)")
+            print("[airbridge] Invalid relay URL")
             DispatchQueue.main.async { self.connectionState = .failed(error: "Invalid URL") }
             return
         }
@@ -394,7 +393,6 @@ class AirBridgeClient: ObservableObject {
                             print("[airbridge] Registration send failed: \(error.localizedDescription)")
                             self.scheduleReconnect(sourceGeneration: expectedGeneration)
                         } else {
-                            print("[airbridge] Registration sent (HMAC auth) for pairingId: \(self.pairingId)")
                             DispatchQueue.main.async {
                                 self.connectionState = .waitingForPeer
                             }
@@ -451,7 +449,6 @@ class AirBridgeClient: ObservableObject {
             case .challenge:
                 // Server sent us a challenge — compute HMAC and respond with register
                 if let challengeMsg = try? JSONDecoder().decode(AirBridgeChallengeMessage.self, from: data) {
-                    print("[airbridge] Challenge received, computing HMAC...")
                     handleChallenge(nonce: challengeMsg.nonce, expectedGeneration: expectedGeneration)
                 } else {
                     print("[airbridge] Failed to decode challenge message")
@@ -496,13 +493,12 @@ class AirBridgeClient: ObservableObject {
 
         // If it's not a control message, it's a relayed message from Android.
         // Forward it to the local WebSocket handler as if it came from a LAN client.
-        print("[airbridge] Relaying text message from Android (\(text.count) chars)")
         WebSocketServer.shared.handleRelayedMessage(text)
     }
 
     private func handleBinaryMessage(_ data: Data) {
         // Binary data from the relay is currently unused in the AirSync protocol
-        print("[airbridge] Received binary message from Android (\(data.count) bytes) - Ignored")
+        _ = data
     }
 
     private func startPingLoop() {
@@ -546,9 +542,6 @@ class AirBridgeClient: ObservableObject {
             guard let self = self else { return }
             self.lastPongReceived = Date()
             DispatchQueue.main.async {
-                if !self.isPeerConnected {
-                    print("[airbridge] Peer connected via relay (pong received).")
-                }
                 self.isPeerConnected = true
             }
         }
@@ -569,7 +562,6 @@ class AirBridgeClient: ObservableObject {
     private func scheduleReconnect(sourceGeneration: Int) {
         guard !isManuallyDisconnected else { return }
         guard sourceGeneration == connectionGeneration else {
-            print("[airbridge] Skipping reconnect from stale session \(sourceGeneration)")
             return
         }
 
@@ -578,7 +570,6 @@ class AirBridgeClient: ObservableObject {
         let delay = min(pow(2.0, Double(reconnectAttempt)), maxReconnectDelay)
         reconnectAttempt += 1
 
-        print("[airbridge] Reconnecting in \(delay)s (attempt \(reconnectAttempt))")
         DispatchQueue.main.async {
             self.connectionState = .connecting
         }
@@ -610,8 +601,6 @@ class AirBridgeClient: ObservableObject {
                 self.isPeerConnected = false
             }
         }
-        
-        print("[airbridge] Torn down: \(reason)")
     }
 
     // MARK: - Helpers
@@ -632,7 +621,7 @@ class AirBridgeClient: ObservableObject {
         // If user explicitly provided ws://, only allow it for private/localhost hosts.
         // Upgrade to wss:// for public hosts to prevent cleartext transport over the internet.
         if url.hasPrefix("ws://") && !url.hasPrefix("wss://") && !isPrivate {
-            print("[airbridge] SECURITY: Upgrading ws:// to wss:// for public host: \(host)")
+            print("[airbridge] SECURITY: Upgrading ws:// to wss:// for public host")
             url = "wss://" + String(url.dropFirst(5))
         }
 
