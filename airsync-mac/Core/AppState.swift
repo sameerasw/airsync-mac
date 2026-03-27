@@ -52,6 +52,7 @@ class AppState: ObservableObject {
         self.alwaysOpenWindow = UserDefaults.standard.bool(forKey: "alwaysOpenWindow")
         self.notificationSound = UserDefaults.standard.string(forKey: "notificationSound") ?? "default"
         self.dismissNotif = UserDefaults.standard.bool(forKey: "dismissNotif")
+        self.silenceAllNotifications = UserDefaults.standard.bool(forKey: "silenceAllNotifications")
         
         self.autoAcceptQuickShare = UserDefaults.standard.bool(forKey: "autoAcceptQuickShare")
         self.quickShareEnabled = UserDefaults.standard.object(forKey: "quickShareEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "quickShareEnabled")
@@ -305,6 +306,16 @@ class AppState: ObservableObject {
     @Published var dismissNotif: Bool {
         didSet {
             UserDefaults.standard.set(dismissNotif, forKey: "dismissNotif")
+        }
+    }
+
+    @Published var silenceAllNotifications: Bool {
+        didSet {
+            UserDefaults.standard.set(silenceAllNotifications, forKey: "silenceAllNotifications")
+            if silenceAllNotifications {
+                UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+                UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+            }
         }
     }
 
@@ -571,6 +582,10 @@ class AppState: ObservableObject {
     }
 
     private func postCallSystemNotification(_ callEvent: CallEvent) {
+        if silenceAllNotifications {
+            return
+        }
+
         let center = UNUserNotificationCenter.current()
         let content = UNMutableNotificationContent()
 
@@ -786,6 +801,10 @@ class AppState: ObservableObject {
         extraActions: [UNNotificationAction] = [],
         extraUserInfo: [String: Any] = [:]
     ) {
+        if silenceAllNotifications {
+            return
+        }
+
         let center = UNUserNotificationCenter.current()
         let content = UNMutableNotificationContent()
         content.title = "\(appName) - \(title)"
