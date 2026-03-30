@@ -13,6 +13,7 @@ internal import SwiftImageReadWrite
 enum OnboardingStep {
     case welcome
     case installAndroid
+    case airBridgeSetup
     case mirroringSetup
     case plusFeatures
     case done
@@ -58,7 +59,13 @@ struct OnboardingView: View {
                         WelcomeView(onNext: { withAnimation(.easeInOut(duration: 0.75)) { currentStep = .installAndroid } })
 
                     case .installAndroid:
-                        InstallAndroidView(onNext: { withAnimation(.easeInOut(duration: 0.75)) { currentStep = .mirroringSetup } })
+                        InstallAndroidView(onNext: { withAnimation(.easeInOut(duration: 0.75)) { currentStep = .airBridgeSetup } })
+
+                    case .airBridgeSetup:
+                        AirBridgeSetupView(
+                            onNext: { withAnimation(.easeInOut(duration: 0.75)) { currentStep = .mirroringSetup } },
+                            onSkip: { withAnimation(.easeInOut(duration: 0.75)) { currentStep = .mirroringSetup } }
+                        )
 
                     case .mirroringSetup:
                         MirroringSetupView(

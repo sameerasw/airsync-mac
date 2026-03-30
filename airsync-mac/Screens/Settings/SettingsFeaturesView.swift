@@ -59,15 +59,18 @@ struct SettingsFeaturesView: View {
                                 systemImage: appState.adbConnecting ? "hourglass" : "play.circle",
                                 action: {
                                     if !appState.adbConnecting {
-                                        appState.adbConnectionResult = "" // Clear console
-                                        appState.manualAdbConnectionPending = true
-                                        WebSocketServer.shared.sendRefreshAdbPortsRequest()
-                                        appState.adbConnectionResult = "Refreshing latest ADB ports from device..."
+                                        ADBConnector.requestConnectionFromCurrentTransport()
                                     }
                                 }
                             )
                             .disabled(
-                                appState.device == nil || appState.adbConnecting || !AppState.shared.isPlus
+                                appState.device == nil ||
+                                appState.adbConnecting ||
+                                !AppState.shared.isPlus ||
+                                (
+                                    !WebSocketServer.shared.hasActiveLocalSession() &&
+                                    !(AirBridgeClient.shared.connectionState == .relayActive && appState.wiredAdbEnabled)
+                                )
                             )
                         }
 

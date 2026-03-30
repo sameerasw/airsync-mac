@@ -18,9 +18,10 @@ struct ConnectionStatusPill: View {
         }) {
             HStack(spacing: 8) {
                 // Network Connection Icon
-                Image(systemName: appState.isConnectedOverLocalNetwork ? "wifi" : "globe")
+                Image(systemName: appState.isEffectivelyLocalTransport ? "wifi" : "globe")
+                    .foregroundStyle(connectionIconColor)
                     .contentTransition(.symbolEffect(.replace))
-                    .help(appState.isConnectedOverLocalNetwork ? "Local WiFi" : "Extended Connection (Tailscale)")
+                    .help(connectionIconHelp)
                 
                 if appState.isPlus {
                     if appState.adbConnecting {
@@ -65,7 +66,7 @@ struct ConnectionStatusPill: View {
             .scaleEffect(isHovered ? 1.05 : 1.0)
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appState.adbConnected)
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appState.adbConnectionMode)
-            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appState.isConnectedOverLocalNetwork)
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appState.isEffectivelyLocalTransport)
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: QuickShareManager.shared.isRunning)
         }
         .buttonStyle(.plain)
@@ -96,6 +97,26 @@ struct ConnectionStatusPill: View {
             return "Wireless ADB Connection"
         }
     }
+
+    private var connectionIconColor: Color {
+        if appState.isEffectivelyLocalTransport {
+            return .primary
+        }
+        if case .relayActive = AirBridgeClient.shared.connectionState {
+            return AirBridgeClient.shared.isPeerConnected ? .green : .orange
+        }
+        return .primary
+    }
+
+    private var connectionIconHelp: String {
+        if appState.isEffectivelyLocalTransport {
+            return "Local WiFi"
+        }
+        if case .relayActive = AirBridgeClient.shared.connectionState {
+            return AirBridgeClient.shared.isPeerConnected ? "AirBridge Relay (peer online)" : "AirBridge Relay (peer offline)"
+        }
+        return "AirBridge Relay"
+    }
 }
 
 struct ConnectionPillPopover: View {
@@ -117,11 +138,19 @@ struct ConnectionPillPopover: View {
                     )
                     
                     ConnectionInfoText(
-                        label: "IP Address",
-                        icon: "wifi",
-                        text: currentIPAddress,
-                        activeIp: appState.activeMacIp
+                        label: "Transport",
+                        icon: appState.isEffectivelyLocalTransport ? "wifi" : "globe",
+                        text: appState.isEffectivelyLocalTransport ? "Local WiFi" : "AirBridge Relay"
                     )
+                    
+                    if appState.isEffectivelyLocalTransport {
+                        ConnectionInfoText(
+                            label: "IP Address",
+                            icon: "network",
+                            text: currentIPAddress,
+                            activeIp: appState.activeMacIp
+                        )
+                    }
                     
                     if appState.isPlus && appState.adbConnected {
                         ConnectionInfoText(
@@ -161,10 +190,7 @@ struct ConnectionPillPopover: View {
                                 primary: false,
                                 action: {
                                     if !appState.adbConnecting {
-                                        appState.adbConnectionResult = "" // Clear console
-                                        appState.manualAdbConnectionPending = true
-                                        WebSocketServer.shared.sendRefreshAdbPortsRequest()
-                                        appState.adbConnectionResult = "Refreshing latest ADB ports from device..."
+                                        ADBConnector.requestConnectionFromCurrentTransport()
                                     }
                                 }
                             )

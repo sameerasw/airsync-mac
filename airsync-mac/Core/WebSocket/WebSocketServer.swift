@@ -47,6 +47,18 @@ class WebSocketServer: ObservableObject {
 
     internal var lastKnownAdapters: [(name: String, address: String)] = []
     internal var lastLoggedSelectedAdapter: (name: String, address: String)? = nil
+    internal let transportGenerationTTL: TimeInterval = 120
+    internal var transportGenerationCounter: Int64 = 0
+    internal var activeTransportGeneration: Int64 = 0
+    internal var activeTransportGenerationStartedAt: Date?
+    internal var validatedTransportGeneration: Int64 = 0
+    internal let lanDownDebounceSeconds: TimeInterval = 2.5
+    internal var pendingLanDownWorkItem: DispatchWorkItem?
+
+    // Emits immediate events when the primary LAN WebSocket session starts or ends.
+    // Used by AppState/UI to update LAN vs relay indicators without polling.
+    internal let lanSessionEvents = PassthroughSubject<Bool, Never>() // true = started, false = ended
+    internal var lastPublishedLanState: Bool?
 
     init() {
         loadOrGenerateSymmetricKey()
@@ -143,15 +155,155 @@ class WebSocketServer: ObservableObject {
         servers.removeAll()
     }
 
+    func requestRestart(reason _reason: String, delay: TimeInterval = 0.35, port: UInt16? = nil) {
+        lock.lock()
+        let restartPort = port ?? localPort ?? Defaults.serverPort
+        lock.unlock()
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.stop()
+            self.start(port: restartPort)
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
     func stop() {
         lock.lock()
         stopAllServers()
         activeSessions.removeAll()
         primarySessionID = nil
+        pendingLanDownWorkItem?.cancel()
+        pendingLanDownWorkItem = nil
         stopPing()
         lock.unlock()
+        publishLanTransportState(isActive: false, reason: "server_stop")
         DispatchQueue.main.async { AppState.shared.webSocketStatus = .stopped }
         stopNetworkMonitoring()
+    }
+
+    /// Returns true only when a primary LAN WebSocket session is currently active.
+    func hasActiveLocalSession() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let pId = primarySessionID else { return false }
+        return activeSessions.contains(where: { ObjectIdentifier($0) == pId })
+    }
+
+    /// Publishes LAN transport state changes in one place to keep UI and routing hints consistent.
+    internal func publishLanTransportState(isActive: Bool, reason: String) {
+        // Debounce LAN-down transitions to avoid rapid relay<->lan oscillation when the
+        // local socket briefly stalls but recovers.
+        if !isActive {
+            lock.lock()
+            pendingLanDownWorkItem?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                if self.hasActiveLocalSession() {
+                    return
+                }
+                self.publishLanTransportStateNow(isActive: false, reason: "\(reason)_debounced")
+            }
+            pendingLanDownWorkItem = work
+            let debounce = lanDownDebounceSeconds
+            lock.unlock()
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + debounce, execute: work)
+            return
+        }
+
+        lock.lock()
+        pendingLanDownWorkItem?.cancel()
+        pendingLanDownWorkItem = nil
+        lock.unlock()
+        publishLanTransportStateNow(isActive: true, reason: reason)
+    }
+
+    private func publishLanTransportStateNow(isActive: Bool, reason _reason: String) {
+        lock.lock()
+        let previous = lastPublishedLanState
+        if previous == isActive {
+            lock.unlock()
+            return
+        }
+        lastPublishedLanState = isActive
+        lock.unlock()
+
+        DispatchQueue.main.async {
+            self.lanSessionEvents.send(isActive)
+            AppState.shared.updatePeerTransportHint(isActive ? "wifi" : "relay")
+        }
+        sendPeerTransportStatus(isActive ? "wifi" : "relay")
+    }
+
+    internal func nextTransportGeneration() -> Int64 {
+        lock.lock()
+        transportGenerationCounter += 1
+        let value = transportGenerationCounter
+        lock.unlock()
+        return value
+    }
+
+    internal func beginTransportRound(_ generation: Int64, reason _reason: String) {
+        guard generation > 0 else { return }
+        lock.lock()
+        activeTransportGeneration = generation
+        activeTransportGenerationStartedAt = Date()
+        validatedTransportGeneration = 0
+        lock.unlock()
+    }
+
+    internal func isTransportGenerationActive(_ generation: Int64) -> Bool {
+        guard generation > 0 else { return false }
+        lock.lock()
+        let current = activeTransportGeneration
+        let startedAt = activeTransportGenerationStartedAt
+        lock.unlock()
+        guard current == generation, let startedAt else { return false }
+        return Date().timeIntervalSince(startedAt) <= transportGenerationTTL
+    }
+
+    internal func acceptIncomingTransportGeneration(_ generation: Int64, reason: String) -> Bool {
+        guard generation > 0 else { return false }
+        lock.lock()
+        let current = activeTransportGeneration
+        let startedAt = activeTransportGenerationStartedAt
+        lock.unlock()
+
+        if current == 0 {
+            beginTransportRound(generation, reason: "incoming_init:\(reason)")
+            return true
+        }
+        if current == generation {
+            return true
+        }
+        // Compatibility bridge: older builds used timestamp-based generations.
+        // If we detect mixed formats, prefer the incoming monotonic counter round.
+        if current > 1_000_000_000_000 && generation < 1_000_000_000 {
+            beginTransportRound(generation, reason: "incoming_legacy_format_reset:\(reason)")
+            return true
+        }
+        if let startedAt, Date().timeIntervalSince(startedAt) > transportGenerationTTL, generation > current {
+            beginTransportRound(generation, reason: "incoming_rollover:\(reason)")
+            return true
+        }
+        return false
+    }
+
+    internal func markTransportGenerationValidated(_ generation: Int64, reason _reason: String) {
+        guard isTransportGenerationActive(generation) else { return }
+        lock.lock()
+        validatedTransportGeneration = generation
+        lock.unlock()
+    }
+
+    internal func isTransportGenerationValidated(_ generation: Int64) -> Bool {
+        guard generation > 0 else { return false }
+        lock.lock()
+        let validated = validatedTransportGeneration
+        lock.unlock()
+        return validated == generation
     }
 
     /// Configures WebSocket routes and event callbacks.
@@ -203,17 +355,25 @@ class WebSocketServer: ObservableObject {
                 self.lastActivity[sessionId] = Date()
                 self.activeSessions.append(session)
                 let sessionCount = self.activeSessions.count
+                let becamePrimary: Bool
                 self.lock.unlock()
                 print("[websocket] Session \(sessionId) connected.")
                 
                 if self.primarySessionID == nil {
                     self.primarySessionID = sessionId
+                    becamePrimary = true
+                } else {
+                    becamePrimary = false
                 }
                 
                 if sessionCount == 1 {
                     MacRemoteManager.shared.startVolumeMonitoring()
                     self.startPing()
                 }
+
+                 if becamePrimary {
+                     self.publishLanTransportState(isActive: true, reason: "connected_primary_session")
+                 }
             },
             disconnected: { [weak self] session in
                 guard let self = self else { return }
@@ -230,16 +390,239 @@ class WebSocketServer: ObservableObject {
                 }
                 
                 if wasPrimary {
+                    self.publishLanTransportState(isActive: false, reason: "disconnected_primary_session")
                     DispatchQueue.main.async {
                         AppState.shared.disconnectDevice()
                         ADBConnector.disconnectADB()
                         AppState.shared.adbConnected = false
-                        self.stop()
-                        self.start(port: self.localPort ?? Defaults.serverPort)
+                        self.requestRestart(
+                            reason: "Primary session disconnected",
+                            delay: 0.35,
+                            port: self.localPort ?? Defaults.serverPort
+                        )
                     }
                 }
             }
         )
+    }
+
+    // MARK: - AirBridge Relay Integration
+
+    /// Handles a text message received from the AirBridge relay (Android → Relay → Mac).
+    /// Decrypts and routes it through the same pipeline as local WebSocket messages.
+    func handleRelayedMessage(_ text: String) {
+        let decryptedText: String
+        if let key = self.symmetricKey {
+            if let dec = decryptMessage(text, using: key), !dec.isEmpty {
+                decryptedText = dec
+            } else {
+                // Fallback: If decryption fails, check if it's valid plaintext JSON.
+                // This handles cases where keys are out of sync or the client sends plaintext via the secure relay tunnel.
+                if text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{") {
+                     decryptedText = text
+                } else {
+                     print("[transport] RX via RELAY dropped: decrypt failed or empty payload")
+                     return
+                }
+            }
+        } else {
+            // In normal operation this should not happen; relay payloads are expected encrypted.
+            decryptedText = text
+        }
+
+        guard let data = decryptedText.data(using: .utf8) else {
+            print("[transport] RX via RELAY dropped: UTF-8 conversion failed")
+            return
+        }
+
+        // Accept keepalive packets that omit "data" (e.g. {"type":"pong"}).
+        if let jsonObj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let type = jsonObj["type"] as? String {
+            if type == MessageType.pong.rawValue {
+                AirBridgeClient.shared.processPong()
+                return
+            }
+            if type == MessageType.ping.rawValue {
+                let pongPayload = #"{"type":"pong"}"#
+                if let key = symmetricKey, let encrypted = encryptMessage(pongPayload, using: key) {
+                    AirBridgeClient.shared.sendText(encrypted)
+                } else {
+                    AirBridgeClient.shared.sendText(pongPayload)
+                }
+                return
+            }
+        }
+
+        do {
+            let message = try JSONDecoder().decode(Message.self, from: data)
+
+            // Handle Pong for AirBridge keepalive
+            if message.type == .pong {
+                AirBridgeClient.shared.processPong()
+                return
+            }
+
+            DispatchQueue.main.async {
+                self.handleRelayedMessageInternal(message)
+            }
+        } catch {
+            print("[airbridge] Failed to decode relayed message: \(error)")
+        }
+    }
+
+
+
+    /// Internal router for relayed messages.
+    /// Uses an existing local session when available, otherwise handles messages directly.
+    private func handleRelayedMessageInternal(_ message: Message) {
+        // For the device handshake, we handle it entirely within the relay path
+        if message.type == .device {
+            if let dict = message.data.value as? [String: Any],
+               let name = dict["name"] as? String,
+               let ip = dict["ipAddress"] as? String,
+               let port = dict["port"] as? Int {
+
+                let version = dict["version"] as? String ?? "2.0.0"
+                let adbPorts = dict["adbPorts"] as? [String] ?? []
+
+                DispatchQueue.main.async {
+                    AppState.shared.device = Device(
+                        name: name,
+                        ipAddress: ip,
+                        port: port,
+                        version: version,
+                        adbPorts: adbPorts
+                    )
+                }
+
+                if let base64 = dict["wallpaper"] as? String {
+                    DispatchQueue.main.async {
+                        AppState.shared.currentDeviceWallpaperBase64 = base64
+                    }
+                }
+
+                sendMacInfoViaRelay()
+            }
+            return
+        }
+
+        // For all other messages, delegate to handleMessage only if a primary local session exists
+        lock.lock()
+        let pId = primarySessionID
+        var session = pId != nil ? activeSessions.first(where: { ObjectIdentifier($0) == pId }) : nil
+        var sessionCount = activeSessions.count
+        var evictedPrimaryAsStale = false
+        if let s = session {
+            let sid = ObjectIdentifier(s)
+            let lastSeen = lastActivity[sid] ?? .distantPast
+            let stale = Date().timeIntervalSince(lastSeen) > activityTimeout
+            if stale {
+                // Immediate stale eviction: avoids routing relay traffic to a dead local socket.
+                activeSessions.removeAll(where: { ObjectIdentifier($0) == sid })
+                lastActivity.removeValue(forKey: sid)
+                if primarySessionID == sid {
+                    primarySessionID = nil
+                    evictedPrimaryAsStale = true
+                }
+                session = nil
+                sessionCount = activeSessions.count
+            }
+        }
+        lock.unlock()
+
+        if evictedPrimaryAsStale {
+            publishLanTransportState(isActive: false, reason: "stale_primary_evicted_during_relay_rx")
+        }
+
+        if sessionCount == 0 {
+            MacRemoteManager.shared.stopVolumeMonitoring()
+            stopPing()
+        }
+
+        if let session = session {
+            handleMessage(message, session: session)
+        } else {
+            // No local session — dispatch directly to AppState for non-session-critical messages
+            handleRelayedMessageWithoutSession(message)
+        }
+    }
+
+    /// Handles relay messages when no local WebSocket session exists.
+    /// This covers the cases where the Mac is connected ONLY via the relay.
+    private func handleRelayedMessageWithoutSession(_ message: Message) {
+        handleRelayOnlyMessage(message)
+    }
+
+    /// Sends macInfo response back through the relay instead of the local session.
+    private func sendMacInfoViaRelay() {
+        let macName = AppState.shared.myDevice?.name ?? (Host.current().localizedName ?? "My Mac")
+        let isPlusSubscription = AppState.shared.isPlus
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
+
+        // Enhanced device info matching standard LAN handshake
+        let modelId = DeviceTypeUtil.modelIdentifier()
+        let categoryTypeRaw = DeviceTypeUtil.deviceTypeDescription()
+        let exactDeviceNameRaw = DeviceTypeUtil.deviceFullDescription()
+        let categoryType = categoryTypeRaw.isEmpty ? "Mac" : categoryTypeRaw
+        let exactDeviceName = exactDeviceNameRaw.isEmpty ? categoryType : exactDeviceNameRaw
+        let savedAppPackages = Array(AppState.shared.androidApps.keys)
+
+        let messageDict: [String: Any] = [
+            "type": "macInfo",
+            "data": [
+                "name": macName,
+                "isPlus": isPlusSubscription,
+                "isPlusSubscription": isPlusSubscription, // Essential for Android check
+                "version": appVersion,
+                "model": modelId,
+                "type": categoryType,
+                "categoryType": categoryType,
+                "exactDeviceName": exactDeviceName,
+                "savedAppPackages": savedAppPackages
+            ]
+        ]
+
+        if let jsonData = try? JSONSerialization.data(withJSONObject: messageDict),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            if let key = symmetricKey, let encrypted = encryptMessage(jsonString, using: key) {
+                AirBridgeClient.shared.sendText(encrypted)
+            } else {
+                AirBridgeClient.shared.sendText(jsonString)
+            }
+        }
+    }
+
+    /// Sends a wake signal through the relay so Android can attempt a LAN reconnect.
+    func sendWakeViaRelay() {
+        // Include current LAN endpoint hints so Android can reconnect without requiring a manual pair.
+        // getLocalIPAddress(adapterName:nil) returns a comma-separated list in auto-mode.
+        let adapter = AppState.shared.selectedNetworkAdapterName
+        let ipList = getLocalIPAddress(adapterName: adapter) ?? getLocalIPAddress(adapterName: nil) ?? ""
+        let port = Int(localPort ?? Defaults.serverPort)
+
+        let messageDict: [String: Any] = [
+            "type": "macWake",
+            "data": [
+                "ips": ipList,
+                "port": port,
+                "adapter": adapter as Any
+            ]
+        ]
+
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: messageDict),
+              let jsonString = String(data: jsonData, encoding: .utf8) else {
+            print("[airbridge] Failed to encode macWake message")
+            return
+        }
+
+        if let key = symmetricKey, let encrypted = encryptMessage(jsonString, using: key) {
+            AirBridgeClient.shared.sendText(encrypted)
+        } else {
+            AirBridgeClient.shared.sendText(jsonString)
+        }
+
+        // Also emit a transport offer round so Android can immediately try LAN upgrade.
+        sendTransportOffer(reason: "mac_wake")
     }
 
     // MARK: - Crypto Helpers
@@ -273,7 +656,7 @@ class WebSocketServer: ObservableObject {
             symmetricKey = SymmetricKey(data: data)
         }
     }
-    
+
     func wakeUpLastConnectedDevice() {
         QuickConnectManager.shared.wakeUpLastConnectedDevice()
     }

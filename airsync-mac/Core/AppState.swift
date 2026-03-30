@@ -19,14 +19,24 @@ class AppState: ObservableObject {
         case wired
     }
 
+    enum PeerTransportHint: String {
+        case unknown
+        case wifi
+        case relay
+    }
+
     private var clipboardCancellable: AnyCancellable?
     private var lastClipboardValue: String? = nil
     private var shouldSkipSave = false
+    private var subscriptions = Set<AnyCancellable>()
     private static let licenseDetailsKey = "licenseDetails"
 
     @Published var isOS26: Bool = true
 
     init() {
+        // Load all Keychain items up front before any subsystem tries to read individual keys and triggers multiple prompts.
+        KeychainStorage.preload()
+
         self.isPlus = false
 
         let adbPortValue = UserDefaults.standard.integer(forKey: "adbPort")
@@ -76,6 +86,8 @@ class AppState: ObservableObject {
         
         self.isCrashReportingEnabled = UserDefaults.standard.object(forKey: "isCrashReportingEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "isCrashReportingEnabled")
 
+        self.airBridgeEnabled = UserDefaults.standard.bool(forKey: "airBridgeEnabled")
+
         let savedAdapterName = UserDefaults.standard.string(forKey: "selectedNetworkAdapterName")
         let validatedAdapter = AppState.validateAndGetNetworkAdapter(savedName: savedAdapterName)
         self.selectedNetworkAdapterName = validatedAdapter
@@ -100,6 +112,17 @@ class AppState: ObservableObject {
             startClipboardMonitoring()
         }
 
+        // Seed initial LAN state from current WebSocketServer snapshot.
+        self.isConnectedOverLocalNetwork = WebSocketServer.shared.hasActiveLocalSession()
+
+        // Subscribe to immediate LAN session events for UI reactivity.
+        WebSocketServer.shared.lanSessionEvents
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isActive in
+                self?.isConnectedOverLocalNetwork = isActive
+            }
+            .store(in: &subscriptions)
+
         #if SELF_COMPILED
         self.isPlus = true
         UserDefaults.standard.set(true, forKey: "isPlus")
@@ -115,6 +138,11 @@ class AppState: ObservableObject {
         
         // Ensure dock icon visibility is applied on launch
         updateDockIconVisibility()
+
+        // Auto-connect to AirBridge relay if previously enabled
+        if airBridgeEnabled {
+            AirBridgeClient.shared.connect()
+        }
     }
 
     @Published var minAndroidVersion = Bundle.main.infoDictionary?["AndroidVersion"] as? String ?? "2.0.0"
@@ -184,10 +212,32 @@ class AppState: ObservableObject {
     
     @Published var recentApps: [AndroidApp] = []
     
-    var isConnectedOverLocalNetwork: Bool {
-        guard let ip = device?.ipAddress else { return true }
-        // Tailscale IPs usually start with 100.
-        return !ip.hasPrefix("100.")
+    // Reactive snapshot of whether we currently have a direct LAN WebSocket session.
+    // Updated via WebSocketServer.lanSessionEvents so UI can flip icons instantly when transport changes.
+    @Published var isConnectedOverLocalNetwork: Bool = false
+    @Published var peerTransportHint: PeerTransportHint = .unknown
+
+    // Effective transport for UI/actions: explicit peer hint overrides stale local-session state.
+    var isEffectivelyLocalTransport: Bool {
+        switch peerTransportHint {
+        case .relay: return false
+        case .wifi: return true
+        case .unknown: return isConnectedOverLocalNetwork
+        }
+    }
+
+    func updatePeerTransportHint(_ transport: String?) {
+        let next: PeerTransportHint
+        switch transport?.lowercased() {
+        case "wifi": next = .wifi
+        case "relay": next = .relay
+        default: next = .unknown
+        }
+        if Thread.isMainThread {
+            peerTransportHint = next
+        } else {
+            DispatchQueue.main.async { self.peerTransportHint = next }
+        }
     }
 
     // Audio player for ringtone
@@ -360,6 +410,19 @@ class AppState: ObservableObject {
     @Published var isCrashReportingEnabled: Bool {
         didSet {
             UserDefaults.standard.set(isCrashReportingEnabled, forKey: "isCrashReportingEnabled")
+        }
+    }
+
+    @Published var airBridgeEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(airBridgeEnabled, forKey: "airBridgeEnabled")
+            // Connection is managed explicitly:
+            // Onboarding: connects after "Continue"
+            // Settings: connects on "Save & Reconnect"
+            // We only auto-disconnect here when the user turns AirBridge off.
+            if !airBridgeEnabled {
+                AirBridgeClient.shared.disconnect()
+            }
         }
     }
 
@@ -671,6 +734,15 @@ class AppState: ObservableObject {
             self.notifications.removeAll()
             self.status = nil
             self.currentDeviceWallpaperBase64 = nil
+            // Preserve an accurate transport hint after device reset so UI actions
+            // (icon/Quick Share gating) do not fall back to stale LAN snapshots.
+            if WebSocketServer.shared.hasActiveLocalSession() {
+                self.peerTransportHint = .wifi
+            } else if AirBridgeClient.shared.connectionState == .relayActive {
+                self.peerTransportHint = .relay
+            } else {
+                self.peerTransportHint = .unknown
+            }
             
             // Clean up Quick Share state
             if QuickShareManager.shared.transferState != .idle {

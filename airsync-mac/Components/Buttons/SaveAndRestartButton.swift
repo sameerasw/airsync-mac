@@ -43,8 +43,11 @@ struct SaveAndRestartButton: View {
                 // Custom hooks
                 onSave?(device)
 
-                WebSocketServer.shared.stop()
-                WebSocketServer.shared.start(port: portNumber)
+                WebSocketServer.shared.requestRestart(
+                    reason: "Manual save and restart",
+                    delay: 0.2,
+                    port: portNumber
+                )
                 onRestart?(portNumber)
 
                 // Delay QR refresh to ensure server has restarted

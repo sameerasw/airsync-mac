@@ -54,6 +54,16 @@ struct ScreenView: View {
                             }
                         }
                     )
+                    .disabled(
+                        !appState.isEffectivelyLocalTransport &&
+                        AirBridgeClient.shared.connectionState == .relayActive
+                    )
+                    .help(
+                        (!appState.isEffectivelyLocalTransport &&
+                         AirBridgeClient.shared.connectionState == .relayActive)
+                        ? "Quick Share is unavailable over relay connection"
+                        : "Send files with Quick Share"
+                    )
                     .transition(.identity)
                     .keyboardShortcut(
                         "f",

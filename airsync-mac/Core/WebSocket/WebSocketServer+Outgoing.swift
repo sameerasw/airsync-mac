@@ -20,18 +20,22 @@ extension WebSocketServer {
 
     func sendToFirstAvailable(message: String) {
         lock.lock()
-        guard let pId = primarySessionID,
-              let session = activeSessions.first(where: { ObjectIdentifier($0) == pId }) else {
-            lock.unlock()
-            return
-        }
+        let pId = primarySessionID
+        let session = pId != nil ? activeSessions.first(where: { ObjectIdentifier($0) == pId }) : nil
         let key = symmetricKey
         lock.unlock()
-        
+
+        let outgoing: String
         if let key = key, let encrypted = encryptMessage(message, using: key) {
-            session.writeText(encrypted)
+            outgoing = encrypted
         } else {
-            session.writeText(message)
+            outgoing = message
+        }
+
+        if let session = session {
+            session.writeText(outgoing)
+        } else if AirBridgeClient.shared.connectionState == .relayActive {
+            AirBridgeClient.shared.sendText(outgoing)
         }
     }
 
@@ -57,12 +61,94 @@ extension WebSocketServer {
         sendMessage(type: "disconnectRequest", data: [:])
     }
 
+    func sendPeerTransportStatus(_ transport: String) {
+        sendMessage(type: "peerTransport", data: [
+            "source": "mac",
+            "transport": transport, // "wifi" | "relay"
+            "ts": Int(Date().timeIntervalSince1970 * 1000)
+        ])
+    }
+
+    func sendTransportOffer(reason: String, generation: Int64? = nil) {
+        let generationValue = generation ?? nextTransportGeneration()
+        beginTransportRound(generationValue, reason: "send_offer:\(reason)")
+        let ips = getLocalIPAddress(adapterName: AppState.shared.selectedNetworkAdapterName) ?? ""
+        let port = Int(localPort ?? Defaults.serverPort)
+        let candidates: [[String: Any]] = ips
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .map { ["ip": $0, "port": port, "type": "host"] }
+
+        sendMessage(type: "transportOffer", data: [
+            "source": "mac",
+            "generation": generationValue,
+            "candidates": candidates,
+            "port": port,
+            "ts": Int(Date().timeIntervalSince1970 * 1000),
+            "reason": reason
+        ])
+    }
+
+    func sendTransportAnswer(generation: Int64, reason: String) {
+        guard isTransportGenerationActive(generation) else {
+            return
+        }
+        let ips = getLocalIPAddress(adapterName: AppState.shared.selectedNetworkAdapterName) ?? ""
+        let port = Int(localPort ?? Defaults.serverPort)
+        let candidates: [[String: Any]] = ips
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .map { ["ip": $0, "port": port, "type": "host"] }
+
+        sendMessage(type: "transportAnswer", data: [
+            "source": "mac",
+            "generation": generation,
+            "candidates": candidates,
+            "port": port,
+            "ts": Int(Date().timeIntervalSince1970 * 1000),
+            "reason": reason
+        ])
+    }
+
+    func sendTransportCheckAck(generation: Int64, token: String) {
+        guard isTransportGenerationActive(generation) else {
+            return
+        }
+        sendMessage(type: "transportCheckAck", data: [
+            "source": "mac",
+            "generation": generation,
+            "token": token,
+            "ts": Int(Date().timeIntervalSince1970 * 1000)
+        ])
+    }
+
+    func sendTransportNominate(path: String, generation: Int64, reason: String) {
+        guard isTransportGenerationActive(generation) else {
+            return
+        }
+        if path == "lan" && !isTransportGenerationValidated(generation) {
+            return
+        }
+        sendMessage(type: "transportNominate", data: [
+            "source": "mac",
+            "generation": generation,
+            "path": path,
+            "ts": Int(Date().timeIntervalSince1970 * 1000),
+            "reason": reason
+        ])
+    }
+
     func sendQuickShareTrigger() {
         // print("[websocket] Quick Share trigger requested")
         sendMessage(type: "startQuickShare", data: [:])
     }
 
     func sendRefreshAdbPortsRequest() {
+        guard hasActiveLocalSession() else {
+            return
+        }
         sendMessage(type: "refreshAdbPorts", data: [:])
     }
 

@@ -96,8 +96,32 @@ class UDPDiscoveryManager: ObservableObject {
     }
     
     @objc private func handleSystemWake() {
-        print("[Discovery] System wake detected")
+        print("[Discovery] System wake detected.")
+        
+        // 1. Immediate burst
         broadcastBurst()
+        
+        // 2. Schedule a series of recovery actions to catch the network as it comes up
+        
+        // T+2s: Force WebSocket Server to re-evaluate network binding
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            WebSocketServer.shared.requestRestart(reason: "System Wake Recovery", delay: 0.1)
+        }
+        
+        // T+3s: Burst 1 (Post-restart)
+        DispatchQueue.global().asyncAfter(deadline: .now() + 3.0) { [weak self] in
+            self?.broadcastBurst()
+        }
+        
+        // T+6s: Burst 2 (Retry)
+        DispatchQueue.global().asyncAfter(deadline: .now() + 6.0) { [weak self] in
+            self?.broadcastBurst()
+        }
+        
+        // T+10s: Burst 3 (Final retry)
+        DispatchQueue.global().asyncAfter(deadline: .now() + 10.0) { [weak self] in
+            self?.broadcastBurst()
+        }
     }
     
     // MARK: - Broadcasting

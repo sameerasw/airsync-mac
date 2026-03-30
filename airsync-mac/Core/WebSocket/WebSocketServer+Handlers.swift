@@ -64,8 +64,73 @@ extension WebSocketServer {
             handleRemoteControl(message)
         case .browseData:
             handleBrowseData(message)
-        case .volumeControl, .macVolume, .toggleAppNotif, .browseLs, .wakeUpRequest, .macMediaControlResponse, .macInfo, .callControl:
+        case .peerTransport:
+            handlePeerTransportUpdate(message)
+        case .transportOffer:
+            handleTransportOffer(message)
+        case .transportAnswer:
+            handleTransportAnswer(message)
+        case .transportCheck:
+            handleTransportCheck(message)
+        case .transportCheckAck:
+            handleTransportCheckAck(message)
+        case .transportNominate:
+            handleTransportNominate(message)
+        case .volumeControl, .macVolume, .toggleAppNotif, .browseLs, .wakeUpRequest, .macMediaControlResponse, .macInfo, .callControl, .ping, .pong:
             // Outgoing or unexpected messages
+            break
+        }
+    }
+
+    /// Relay-only router used when no local WebSocket session is available.
+    /// Kept in this file so private handlers remain encapsulated.
+    func handleRelayOnlyMessage(_ message: Message) {
+        switch message.type {
+        case .notification:
+            handleNotification(message)
+        case .status:
+            handleStatusUpdate(message)
+        case .clipboardUpdate:
+            handleClipboardUpdate(message)
+        case .callEvent:
+            handleCallEvent(message)
+        case .remoteControl:
+            handleRemoteControl(message)
+        case .macMediaControl:
+            handleMacMediaControlRequest(message)
+        case .appIcons:
+            handleAppIcons(message)
+        case .browseData:
+            handleBrowseData(message)
+        case .notificationUpdate:
+            handleNotificationUpdate(message)
+        case .notificationActionResponse:
+            handleNotificationActionResponse(message)
+        case .dismissalResponse:
+            handleDismissalResponse(message)
+        case .mediaControlResponse:
+            handleMediaControlResponse(message)
+        case .callControlResponse:
+            handleCallControlResponse(message)
+        case .peerTransport:
+            handlePeerTransportUpdate(message)
+        case .transportOffer:
+            handleTransportOffer(message)
+        case .transportAnswer:
+            handleTransportAnswer(message)
+        case .transportCheck:
+            handleTransportCheck(message)
+        case .transportCheckAck:
+            handleTransportCheckAck(message)
+        case .transportNominate:
+            handleTransportNominate(message)
+        case .device:
+            // handled upstream in WebSocketServer.handleRelayedMessageInternal
+            break
+        case .macInfo:
+            // outbound from Mac -> Android in normal flow, ignore inbound
+            break
+        case .volumeControl, .macVolume, .toggleAppNotif, .browseLs, .wakeUpRequest, .macMediaControlResponse, .callControl, .notificationAction, .ping, .pong, .fileTransferInit, .fileChunk, .fileChunkAck, .fileTransferComplete, .transferVerified, .fileTransferCancel:
             break
         }
     }
@@ -142,6 +207,12 @@ extension WebSocketServer {
             }
 
             if (!AppState.shared.adbConnected && (AppState.shared.adbEnabled || AppState.shared.manualAdbConnectionPending || AppState.shared.wiredAdbEnabled) && AppState.shared.isPlus) {
+                // Security hardening: ADB auto-connect must only happen on direct LAN sessions,
+                // never through the relay transport.
+                guard self.hasActiveLocalSession() else {
+                    AppState.shared.manualAdbConnectionPending = false
+                    return
+                }
                 if AppState.shared.wiredAdbEnabled {
                     ADBConnector.getWiredDeviceSerial(completion: { serial in
                         if let serial = serial {
@@ -582,6 +653,137 @@ extension WebSocketServer {
                 MacRemoteManager.shared.decreaseBrightness()
             default: break
             }
+        }
+    }
+
+    private func handlePeerTransportUpdate(_ message: Message) {
+        guard let dict = message.data.value as? [String: Any] else { return }
+        let transport = dict["transport"] as? String
+        AppState.shared.updatePeerTransportHint(transport)
+    }
+
+    private func isTransportMessageFresh(_ dict: [String: Any]) -> Bool {
+        let tsAny = dict["ts"]
+        let ts: Int64
+        if let v = tsAny as? Int64 {
+            ts = v
+        } else if let v = tsAny as? Int {
+            ts = Int64(v)
+        } else if let v = tsAny as? NSNumber {
+            ts = v.int64Value
+        } else {
+            return false
+        }
+        if ts <= 0 { return false }
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        let delta = abs(now - ts)
+        return delta <= Int64(transportGenerationTTL * 1000)
+    }
+
+    private func evaluateTransportCandidates(_ dict: [String: Any]) -> (isValid: Bool, reason: String) {
+        guard let candidates = dict["candidates"] as? [[String: Any]], !candidates.isEmpty else {
+            return (false, "candidates_missing_or_empty")
+        }
+
+        var emptyIp = 0
+        var nonPrivateIp = 0
+        var invalidPort = 0
+        var accepted = 0
+        var sampleRejectedIp: String?
+
+        for candidate in candidates {
+            let ip = (candidate["ip"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if ip.isEmpty {
+                emptyIp += 1
+                continue
+            }
+            if !ipIsPrivatePreferred(ip) {
+                nonPrivateIp += 1
+                if sampleRejectedIp == nil {
+                    sampleRejectedIp = ip
+                }
+                continue
+            }
+
+            let p = candidate["port"] as? Int ?? -1
+            if p == 0 || (p > 0 && p <= 65535) {
+                accepted += 1
+            } else {
+                invalidPort += 1
+            }
+        }
+
+        if accepted > 0 {
+            return (true, "ok")
+        }
+
+        let sample = sampleRejectedIp ?? "none"
+        let reason = "accepted=0 total=\(candidates.count) empty_ip=\(emptyIp) non_private_ip=\(nonPrivateIp) invalid_port=\(invalidPort) sample_rejected_ip=\(sample)"
+        return (false, reason)
+    }
+
+    private func handleTransportOffer(_ message: Message) {
+        guard let dict = message.data.value as? [String: Any] else { return }
+        let generation = dict["generation"] as? Int64 ?? Int64(dict["generation"] as? Int ?? 0)
+        guard isTransportMessageFresh(dict) else {
+            return
+        }
+        let candidateEval = evaluateTransportCandidates(dict)
+        guard candidateEval.isValid else {
+            return
+        }
+        guard acceptIncomingTransportGeneration(generation, reason: "offer_rx") else {
+            return
+        }
+        sendTransportAnswer(generation: generation, reason: "offer_rx")
+    }
+
+    private func handleTransportAnswer(_ message: Message) {
+        guard let dict = message.data.value as? [String: Any] else { return }
+        let generation = dict["generation"] as? Int64 ?? Int64(dict["generation"] as? Int ?? 0)
+        guard isTransportMessageFresh(dict) else {
+            return
+        }
+        let candidateEval = evaluateTransportCandidates(dict)
+        guard candidateEval.isValid else {
+            return
+        }
+        _ = acceptIncomingTransportGeneration(generation, reason: "answer_rx")
+    }
+
+    private func handleTransportCheck(_ message: Message) {
+        guard let dict = message.data.value as? [String: Any] else { return }
+        let generation = dict["generation"] as? Int64 ?? Int64(dict["generation"] as? Int ?? 0)
+        let token = dict["token"] as? String ?? ""
+        if token.isEmpty || !isTransportGenerationActive(generation) { return }
+        sendTransportCheckAck(generation: generation, token: token)
+    }
+
+    private func handleTransportCheckAck(_ message: Message) {
+        guard let dict = message.data.value as? [String: Any] else { return }
+        let generation = dict["generation"] as? Int64 ?? Int64(dict["generation"] as? Int ?? 0)
+        guard isTransportGenerationActive(generation), hasActiveLocalSession() else {
+            return
+        }
+        markTransportGenerationValidated(generation, reason: "check_ack_rx")
+        sendTransportNominate(path: "lan", generation: generation, reason: "check_ack_rx")
+        AppState.shared.updatePeerTransportHint("wifi")
+    }
+
+    private func handleTransportNominate(_ message: Message) {
+        guard let dict = message.data.value as? [String: Any] else { return }
+        let generation = dict["generation"] as? Int64 ?? Int64(dict["generation"] as? Int ?? 0)
+        let path = dict["path"] as? String ?? "relay"
+        guard isTransportGenerationActive(generation) else {
+            return
+        }
+        if path == "lan" {
+            guard hasActiveLocalSession(), isTransportGenerationValidated(generation) else {
+                return
+            }
+            AppState.shared.updatePeerTransportHint("wifi")
+        } else if path == "relay" {
+            AppState.shared.updatePeerTransportHint("relay")
         }
     }
 

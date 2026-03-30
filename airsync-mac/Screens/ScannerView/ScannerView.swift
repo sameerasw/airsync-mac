@@ -229,6 +229,10 @@ struct ScannerView: View {
             // Device name changed, regenerate QR
             generateQRAsync()
         }
+        .onChange(of: appState.airBridgeEnabled) { _, _ in
+            // AirBridge setting changed, regenerate QR
+            generateQRAsync()
+        }
         .onChange(of: udpDiscovery.discoveredDevices) { oldDevices, newDevices in
             if oldDevices.isEmpty && !newDevices.isEmpty {
                 // First device discovered, collapse QR if it's showing
@@ -272,7 +276,10 @@ struct ScannerView: View {
             ip: validIP,
             port: UInt16(appState.myDevice?.port ?? Int(Defaults.serverPort)),
             name: appState.myDevice?.name,
-            key: WebSocketServer.shared.getSymmetricKeyBase64() ?? ""
+            key: WebSocketServer.shared.getSymmetricKeyBase64() ?? "",
+            relayURL: appState.airBridgeEnabled ? AirBridgeClient.shared.relayServerURL : nil,
+            pairingId: appState.airBridgeEnabled ? AirBridgeClient.shared.pairingId : nil,
+            secret: appState.airBridgeEnabled ? AirBridgeClient.shared.secret : nil
         ) ?? "That doesn't look right, QR Generation failed"
 
         Task {
@@ -301,13 +308,35 @@ struct ScannerView: View {
     }
 }
 
-func generateQRText(ip: String?, port: UInt16?, name: String?, key: String) -> String? {
+func generateQRText(
+    ip: String?,
+    port: UInt16?,
+    name: String?,
+    key: String,
+    relayURL: String? = nil,
+    pairingId: String? = nil,
+    secret: String? = nil
+) -> String? {
     guard let ip = ip, let port = port else {
         return nil
     }
 
-    let encodedName = name?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "My Mac"
-    return "airsync://\(ip):\(port)?name=\(encodedName)?plus=\(AppState.shared.isPlus)?key=\(key)"
+    let queryAllowed = CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&=?"))
+    let encodedName = name?.addingPercentEncoding(withAllowedCharacters: queryAllowed) ?? "My Mac"
+    let encodedKey = key.addingPercentEncoding(withAllowedCharacters: queryAllowed) ?? key
+
+    var qrText = "airsync://\(ip):\(port)?name=\(encodedName)?plus=\(AppState.shared.isPlus)?key=\(encodedKey)"
+
+    if let relayURL, !relayURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+       let pairingId, !pairingId.isEmpty,
+       let secret, !secret.isEmpty {
+        let encodedRelay = relayURL.addingPercentEncoding(withAllowedCharacters: queryAllowed) ?? relayURL
+        let encodedPairing = pairingId.addingPercentEncoding(withAllowedCharacters: queryAllowed) ?? pairingId
+        let encodedSecret = secret.addingPercentEncoding(withAllowedCharacters: queryAllowed) ?? secret
+        qrText += "?relay=\(encodedRelay)?pairingId=\(encodedPairing)?secret=\(encodedSecret)"
+    }
+
+    return qrText
 }
 
 #Preview {
