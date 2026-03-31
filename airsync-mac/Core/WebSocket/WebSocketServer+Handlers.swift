@@ -268,6 +268,16 @@ extension WebSocketServer {
                     likeStatus: likeStatus
                 )
             )
+
+            // Publish Android now-playing info to MPNowPlayingInfoCenter
+            var npInfo = NowPlayingInfo()
+            npInfo.title = title
+            npInfo.artist = artist
+            npInfo.isPlaying = playing
+            if let data = Data(base64Encoded: albumArt) {
+                npInfo.artworkData = data
+            }
+            NowPlayingPublisher.shared.update(info: npInfo)
         }
     }
 
