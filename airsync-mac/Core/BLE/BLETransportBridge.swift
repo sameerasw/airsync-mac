@@ -139,7 +139,10 @@ class BLETransportBridge {
                 volume: volume,
                 isMuted: isMuted,
                 albumArt: "", // No art over BLE
-                likeStatus: likeStatus
+                likeStatus: likeStatus,
+                duration: -1.0,
+                position: -1.0,
+                isBuffering: false
             )
             
             if AppState.shared.status == nil {

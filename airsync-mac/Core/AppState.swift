@@ -134,6 +134,8 @@ class AppState: ObservableObject {
 
         // Reset mirroring state on launch to prevent auto-opening if it was open during last session
         self.isNativeMirroring = false
+        
+        startMediaTimer()
     }
 
     @Published var minAndroidVersion = Bundle.main.infoDictionary?["AndroidVersion"] as? String ?? "2.0.0"
@@ -223,6 +225,13 @@ class AppState: ObservableObject {
     
     @Published var recentApps: [AndroidApp] = []
     @Published var isNativeMirroring: Bool = false
+    
+    // MARK: - Centralized Media Seekbar State
+    @Published var mediaPosition: Double = 0
+    var isDraggingMedia: Bool = false
+    var lastMediaSeekTime: Date = .distantPast
+    var seekTargetPosition: Double = -1
+    private var mediaTickTimer: AnyCancellable?
     
     var isConnectedOverLocalNetwork: Bool {
         guard let ip = device?.ipAddress, ip != "BLE" else { return false }
@@ -1320,5 +1329,70 @@ class AppState: ObservableObject {
 
         print("[state] Using saved network adapter: \(savedName) -> \(validIP)")
         return savedName
+    }
+    
+    // MARK: - Media Seekbar Sync Logic
+    
+    func startMediaTimer() {
+        guard mediaTickTimer == nil else { return }
+        mediaTickTimer = Timer.publish(every: 1.0, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard let self = self,
+                      let music = self.status?.music,
+                      music.isPlaying,
+                      !music.isBuffering,
+                      !self.isDraggingMedia else { return }
+                
+                let next = self.mediaPosition + 1.0
+                self.mediaPosition = music.duration > 0 ? min(next, music.duration) : next
+            }
+    }
+    
+    func stopMediaTimer() {
+        mediaTickTimer?.cancel()
+        mediaTickTimer = nil
+    }
+    
+    func syncMediaPosition(incoming: Double) {
+        guard incoming >= 0 else { return }
+        
+        let sinceSeeked = Date().timeIntervalSince(lastMediaSeekTime)
+        
+        if seekTargetPosition >= 0 && sinceSeeked < 10.0 {
+            if abs(incoming - seekTargetPosition) <= 10.0 {
+                seekTargetPosition = -1
+                applyMediaPosition(incoming)
+            }
+            return
+        }
+        
+        if seekTargetPosition >= 0 { seekTargetPosition = -1 }
+        
+        if sinceSeeked < 8.0 && incoming < mediaPosition - 5.0 { return }
+        
+        applyMediaPosition(incoming)
+    }
+    
+    private func applyMediaPosition(_ incoming: Double) {
+        let delta = incoming - mediaPosition
+        if delta > 3.0 || delta < -10.0 {
+            mediaPosition = incoming
+        }
+    }
+    
+    func handleMediaSeek(to position: Double) {
+        seekTargetPosition = position
+        lastMediaSeekTime = Date()
+        mediaPosition = position
+        WebSocketServer.shared.seekTo(positionSeconds: position)
+    }
+    
+    func handleTrackChange() {
+        seekTargetPosition = -1
+        lastMediaSeekTime = .distantPast
+        if let pos = status?.music?.position {
+            syncMediaPosition(incoming: pos)
+        }
     }
 }
