@@ -26,6 +26,9 @@ struct airsync_macApp: App {
 
     init() {
 
+        // Initialize NowPlayingPublisher for MPNowPlayingInfoCenter integration
+        NowPlayingPublisher.shared.start()
+
         let center = UNUserNotificationCenter.current()
         center.delegate = notificationDelegate
         updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
