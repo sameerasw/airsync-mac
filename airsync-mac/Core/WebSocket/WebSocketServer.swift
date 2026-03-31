@@ -20,7 +20,7 @@ class WebSocketServer: ObservableObject {
     internal var pingTimer: Timer?
     internal let pingInterval: TimeInterval = 5.0
     internal var lastActivity: [ObjectIdentifier: Date] = [:]
-    internal let activityTimeout: TimeInterval = 11.0
+    internal let activityTimeout: TimeInterval = 35.0
     
     @Published var symmetricKey: SymmetricKey?
     @Published var localPort: UInt16?
@@ -30,6 +30,7 @@ class WebSocketServer: ObservableObject {
     @Published var deviceStatus: DeviceStatus?
 
     internal var lastKnownIP: String?
+    internal var isRestarting: Bool = false
     internal var networkMonitorTimer: Timer?
     internal let networkCheckInterval: TimeInterval = 10.0
     internal let lock = NSRecursiveLock()
@@ -234,8 +235,8 @@ class WebSocketServer: ObservableObject {
                         AppState.shared.disconnectDevice()
                         ADBConnector.disconnectADB()
                         AppState.shared.adbConnected = false
-                        self.stop()
-                        self.start(port: self.localPort ?? Defaults.serverPort)
+                        // Guard against cascading restarts from multiple disconnected callbacks
+                        self.restartServer()
                     }
                 }
             }
@@ -276,5 +277,39 @@ class WebSocketServer: ObservableObject {
     
     func wakeUpLastConnectedDevice() {
         QuickConnectManager.shared.wakeUpLastConnectedDevice()
+    }
+
+    // MARK: - Restart Helper
+
+    /// Single entry-point for all server restart logic.
+    /// Guarded by `isRestarting` to prevent cascading calls from multiple
+    /// simultaneous `disconnected` callbacks or stale-ping handlers.
+    /// Waits 1.5 s before restarting so any remaining callbacks finish first,
+    /// then re-broadcasts presence so Android can rediscover the Mac.
+    func restartServer() {
+        self.lock.lock()
+        guard !isRestarting else {
+            self.lock.unlock()
+            print("[websocket] Restart already in progress – skipping duplicate request")
+            return
+        }
+        isRestarting = true
+        let port = self.localPort ?? Defaults.serverPort
+        self.lock.unlock()
+
+        print("[websocket] Scheduling server restart in 1.5 s…")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            self.stop()
+            self.start(port: port)
+
+            // Re-announce presence immediately after restart so Android can find us
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                UDPDiscoveryManager.shared.broadcastBurst()
+                self.lock.lock()
+                self.isRestarting = false
+                self.lock.unlock()
+                print("[websocket] Server restart complete. Presence re-broadcast sent.")
+            }
+        }
     }
 }

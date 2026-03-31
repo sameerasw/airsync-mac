@@ -16,7 +16,7 @@ struct DiscoveredDevice: Identifiable, Equatable, Hashable {
     }
     
     var isActive: Bool {
-        return Date().timeIntervalSince(lastSeen) < 14
+        return Date().timeIntervalSince(lastSeen) < 20
     }
     
     static func == (lhs: DiscoveredDevice, rhs: DiscoveredDevice) -> Bool {
@@ -39,6 +39,8 @@ class UDPDiscoveryManager: ObservableObject {
     private let broadcastPort: NWEndpoint.Port = 8889
     private var cancellables = Set<AnyCancellable>()
     private var isListening = false
+    private var lastBroadcastTime: Date = .distantPast
+    private var networkChangePendingWork: DispatchWorkItem?
     
     private init() {
         // Init logic only
@@ -81,10 +83,20 @@ class UDPDiscoveryManager: ObservableObject {
         networkMonitor = NWPathMonitor()
         networkMonitor?.pathUpdateHandler = { [weak self] path in
             guard let self = self else { return }
-            if path.status == .satisfied {
-                print("[Discovery] Network change detected: \(path.status)")
+            guard path.status == .satisfied else { return }
+
+            // Debounce: cancel any pending burst and schedule a new one 2 s out.
+            // This prevents a flood of UDP sends during a rapid network transition.
+            self.networkChangePendingWork?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                guard let self = self else { return }
+                // Skip if we already sent a burst very recently (e.g. from wake handler)
+                guard Date().timeIntervalSince(self.lastBroadcastTime) >= 2.0 else { return }
+                print("[Discovery] Network change detected – broadcasting presence")
                 self.broadcastBurst()
             }
+            self.networkChangePendingWork = work
+            queue.asyncAfter(deadline: .now() + 2.0, execute: work)
         }
         networkMonitor?.start(queue: queue)
     }
@@ -105,6 +117,7 @@ class UDPDiscoveryManager: ObservableObject {
     /// Sends a rapid burst of broadcasts to ensure delivery (Active Burst support)
     func broadcastBurst() {
         print("[Discovery] Triggering broadcast burst")
+        lastBroadcastTime = Date()
         
         // Send 3 packets with slight delay
         for i in 0..<3 {
@@ -377,8 +390,8 @@ class UDPDiscoveryManager: ObservableObject {
         DispatchQueue.main.async {
             withAnimation(.easeInOut(duration: 0.6)) {
                 let initialCount = self.discoveredDevices.count
-                self.discoveredDevices = self.discoveredDevices.filter { 
-                    now.timeIntervalSince($0.lastSeen) <= 20
+                self.discoveredDevices = self.discoveredDevices.filter {
+                    now.timeIntervalSince($0.lastSeen) <= 35
                 }
                 
                 let newCount = self.discoveredDevices.count
