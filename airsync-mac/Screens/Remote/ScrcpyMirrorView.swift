@@ -10,6 +10,7 @@ import AppKit
 import MetalKit
 
 struct ScrcpyMirrorView: View {
+    @Environment(\.dismissWindow) var dismissWindow
     @StateObject private var streamClient = ScrcpyStreamClient.shared
     @State private var isMirroring = false
     @State private var errorMessage: String?
@@ -61,6 +62,7 @@ struct ScrcpyMirrorView: View {
                 window.titlebarAppearsTransparent = true
                 window.titleVisibility = NSWindow.TitleVisibility.hidden
                 window.isMovableByWindowBackground = false
+                window.isRestorable = false // Prevent macOS from restoring this window on next launch
                 window.level = .floating
                 
                 // Hide native traffic lights
@@ -82,6 +84,10 @@ struct ScrcpyMirrorView: View {
             }))
             .ignoresSafeArea()
             .onAppear {
+                if !AppState.shared.isNativeMirroring {
+                    dismissWindow(id: "nativeMirror")
+                    return
+                }
                 startMirroring()
             }
             

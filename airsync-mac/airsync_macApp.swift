@@ -84,6 +84,17 @@ struct airsync_macApp: App {
                 HomeView()
                     .applyMainWindowSetup(appDelegate: appDelegate, appState: appState)
                     .dropTarget(appState: appState)
+                    .onAppear {
+                        if !appState.isNativeMirroring {
+                            dismissWindow(id: "nativeMirror")
+                        }
+                        if appState.activeCall == nil {
+                            dismissWindow(id: "callWindow")
+                        }
+                        if !appState.showingQuickShareTransfer {
+                            dismissWindow(id: "quickShareWindow")
+                        }
+                    }
             }
         }
         .onChange(of: appState.activeCall) { oldValue, newValue in
@@ -168,16 +179,21 @@ struct airsync_macApp: App {
 
         // Secondary Tool Window for Calls
         Window("Call", id: "callWindow") {
-            if let activeCall = appState.activeCall {
-                if #available(macOS 15.0, *) {
-                    CallWindowView(callEvent: activeCall)
-                        .environmentObject(appState)
-                        .containerBackground(.ultraThinMaterial, for: .window)
-                } else {
-                    CallWindowView(callEvent: activeCall)
-                        .environmentObject(appState)
+            Group {
+                if let activeCall = appState.activeCall {
+                    if #available(macOS 15.0, *) {
+                        CallWindowView(callEvent: activeCall)
+                            .environmentObject(appState)
+                            .containerBackground(.ultraThinMaterial, for: .window)
+                    } else {
+                        CallWindowView(callEvent: activeCall)
+                            .environmentObject(appState)
+                    }
                 }
             }
+            .background(WindowAccessor(callback: { window in
+                window.isRestorable = false
+            }))
         }
         .defaultPosition(.topTrailing)
         .defaultSize(width: 320, height: 480)
@@ -194,6 +210,7 @@ struct airsync_macApp: App {
                     window.title = Localizer.shared.text("quickshare.title")
                     window.titlebarAppearsTransparent = true
                     window.isMovableByWindowBackground = true
+                    window.isRestorable = false
                     window.styleMask.remove(.resizable)
                     window.standardWindowButton(.closeButton)?.isHidden = false
                     window.standardWindowButton(.miniaturizeButton)?.isHidden = true
