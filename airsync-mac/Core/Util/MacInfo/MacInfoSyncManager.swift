@@ -108,6 +108,21 @@ class MacInfoSyncManager: ObservableObject {
                     self?.sendDeviceStatusWithoutMusic()
                     return
                 }
+
+                // IMPORTANT: Filter out AirSync's own bundle ID.
+                // NowPlayingPublisher writes Android's media info into macOS
+                // MPNowPlayingInfoCenter so boringNotch can display it.
+                // media-control reads from the same source, so without this guard
+                // we'd forward AirSync's own published entry back to Android,
+                // creating a play/pause feedback loop.
+                let ownBundleId = Bundle.main.bundleIdentifier ?? ""
+                if let bundleId = info.bundleIdentifier, !ownBundleId.isEmpty,
+                   bundleId == ownBundleId {
+                    // This is our own reflection — treat as nothing playing on Mac
+                    self?.sendDeviceStatusWithoutMusic()
+                    return
+                }
+
                 // MUST update @Published properties on main thread
                 DispatchQueue.main.async {
 //                    print("Now Playing fetched:", info) // debug

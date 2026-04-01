@@ -47,7 +47,10 @@ struct MockData{
         volume: 50,
         isMuted: false,
         albumArt: "",
-        likeStatus: "none"
+        likeStatus: "none",
+        duration: 214,
+        position: 42,
+        isBuffering: false
     )
 
     static let sampleDevices = [

@@ -19,6 +19,7 @@ struct SettingsFeaturesView: View {
     @AppStorage("manualPosition") private var manualPosition = false
     @AppStorage("continueApp") private var continueApp = false
     @AppStorage("directKeyInput") private var directKeyInput = true
+    @AppStorage("syncAndroidPlaybackSeekbar") private var syncAndroidPlaybackSeekbar = false
     @AppStorage("scrcpyDesktopDpi") private var scrcpyDesktopDpi = ""
 
     @State private var showingPlusPopover = false
@@ -372,6 +373,24 @@ struct SettingsFeaturesView: View {
                 }
 
                 SettingsToggleView(name: "Send now playing status", icon: "play.circle", isOn: $appState.sendNowPlayingStatus)
+
+                HStack {
+                    Label("Sync Android playback seekbar", systemImage: "slider.horizontal.below.rectangle")
+                    Button(action: {}) {
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Publishes Android media info (track, artist, artwork, seekbar position) to macOS Now Playing / boringNotch by playing a silent audio loop in the background.\n\nⓘ Multipoint Bluetooth users: this may cause your headphones to switch audio focus to the Mac, interrupting Android audio. Disable this toggle if that happens.")
+                    Spacer()
+                    Toggle("", isOn: $syncAndroidPlaybackSeekbar)
+                        .toggleStyle(.switch)
+                        .onChange(of: syncAndroidPlaybackSeekbar) { _, enabled in
+                            if !enabled {
+                                NowPlayingPublisher.shared.clear()
+                            }
+                        }
+                }
             }
             .padding()
             .background(.background.opacity(0.3))
