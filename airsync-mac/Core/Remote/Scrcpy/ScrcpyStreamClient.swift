@@ -18,6 +18,7 @@ class ScrcpyStreamClient: ObservableObject {
     @Published var isConnected = false
     @Published var videoWidth: UInt32 = 0
     @Published var videoHeight: UInt32 = 0
+    @Published var deviceName: String = "Device"
     
     private var retryCount = 0
     private let maxRetries = 5
@@ -105,6 +106,10 @@ class ScrcpyStreamClient: ObservableObject {
                 
                 let deviceName = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .controlCharacters) ?? "Unknown"
                 print("[ScrcpyStreamClient] Device Name: \(deviceName)")
+                
+                DispatchQueue.main.async {
+                    self?.deviceName = deviceName
+                }
                 
                 // Read 12-byte metadata: [4: Codec][4: Width][4: Height]
                 self?.connection?.receive(minimumIncompleteLength: 12, maximumLength: 12) { [weak self] data, context, isComplete, error in

@@ -116,6 +116,9 @@ class AppState: ObservableObject {
         
         // Ensure dock icon visibility is applied on launch
         updateDockIconVisibility()
+
+        // Reset mirroring state on launch to prevent auto-opening if it was open during last session
+        self.isNativeMirroring = false
     }
 
     @Published var minAndroidVersion = Bundle.main.infoDictionary?["AndroidVersion"] as? String ?? "2.0.0"
