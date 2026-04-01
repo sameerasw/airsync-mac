@@ -149,6 +149,10 @@ struct MenubarView: View {
                             modifiers: .command
                         )
                         .contextMenu {
+                            Button("Android Mirror") {
+                                appState.isNativeMirroring = true
+                            }
+                            
                             Button("Desktop Mode") {
                                 ADBConnector.startScrcpy(
                                     ip: appState.device?.ipAddress ?? "",
