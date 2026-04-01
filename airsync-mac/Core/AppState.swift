@@ -184,6 +184,7 @@ class AppState: ObservableObject {
     @Published var adbConnectionMode: ADBConnectionMode? = nil
     
     @Published var recentApps: [AndroidApp] = []
+    @Published var isNativeMirroring: Bool = false
     
     var isConnectedOverLocalNetwork: Bool {
         guard let ip = device?.ipAddress else { return true }

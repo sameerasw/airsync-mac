@@ -100,6 +100,13 @@ struct airsync_macApp: App {
                 dismissWindow(id: "quickShareWindow")
             }
         }
+        .onChange(of: appState.isNativeMirroring) { oldValue, newValue in
+            if newValue {
+                openWindow(id: "nativeMirror")
+            } else {
+                dismissWindow(id: "nativeMirror")
+            }
+        }
         .commands {
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesView(updater: updaterController.updater)
@@ -122,7 +129,7 @@ struct airsync_macApp: App {
             // Mirror menu: launch full device mirror or specific apps via scrcpy
             CommandMenu("Mirror") {
                 // Primary full-device mirror option
-                Button("Android Mirror") {
+                Button("Android Mirror (scrcpy)") {
                     if let device = appState.device, appState.adbConnected {
                         ADBConnector.startScrcpy(
                             ip: device.ipAddress,
@@ -131,6 +138,11 @@ struct airsync_macApp: App {
                             package: nil
                         )
                     }
+                }
+                .disabled(!(appState.device != nil && appState.adbConnected))
+                
+                Button("Android Mirror") {
+                    appState.isNativeMirroring = true
                 }
                 .disabled(!(appState.device != nil && appState.adbConnected))
 
@@ -198,6 +210,19 @@ struct airsync_macApp: App {
         .defaultPosition(.topTrailing)
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
+
+        Window("Mirror", id: "nativeMirror") {
+            if #available(macOS 15.0, *) {
+                ScrcpyMirrorView()
+                    .containerBackground(.ultraThinMaterial, for: .window)
+            } else {
+                ScrcpyMirrorView()
+            }
+        }
+        .windowResizability(.contentSize)
+        .defaultSize(width: 320, height: 680)
+        .windowStyle(.hiddenTitleBar)
+        .defaultPosition(.center)
 
     }
 }
