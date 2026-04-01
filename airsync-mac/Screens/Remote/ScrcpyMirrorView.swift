@@ -92,14 +92,14 @@ struct ScrcpyMirrorView: View {
                 .onHover { hovering in
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                         isHovering = hovering
-                        updateWindowMovableState(isHovering: hovering)
+                        updateWindowUI(isHovering: hovering)
                     }
                 }
                 .ignoresSafeArea()
         }
         .background(.ultraThinMaterial.opacity(isMirroring ? 0.01 : 1.0))
         .onChange(of: isHovering) { _, newValue in
-            updateWindowMovableState(isHovering: newValue)
+            updateWindowUI(isHovering: newValue)
         }
         .onChange(of: isMirroring) { _, newValue in
             if !newValue { isHovering = false }
@@ -128,31 +128,8 @@ struct ScrcpyMirrorView: View {
                     .gesture(WindowDragGesture()) 
             }
             
-            // Content (Upper Layer for Hit-Testing)
+            // Title Content (Upper Layer)
             HStack {
-                HStack(spacing: 8) {
-                    Button(action: { currentWindow?.close() }) {
-                        Circle()
-                            .fill(Color.red.opacity(0.8))
-                            .frame(width: 12, height: 12)
-                            .overlay(Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).foregroundColor(.black.opacity(0.5)))
-                    }
-                    .buttonStyle(.plain)
-                    
-                    Button(action: { currentWindow?.miniaturize(nil) }) {
-                        Circle()
-                            .fill(Color.yellow.opacity(0.8))
-                            .frame(width: 12, height: 12)
-                            .overlay(Rectangle().fill(Color.black.opacity(0.5)).frame(width: 8, height: 1))
-                    }
-                    .buttonStyle(.plain)
-                    
-                    Circle()
-                        .fill(Color.green.opacity(0.8))
-                        .frame(width: 12, height: 12)
-                }
-                .padding(.leading, 12)
-                
                 Spacer()
                 
                 Text(isMirroring ? streamClient.deviceName : "AirSync")
@@ -160,8 +137,6 @@ struct ScrcpyMirrorView: View {
                     .foregroundColor(.primary.opacity(0.7))
                 
                 Spacer()
-                
-                Color.clear.frame(width: 52, height: 1)
             }
         }
         .frame(height: 36)
@@ -199,8 +174,14 @@ struct ScrcpyMirrorView: View {
         }
     }
 
-    private func updateWindowMovableState(isHovering: Bool) {
-        currentWindow?.isMovable = isHovering
+    private func updateWindowUI(isHovering: Bool) {
+        guard let window = currentWindow else { return }
+        window.isMovable = isHovering
+        
+        // Toggle native traffic lights visibility
+        window.standardWindowButton(.closeButton)?.isHidden = !isHovering
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = !isHovering
+        window.standardWindowButton(.zoomButton)?.isHidden = true // Keep zoom hidden as it breaks mirroring aspect ratio
     }
     
     private func updateWindowConstraints(width: UInt32, height: UInt32) {
