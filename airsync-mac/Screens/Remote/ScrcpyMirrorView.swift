@@ -11,6 +11,7 @@ import MetalKit
 
 struct ScrcpyMirrorView: View {
     @Environment(\.dismissWindow) var dismissWindow
+    @EnvironmentObject var appState: AppState
     @StateObject private var streamClient = ScrcpyStreamClient.shared
     @State private var isMirroring = false
     @State private var errorMessage: String?
@@ -28,8 +29,18 @@ struct ScrcpyMirrorView: View {
         isHovering ? 24 : 0
     }
     
+    private var isStreaming: Bool {
+        isMirroring && streamClient.videoWidth > 0
+    }
+    
     var body: some View {
         ZStack(alignment: .top) {
+            // Immersive Wallpaper Background
+            wallpaperView
+                .opacity(isStreaming ? 0 : 0.4)
+                .animation(.easeInOut(duration: 0.8), value: isStreaming)
+                .ignoresSafeArea()
+            
             VStack(spacing: 0) {
                 // Expanding Header
                 headerView
@@ -39,20 +50,27 @@ struct ScrcpyMirrorView: View {
                 
                 ZStack(alignment: .top) {
                     if isMirroring {
-                        if streamClient.videoWidth > 0 {
-                            MetalVideoView(streamClient: streamClient)
-                                .aspectRatio(safeRatio, contentMode: .fit)
-                                .cornerRadius(contentCornerRadius)
-                                .padding(isHovering ? 8 : 0)
-                                .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isHovering)
-                        } else {
-                            connectingView(message: "Loading")
-                        }
+                        MetalVideoView(streamClient: streamClient)
+                            .aspectRatio(safeRatio, contentMode: .fit)
+                            .cornerRadius(contentCornerRadius)
+                            .padding(isHovering ? 8 : 0)
+                            .opacity(isStreaming ? 1 : 0)
+                            .blur(radius: isStreaming ? 0 : 20)
+                            .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isStreaming)
+                            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isHovering)
+                            .overlay {
+                                if !isStreaming {
+                                    connectingView(message: "Loading")
+                                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                                }
+                            }
                     } else {
                         connectingView(message: errorMessage ?? "Connecting")
                             .cornerRadius(contentCornerRadius)
+                            .transition(.opacity)
                     }
                 }
+                .animation(.easeInOut(duration: 1.25), value: isMirroring)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .background(WindowAccessor(callback: { window in
@@ -122,6 +140,21 @@ struct ScrcpyMirrorView: View {
         .frame(minWidth: 200, minHeight: 300)
         .onDisappear {
             stopMirroring()
+        }
+    }
+    
+    private var wallpaperView: some View {
+        Group {
+            if let wallpaperBase64 = appState.currentDeviceWallpaperBase64,
+               let data = Data(base64Encoded: wallpaperBase64),
+               let image = NSImage(data: data) {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .blur(radius: 15)
+            } else {
+                Color.clear
+            }
         }
     }
     

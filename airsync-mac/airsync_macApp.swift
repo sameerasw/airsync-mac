@@ -231,9 +231,11 @@ struct airsync_macApp: App {
         Window("Mirror", id: "nativeMirror") {
             if #available(macOS 15.0, *) {
                 ScrcpyMirrorView()
+                    .environmentObject(appState)
                     .containerBackground(.ultraThinMaterial, for: .window)
             } else {
                 ScrcpyMirrorView()
+                    .environmentObject(appState)
             }
         }
         .windowResizability(.contentSize)
