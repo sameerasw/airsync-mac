@@ -108,6 +108,12 @@ extension WebSocketServer {
     func like() { sendMediaAction("like") }
     func unlike() { sendMediaAction("unlike") }
 
+    /// Seek Android playback to a specific position (in seconds).
+    func seekTo(positionSeconds: Double) {
+        let positionMs = Int(positionSeconds * 1000)
+        sendMessage(type: "mediaControl", data: ["action": "seekTo", "positionMs": positionMs])
+    }
+
     private func sendMediaAction(_ action: String) {
         sendMessage(type: "mediaControl", data: ["action": action])
     }

@@ -21,6 +21,12 @@ struct DeviceStatus: Codable {
         let isMuted: Bool
         let albumArt: String
         let likeStatus: String
+        /// Total track duration in seconds. -1 means not available.
+        let duration: Double
+        /// Current playback position in seconds (corrected for network transit on Mac side).
+        let position: Double
+        /// True when Android is buffering — position is frozen, Mac timer should pause.
+        let isBuffering: Bool
     }
 
     let battery: Battery
