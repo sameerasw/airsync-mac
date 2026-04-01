@@ -115,7 +115,7 @@ struct ConnectionStatusPill: View {
         if case .relayActive = AirBridgeClient.shared.connectionState {
             return AirBridgeClient.shared.isPeerConnected ? "AirBridge Relay (peer online)" : "AirBridge Relay (peer offline)"
         }
-        return "AirBridge Relay"
+        return "Connecting via Relay..."
     }
 }
 

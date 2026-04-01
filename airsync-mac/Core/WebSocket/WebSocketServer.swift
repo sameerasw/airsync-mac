@@ -54,6 +54,7 @@ class WebSocketServer: ObservableObject {
     internal var validatedTransportGeneration: Int64 = 0
     internal let lanDownDebounceSeconds: TimeInterval = 2.5
     internal var pendingLanDownWorkItem: DispatchWorkItem?
+    internal var pendingRestartWorkItem: DispatchWorkItem?
 
     // Emits immediate events when the primary LAN WebSocket session starts or ends.
     // Used by AppState/UI to update LAN vs relay indicators without polling.
@@ -158,6 +159,7 @@ class WebSocketServer: ObservableObject {
     func requestRestart(reason _reason: String, delay: TimeInterval = 0.35, port: UInt16? = nil) {
         lock.lock()
         let restartPort = port ?? localPort ?? Defaults.serverPort
+        pendingRestartWorkItem?.cancel()
         lock.unlock()
 
         let workItem = DispatchWorkItem { [weak self] in
@@ -165,6 +167,10 @@ class WebSocketServer: ObservableObject {
             self.stop()
             self.start(port: restartPort)
         }
+
+        lock.lock()
+        pendingRestartWorkItem = workItem
+        lock.unlock()
         
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
@@ -416,18 +422,12 @@ class WebSocketServer: ObservableObject {
             if let dec = decryptMessage(text, using: key), !dec.isEmpty {
                 decryptedText = dec
             } else {
-                // Fallback: If decryption fails, check if it's valid plaintext JSON.
-                // This handles cases where keys are out of sync or the client sends plaintext via the secure relay tunnel.
-                if text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{") {
-                     decryptedText = text
-                } else {
-                     print("[transport] RX via RELAY dropped: decrypt failed or empty payload")
-                     return
-                }
+                print("[transport] SECURITY: RX via RELAY dropped — decryption failed.")
+                return
             }
         } else {
-            // In normal operation this should not happen; relay payloads are expected encrypted.
-            decryptedText = text
+            print("[transport] SECURITY: RX via RELAY dropped — no symmetric key available.")
+            return
         }
 
         guard let data = decryptedText.data(using: .utf8) else {

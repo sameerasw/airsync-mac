@@ -609,11 +609,15 @@ class AirBridgeClient: ObservableObject {
         var url = raw.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let host: String = {
-            var h = url
-            // Strip scheme if present
-            if h.hasPrefix("wss://") { h = String(h.dropFirst(6)) }
-            else if h.hasPrefix("ws://") { h = String(h.dropFirst(5)) }
-            return h.components(separatedBy: ":").first?.components(separatedBy: "/").first ?? ""
+            // Use Foundation URL parsing to handle IPv6, ports, and paths correctly.
+            let parsingURLString: String
+            if url.hasPrefix("ws://") || url.hasPrefix("wss://") {
+                parsingURLString = url
+            } else {
+                // Prepend a dummy scheme for parsing purposes only.
+                parsingURLString = "ws://\(url)"
+            }
+            return URL(string: parsingURLString)?.host ?? ""
         }()
 
         let isPrivate = isPrivateHost(host)

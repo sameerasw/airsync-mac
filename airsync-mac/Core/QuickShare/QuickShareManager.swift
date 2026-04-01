@@ -152,6 +152,9 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
         // If we are only connected via relay (no local LAN session), block Quick Share sends.
         if AirBridgeClient.shared.connectionState.isConnected,
            !AppState.shared.isEffectivelyLocalTransport {
+            print("[quickshare] Blocking Quick Share send: relay-only connection, no local transport available")
+            transferState = .idle
+            AppState.shared.showingQuickShareTransfer = false
             return
         }
         transferState = .connecting(deviceID)
