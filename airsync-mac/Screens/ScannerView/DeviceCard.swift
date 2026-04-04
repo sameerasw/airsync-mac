@@ -97,7 +97,12 @@ struct DeviceCard: View {
 
 
                             // Show primary IP
-                            let displayIP = device.ips.first(where: { !$0.hasPrefix("100.") }) ?? device.ips.first ?? ""
+                            let displayIP = device.ips.sorted {
+                                let lhsIsTailscale = $0.hasPrefix("100.")
+                                let rhsIsTailscale = $1.hasPrefix("100.")
+                                if lhsIsTailscale != rhsIsTailscale { return !lhsIsTailscale }
+                                return $0 < $1
+                            }.first ?? ""
                             Text(displayIP)
                                 .font(.caption)
                                 .foregroundColor(.secondary)

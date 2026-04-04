@@ -80,7 +80,7 @@ class AppState: ObservableObject {
         let validatedAdapter = AppState.validateAndGetNetworkAdapter(savedName: savedAdapterName)
         self.selectedNetworkAdapterName = validatedAdapter
         
-        let adapterIP = WebSocketServer.shared.getLocalIPAddress(adapterName: validatedAdapter) ?? "N/A"
+        let adapterIP = WebSocketServer.shared.getPrimaryConnectionIP(adapterName: validatedAdapter) ?? "N/A"
         let deviceName = UserDefaults.standard.string(forKey: "deviceName") ?? (Host.current().localizedName ?? "My Mac")
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
         let portNumStr = UserDefaults.standard.string(forKey: "devicePort") ?? String(Defaults.serverPort)
@@ -185,13 +185,84 @@ class AppState: ObservableObject {
     @Published var recentApps: [AndroidApp] = []
     
     var isConnectedOverLocalNetwork: Bool {
-        guard let ip = device?.ipAddress else { return true }
-        // Tailscale IPs usually start with 100.
-        return !ip.hasPrefix("100.")
+        transportConnectionType == .local
+    }
+
+    var connectionTransportLabel: String {
+        switch transportConnectionType {
+        case .local:
+            return "LAN"
+        case .extended:
+            return "Internet"
+        case .unknown:
+            return "Unknown"
+        }
+    }
+
+    var connectionTransportHelp: String {
+        switch transportConnectionType {
+        case .local:
+            return "Connected directly over the local network"
+        case .extended:
+            return "Connected over an extended path such as Tailscale or another routed network"
+        case .unknown:
+            return "Connection transport is not available"
+        }
+    }
+
+    var connectionTransportIcon: String {
+        switch transportConnectionType {
+        case .local:
+            return "wifi"
+        case .extended:
+            return "globe"
+        case .unknown:
+            return "questionmark.circle"
+        }
     }
 
     // Audio player for ringtone
     private var ringtonePlayer: AVAudioPlayer?
+
+    private enum ConnectionTransportType {
+        case local
+        case extended
+        case unknown
+    }
+
+    private var transportConnectionType: ConnectionTransportType {
+        guard let ip = connectionTransportIP else { return .unknown }
+        return AppState.classifyConnectionIP(ip)
+    }
+
+    private var connectionTransportIP: String? {
+        if let active = activeMacIp?.trimmingCharacters(in: .whitespaces), !active.isEmpty {
+            return active
+        }
+        if let deviceIP = device?.ipAddress.trimmingCharacters(in: .whitespaces), !deviceIP.isEmpty {
+            return deviceIP
+        }
+        return nil
+    }
+
+    private static func classifyConnectionIP(_ ip: String) -> ConnectionTransportType {
+        if ip.hasPrefix("192.168.") || ip.hasPrefix("10.") || ip.hasPrefix("127.") || ip.hasPrefix("169.254.") {
+            return .local
+        }
+
+        if ip.hasPrefix("172.") {
+            let parts = ip.split(separator: ".")
+            if parts.count > 1, let secondOctet = Int(parts[1]), (16...31).contains(secondOctet) {
+                return .local
+            }
+        }
+
+        if ip.hasPrefix("100.") {
+            return .extended
+        }
+
+        return .extended
+    }
 
     @Published var selectedNetworkAdapterName: String? { // e.g., "en0"
         didSet {

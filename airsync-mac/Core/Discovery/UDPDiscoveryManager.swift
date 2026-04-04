@@ -115,13 +115,17 @@ class UDPDiscoveryManager: ObservableObject {
     }
     
     func broadcastPresence() {
-        let adapters = WebSocketServer.shared.getAvailableNetworkAdapters()
-        guard !adapters.isEmpty else { return }
+        let candidateIPs = WebSocketServer.shared.getConnectionCandidateIPs(
+            adapterName: AppState.shared.selectedNetworkAdapterName
+        )
+        guard !candidateIPs.isEmpty else { return }
         
         // knownPeerIPs: List of IPs we have connected to before (e.g. Android on Tailscale)
-        let knownPeerIPs = Set(QuickConnectManager.shared.lastConnectedDevices.values.map { $0.ipAddress })
-        
-        let allIPs = adapters.map { $0.address }
+        let knownPeerIPs = Set(
+            QuickConnectManager.shared.lastConnectedDevices.values
+                .map { $0.ipAddress }
+                .filter { !$0.hasPrefix("100.") }
+        )
         
         let info = AppState.shared.myDevice
         let port = info?.port ?? Int(Defaults.serverPort)
@@ -134,14 +138,14 @@ class UDPDiscoveryManager: ObservableObject {
             "deviceType": "mac",
             "id": uuid,
             "name": name,
-            "ips": allIPs, // Send ALL IPs
+            "ips": candidateIPs,
             "port": port
         ]
         
         if let data = try? JSONSerialization.data(withJSONObject: payload),
            let jsonString = String(data: data, encoding: .utf8) {
-            for adapter in adapters {
-                sendBroadcast(message: jsonString, sourceIP: adapter.address)
+            for sourceIP in candidateIPs {
+                sendBroadcast(message: jsonString, sourceIP: sourceIP)
             }
         }
         
@@ -149,7 +153,7 @@ class UDPDiscoveryManager: ObservableObject {
            let jsonString = String(data: data, encoding: .utf8) {
             
             for peerIP in knownPeerIPs {
-                if allIPs.contains(peerIP) { continue }
+                if candidateIPs.contains(peerIP) { continue }
                 sendUnicast(message: jsonString, targetIP: peerIP)
             }
         }
@@ -336,8 +340,12 @@ class UDPDiscoveryManager: ObservableObject {
     
     /// IP validation
     private func isValidCandidateIP(_ ip: String) -> Bool {
-        // 1. Allow Tailscale (100.x.x.x)
-        if ip.hasPrefix("100.") { return true }
+        let localCandidates = WebSocketServer.shared.getConnectionCandidateIPs(
+            adapterName: AppState.shared.selectedNetworkAdapterName
+        )
+        let hasLocalLAN = localCandidates.contains { !$0.hasPrefix("100.") }
+
+        if ip.hasPrefix("100.") { return !hasLocalLAN }
         
         // 2. Allow Standard Local LAN (192.168.x.x)
         if ip.hasPrefix("192.168.") { return true }

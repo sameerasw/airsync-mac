@@ -248,13 +248,13 @@ struct ScannerView: View {
     }
 
      func generateQRAsync() {
-        let ip = WebSocketServer.shared
-            .getLocalIPAddress(
+        let candidateIPs = WebSocketServer.shared
+            .getConnectionCandidateIPs(
                 adapterName: appState.selectedNetworkAdapterName
             )
 
         // Check if we have a valid IP address
-        guard let validIP = ip else {
+        guard !candidateIPs.isEmpty else {
             DispatchQueue.main.async {
                 self.hasValidIP = false
                 self.qrImage = nil
@@ -269,7 +269,7 @@ struct ScannerView: View {
         }
 
         let text = generateQRText(
-            ip: validIP,
+            ips: candidateIPs,
             port: UInt16(appState.myDevice?.port ?? Int(Defaults.serverPort)),
             name: appState.myDevice?.name,
             key: WebSocketServer.shared.getSymmetricKeyBase64() ?? ""
@@ -301,13 +301,14 @@ struct ScannerView: View {
     }
 }
 
-func generateQRText(ip: String?, port: UInt16?, name: String?, key: String) -> String? {
-    guard let ip = ip, let port = port else {
+func generateQRText(ips: [String], port: UInt16?, name: String?, key: String) -> String? {
+    guard !ips.isEmpty, let port = port else {
         return nil
     }
 
     let encodedName = name?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "My Mac"
-    return "airsync://\(ip):\(port)?name=\(encodedName)?plus=\(AppState.shared.isPlus)?key=\(key)"
+    let authority = ips.joined(separator: ",")
+    return "airsync://\(authority):\(port)?name=\(encodedName)?plus=\(AppState.shared.isPlus)?key=\(key)"
 }
 
 #Preview {

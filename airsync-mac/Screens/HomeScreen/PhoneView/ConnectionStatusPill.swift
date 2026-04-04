@@ -17,10 +17,28 @@ struct ConnectionStatusPill: View {
             showingPopover.toggle()
         }) {
             HStack(spacing: 8) {
-                // Network Connection Icon
-                Image(systemName: appState.isConnectedOverLocalNetwork ? "wifi" : "globe")
-                    .contentTransition(.symbolEffect(.replace))
-                    .help(appState.isConnectedOverLocalNetwork ? "Local WiFi" : "Extended Connection (Tailscale)")
+                if appState.device != nil {
+                    HStack(spacing: 6) {
+                        Image(systemName: appState.connectionTransportIcon)
+                            .contentTransition(.symbolEffect(.replace))
+
+                        Text(appState.connectionTransportLabel)
+                            .font(.caption.weight(.semibold))
+                    }
+                    .foregroundStyle(transportTint)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(transportTint.opacity(0.14), in: Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(transportTint.opacity(0.22), lineWidth: 1)
+                    )
+                    .help(appState.connectionTransportHelp)
+                } else {
+                    Image(systemName: appState.connectionTransportIcon)
+                        .contentTransition(.symbolEffect(.replace))
+                        .help(appState.connectionTransportHelp)
+                }
                 
                 if appState.isPlus {
                     if appState.adbConnecting {
@@ -78,6 +96,17 @@ struct ConnectionStatusPill: View {
             ConnectionPillPopover()
         }
     }
+
+    private var transportTint: Color {
+        switch appState.connectionTransportLabel {
+        case "LAN":
+            return .green
+        case "Internet":
+            return .orange
+        default:
+            return .secondary
+        }
+    }
     
     private var adbModeIcon: String {
         switch appState.adbConnectionMode {
@@ -121,6 +150,12 @@ struct ConnectionPillPopover: View {
                         icon: "wifi",
                         text: currentIPAddress,
                         activeIp: appState.activeMacIp
+                    )
+
+                    ConnectionInfoText(
+                        label: "Transport",
+                        icon: appState.connectionTransportIcon,
+                        text: appState.connectionTransportLabel
                     )
                     
                     if appState.isPlus && appState.adbConnected {

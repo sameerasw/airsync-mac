@@ -61,8 +61,12 @@ class QuickConnectManager: ObservableObject {
     
     /// Attempts to wake up and reconnect to a specific discovered device
     func connect(to discoveredDevice: DiscoveredDevice) {
-        // Pick best IP: prefer local (non-100.x) over VPN
-        let bestIP = discoveredDevice.ips.first(where: { !$0.hasPrefix("100.") }) ?? discoveredDevice.ips.first ?? ""
+        let bestIP = discoveredDevice.ips.sorted {
+            let lhsIsTailscale = $0.hasPrefix("100.")
+            let rhsIsTailscale = $1.hasPrefix("100.")
+            if lhsIsTailscale != rhsIsTailscale { return !lhsIsTailscale }
+            return $0 < $1
+        }.first ?? ""
         
         // Convert DiscoveredDevice to Device model
         let device = Device(
@@ -105,7 +109,7 @@ class QuickConnectManager: ObservableObject {
     // MARK: - Private Implementation
     
     private func getCurrentMacIP() -> String? {
-        return WebSocketServer.shared.getLocalIPAddress(
+        return WebSocketServer.shared.getPrimaryConnectionIP(
             adapterName: AppState.shared.selectedNetworkAdapterName
         )
     }
@@ -162,29 +166,22 @@ class QuickConnectManager: ObservableObject {
     /// Selects the best local IP to present to the target device
     /// Prioritizes IPs that match the target's subnet/prefix (e.g. Tailscale 100.x)
     private func getBestLocalIP(for targetIP: String) -> String? {
-        let adapters = WebSocketServer.shared.getAvailableNetworkAdapters()
-        let allIPs = adapters.map { $0.address }
+        let allIPs = WebSocketServer.shared.getConnectionCandidateIPs(
+            adapterName: AppState.shared.selectedNetworkAdapterName,
+            includeExpandedNetworking: false
+        )
         
         // 1. If user manually selected an adapter, MUST use that
         if let selected = AppState.shared.selectedNetworkAdapterName {
-            if let match = adapters.first(where: { $0.name == selected }) {
+            if let match = WebSocketServer.shared.getAvailableNetworkAdapters().first(where: { $0.name == selected }) {
                 return match.address
             }
         }
         
-        // 2. If valid target IP, try to match prefix
         if !targetIP.isEmpty {
-            // Check for Tailscale (100.x)
-            if targetIP.hasPrefix("100.") {
-                if let tailscaleIP = allIPs.first(where: { $0.hasPrefix("100.") }) {
-                    return tailscaleIP
-                }
-            }
-            
-            // Check for other common prefixes (subnet match)
             let parts = targetIP.split(separator: ".")
-            if let firstOctet = parts.first {
-                let prefix = "\(firstOctet)."
+            if parts.count >= 3 {
+                let prefix = "\(parts[0]).\(parts[1]).\(parts[2])."
                 if let match = allIPs.first(where: { $0.hasPrefix(prefix) }) {
                     return match
                 }
