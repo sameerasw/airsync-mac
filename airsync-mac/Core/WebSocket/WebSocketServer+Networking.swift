@@ -13,30 +13,99 @@ extension WebSocketServer {
     
     // MARK: - Local IP handling
 
+    private func isTailscaleIP(_ ip: String) -> Bool {
+        ip.hasPrefix("100.")
+    }
+
+    private func isPrivateLANIP(_ ip: String) -> Bool {
+        if ip.hasPrefix("192.168.") || ip.hasPrefix("10.") { return true }
+        if ip.hasPrefix("172.") {
+            let parts = ip.split(separator: ".")
+            if parts.count > 1, let second = Int(parts[1]), (16...31).contains(second) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func rankConnectionIPs(_ ips: [String], includeExpandedNetworking: Bool) -> [String] {
+        let sanitized = ips
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let filtered = sanitized.filter { includeExpandedNetworking || !isTailscaleIP($0) }
+        let base = filtered.isEmpty ? sanitized : filtered
+
+        let ranked = uniqueStrings(base)
+        return ranked.sorted {
+            let lhsRank = connectionPriority(for: $0, includeExpandedNetworking: includeExpandedNetworking)
+            let rhsRank = connectionPriority(for: $1, includeExpandedNetworking: includeExpandedNetworking)
+            if lhsRank != rhsRank { return lhsRank < rhsRank }
+            return $0 < $1
+        }
+    }
+
+    private func connectionPriority(for ip: String, includeExpandedNetworking: Bool) -> Int {
+        if isPrivateLANIP(ip) && !isTailscaleIP(ip) { return 0 }
+        if includeExpandedNetworking && isTailscaleIP(ip) { return 1 }
+        if isTailscaleIP(ip) { return 2 }
+        return 3
+    }
+
+    func getConnectionCandidateIPs(
+        adapterName: String?,
+        includeExpandedNetworking: Bool = false
+    ) -> [String] {
+        let adapters = getAvailableNetworkAdapters()
+        let rankedAll = rankConnectionIPs(adapters.map { $0.address }, includeExpandedNetworking: includeExpandedNetworking)
+
+        guard let adapterName else {
+            return rankedAll
+        }
+
+        guard let exact = adapters.first(where: { $0.name == adapterName }) else {
+            return rankedAll
+        }
+
+        let manualFirst = [exact.address] + rankedAll.filter { $0 != exact.address }
+        return rankConnectionIPs(
+            manualFirst,
+            includeExpandedNetworking: includeExpandedNetworking || isTailscaleIP(exact.address)
+        )
+    }
+
+    func getPrimaryConnectionIP(
+        adapterName: String?,
+        includeExpandedNetworking: Bool = false
+    ) -> String? {
+        getConnectionCandidateIPs(
+            adapterName: adapterName,
+            includeExpandedNetworking: includeExpandedNetworking
+        ).first
+    }
+
     /// Retrieves the local IP address based on configuration.
     /// Supports binding to a specific adapter or auto-discovery of all available non-loopback interfaces.
     func getLocalIPAddress(adapterName: String?) -> String? {
-        let adapters = getAvailableNetworkAdapters()
-
         if let adapterName = adapterName {
-            if let exact = adapters.first(where: { $0.name == adapterName }) {
+            let candidates = getConnectionCandidateIPs(adapterName: adapterName)
+            if let exact = candidates.first {
                 self.lock.lock()
                 let lastLogged = lastLoggedSelectedAdapter
                 self.lock.unlock()
                 
-                if lastLogged?.name != exact.name || lastLogged?.address != exact.address {
-                    print("[websocket] Selected adapter match: \(exact.name) -> \(exact.address)")
+                if lastLogged?.name != adapterName || lastLogged?.address != exact {
+                    print("[websocket] Selected adapter match: \(adapterName) -> \(exact)")
                     self.lock.lock()
-                    lastLoggedSelectedAdapter = (exact.name, exact.address)
+                    lastLoggedSelectedAdapter = (adapterName, exact)
                     self.lock.unlock()
                 }
-                return exact.address
+                return exact
             }
         }
 
         // Auto mode
         if adapterName == nil {
-            let allAddresses = adapters.map { $0.address }
+            let allAddresses = getConnectionCandidateIPs(adapterName: nil)
             if !allAddresses.isEmpty {
                 let joined = allAddresses.joined(separator: ",")
                 
@@ -87,7 +156,7 @@ extension WebSocketServer {
             }
             freeifaddrs(ifaddr)
         }
-        return adapters
+        return uniqueAdapters(adapters)
     }
 
     func ipIsPrivatePreferred(_ ip: String) -> Bool {
@@ -100,6 +169,16 @@ extension WebSocketServer {
             }
         }
         return false
+    }
+
+    private func uniqueStrings(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.filter { seen.insert($0).inserted }
+    }
+
+    private func uniqueAdapters(_ adapters: [(name: String, address: String)]) -> [(name: String, address: String)] {
+        var seen = Set<String>()
+        return adapters.filter { seen.insert("\($0.name)|\($0.address)").inserted }
     }
 
     // MARK: - Network Monitoring
