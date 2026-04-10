@@ -70,6 +70,25 @@ class ScrcpyControlClient {
         send(data: data)
     }
     
+    func sendKeyEvent(action: UInt8, keycode: UInt32) {
+        var data = Data()
+        data.append(0) // Type 0: Inject key event
+        data.append(action) // 0: down, 1: up
+        
+        // Keycode (4 bytes)
+        withUnsafeBytes(of: keycode.bigEndian) { data.append(contentsOf: $0) }
+        
+        // Repeat (4 bytes)
+        let repeatCount: UInt32 = 0
+        withUnsafeBytes(of: repeatCount.bigEndian) { data.append(contentsOf: $0) }
+        
+        // Meta state (4 bytes)
+        let metaState: UInt32 = 0
+        withUnsafeBytes(of: metaState.bigEndian) { data.append(contentsOf: $0) }
+        
+        send(data: data)
+    }
+    
     private func send(data: Data) {
         connection?.send(content: data, completion: .contentProcessed({ error in
             if let error = error {

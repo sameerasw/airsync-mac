@@ -33,6 +33,72 @@ struct MetalVideoView: NSViewRepresentable {
         override func mouseUp(with event: NSEvent) { sendTouchEvent(action: 1, event: event) }
         override func mouseDragged(with event: NSEvent) { sendTouchEvent(action: 2, event: event) }
         
+        // Secondary click as "Back" button (AKEYCODE_BACK = 4)
+        override func rightMouseDown(with event: NSEvent) { ScrcpyControlClient.shared.sendKeyEvent(action: 0, keycode: 4) }
+        override func rightMouseUp(with event: NSEvent) { ScrcpyControlClient.shared.sendKeyEvent(action: 1, keycode: 4) }
+        
+        private var scrollDragY: Double = 0
+        private var isVirtualScrolling: Bool = false
+        private var scrollTimer: Timer?
+        
+        override func scrollWheel(with event: NSEvent) {
+            guard let client = streamClient, client.videoWidth > 0, client.videoHeight > 0 else { return }
+            
+            let centerX = UInt32(Double(client.videoWidth) / 2.0)
+            let centerY = UInt32(Double(client.videoHeight) / 2.0)
+            
+            // NSEvent phases provide much more accurate lifecycle for trackpad gestures
+            let phase = event.phase
+            let momentumPhase = event.momentumPhase
+            
+            if phase == .began {
+                isVirtualScrolling = true
+                scrollDragY = Double(centerY)
+                sendVirtualTouch(action: 0, x: centerX, y: UInt32(scrollDragY), client: client)
+            } else if phase == .changed || (phase == [] && momentumPhase == []) {
+                // Handle actual scrolling movement
+                if !isVirtualScrolling {
+                    isVirtualScrolling = true
+                    scrollDragY = Double(centerY)
+                    sendVirtualTouch(action: 0, x: centerX, y: UInt32(scrollDragY), client: client)
+                }
+                
+                // Increase sensitivity and invert for "Natural" feel
+                let sensitivity: Double = event.hasPreciseScrollingDeltas ? 1.5 : 10.0
+                scrollDragY += Double(event.scrollingDeltaY) * sensitivity
+                scrollDragY = max(0, min(Double(client.videoHeight), scrollDragY))
+                
+                sendVirtualTouch(action: 2, x: centerX, y: UInt32(scrollDragY), client: client)
+            }
+            
+            // End virtual touch session
+            if phase == .ended || phase == .cancelled || momentumPhase == .ended || momentumPhase == .cancelled {
+                if isVirtualScrolling {
+                    sendVirtualTouch(action: 1, x: centerX, y: UInt32(scrollDragY), client: client)
+                    isVirtualScrolling = false
+                }
+                scrollTimer?.invalidate()
+                scrollTimer = nil
+            } else if phase == [] && momentumPhase == [] {
+                // Fallback for traditional mice wheel (timer based)
+                scrollTimer?.invalidate()
+                scrollTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { [weak self] _ in
+                    guard let self = self, let client = self.streamClient, self.isVirtualScrolling else { return }
+                    self.sendVirtualTouch(action: 1, x: centerX, y: UInt32(self.scrollDragY), client: client)
+                    self.isVirtualScrolling = false
+                }
+            }
+        }
+        
+        private func sendVirtualTouch(action: UInt8, x: UInt32, y: UInt32, client: ScrcpyStreamClient) {
+            ScrcpyControlClient.shared.sendTouchEvent(
+                action: action,
+                x: x, y: y,
+                width: UInt16(client.videoWidth),
+                height: UInt16(client.videoHeight)
+            )
+        }
+        
         private func sendTouchEvent(action: UInt8, event: NSEvent) {
             guard let client = streamClient, client.videoWidth > 0, client.videoHeight > 0 else { return }
             
