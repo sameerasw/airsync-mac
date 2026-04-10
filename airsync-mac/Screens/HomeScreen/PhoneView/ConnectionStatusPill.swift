@@ -17,28 +17,11 @@ struct ConnectionStatusPill: View {
             showingPopover.toggle()
         }) {
             HStack(spacing: 8) {
-                if appState.device != nil {
-                    HStack(spacing: 6) {
-                        Image(systemName: appState.connectionTransportIcon)
-                            .contentTransition(.symbolEffect(.replace))
+                // Network Connection Icon
+                Image(systemName: appState.isConnectedOverLocalNetwork ? "wifi" : "globe")
+                    .contentTransition(.symbolEffect(.replace))
+                    .help(appState.isConnectedOverLocalNetwork ? "Local WiFi" : "Extended Connection (Tailscale)")
 
-                        Text(appState.connectionTransportLabel)
-                            .font(.caption.weight(.semibold))
-                    }
-                    .foregroundStyle(transportTint)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(transportTint.opacity(0.14), in: Capsule())
-                    .overlay(
-                        Capsule()
-                            .stroke(transportTint.opacity(0.22), lineWidth: 1)
-                    )
-                    .help(appState.connectionTransportHelp)
-                } else {
-                    Image(systemName: appState.connectionTransportIcon)
-                        .contentTransition(.symbolEffect(.replace))
-                        .help(appState.connectionTransportHelp)
-                }
                 
                 if appState.isPlus {
                     if appState.adbConnecting {
