@@ -22,6 +22,9 @@ class QuickConnectManager: ObservableObject {
     // Store last connected devices per network (key: Mac IP, value: Device)
     @Published var lastConnectedDevices: [String: Device] = [:]
     
+    // Track which device is currently being connected to 
+    @Published var connectingDeviceID: String? = nil
+    
     private init() {
         loadDeviceHistoryFromDisk()
     }
@@ -76,6 +79,12 @@ class QuickConnectManager: ObservableObject {
         saveLastConnectedDevice(device)
         
         print("[quick-connect] Initiating connection to discovered device: \(device.name) at \(device.ipAddress)")
+        
+        // Show progress in UI
+        DispatchQueue.main.async {
+            self.connectingDeviceID = discoveredDevice.id
+        }
+        
         Task {
             await sendWakeUpRequest(to: device)
         }
@@ -157,6 +166,11 @@ class QuickConnectManager: ObservableObject {
         
         // Try to send HTTP POST request to the Android device
         await sendHTTPWakeUpRequest(to: device, message: wakeUpMessage)
+        
+        // Clear progress after short delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            self.connectingDeviceID = nil
+        }
     }
     
     /// Selects the best local IP to present to the target device

@@ -8,6 +8,11 @@ struct DeviceCard: View {
     let namespace: Namespace.ID
 
     @State private var wallpaperImage: NSImage?
+    @ObservedObject private var quickConnectManager = QuickConnectManager.shared
+
+    private var isLoading: Bool {
+        quickConnectManager.connectingDeviceID == device.id
+    }
 
     var body: some View {
         Group {
@@ -15,9 +20,15 @@ struct DeviceCard: View {
                 // Compact Mode
                 Button(action: connectAction) {
                     HStack(spacing: 8) {
-                        Image(systemName: "iphone")
-                            .font(.system(size: 16))
-                            .matchedGeometryEffect(id: "icon-\(device.id)", in: namespace)
+                        if isLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                                .frame(width: 16, height: 16)
+                        } else {
+                            Image(systemName: "iphone")
+                                .font(.system(size: 16))
+                                .matchedGeometryEffect(id: "icon-\(device.id)", in: namespace)
+                        }
                         
                         VStack(alignment: .leading, spacing: 0) {
                             Text(device.name)
@@ -127,6 +138,7 @@ struct DeviceCard: View {
                         label: "Connect",
                         systemImage: "bolt.circle.fill",
                         primary: device.isActive,
+                        isLoading: isLoading,
                         action: connectAction
                     )
                     .frame(maxWidth: .infinity)
