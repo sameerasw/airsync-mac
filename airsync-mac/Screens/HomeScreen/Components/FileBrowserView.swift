@@ -4,6 +4,8 @@ import UniformTypeIdentifiers
 struct FileBrowserView: View {
     @ObservedObject var appState = AppState.shared
     let onClose: () -> Void
+    @State private var selectedItemName: String?
+    @FocusState private var isListFocused: Bool
 
     var body: some View {
         ZStack {
@@ -100,23 +102,57 @@ struct FileBrowserView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    List {
+                    List(selection: $selectedItemName) {
                         ForEach(appState.browseItems) { item in
                             FileBrowserItemRow(item: item) {
-                                if item.isDir {
-                                    let cleanPath = appState.browsePath.hasSuffix("/") ? appState.browsePath : appState.browsePath + "/"
-                                    let newPath = cleanPath + item.name + "/"
-                                    appState.fetchDirectory(path: newPath)
-                                }
+                                navigateInto(item)
                             }
+                            .tag(item.name)
                         }
                     }
                     .scrollContentBackground(.hidden)
                     .background(.clear)
                     .listStyle(.sidebar)
+                    .focusable()
+                    .focused($isListFocused)
+                    .onKeyPress(.return) {
+                        if let selected = selectedItemName,
+                           let item = appState.browseItems.first(where: { $0.name == selected }) {
+                            navigateInto(item)
+                            return .handled
+                        }
+                        return .ignored
+                    }
+                    .onKeyPress(.delete) {
+                        if appState.browsePath != "/sdcard/" && appState.browsePath != "/sdcard" {
+                            appState.navigateUp()
+                            return .handled
+                        }
+                        return .ignored
+                    }
+                    .onKeyPress(
+                        characters: .init(charactersIn: "\u{7f}")
+                    ) { _ in
+                        if appState.browsePath != "/sdcard/" && appState.browsePath != "/sdcard" {
+                            appState.navigateUp()
+                            return .handled
+                        }
+                        return .ignored
+                    }
                     .onDrop(of: [.fileURL], isTargeted: nil) { providers in
                         handleDrop(providers: providers, targetPath: appState.browsePath)
                         return true
+                    }
+                    .onChange(of: appState.browseItems) { _, newValue in
+                        if selectedItemName == nil, let firstItem = newValue.first {
+                            selectedItemName = firstItem.name
+                        }
+                        // Reset focus to list whenever items change (navigation)
+                        isListFocused = true
+                    }
+                    .onAppear {
+                        // Initial focus
+                        isListFocused = true
                     }
                 }
             }
@@ -124,6 +160,18 @@ struct FileBrowserView: View {
         .frame(width: 500, height: 600)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .shadow(radius: 20)
+    }
+
+    private func navigateInto(_ item: FileBrowserItem) {
+        if item.isDir {
+            let cleanPath = appState.browsePath.hasSuffix("/") ? appState.browsePath : appState.browsePath + "/"
+            let newPath = cleanPath + item.name + "/"
+            appState.fetchDirectory(path: newPath)
+            selectedItemName = nil
+        } else {
+            let fullItemPath = (appState.browsePath.hasSuffix("/") ? appState.browsePath : appState.browsePath + "/") + item.name
+            appState.pullFile(path: fullItemPath)
+        }
     }
 
     private func handleDrop(providers: [NSItemProvider], targetPath: String) {

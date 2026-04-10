@@ -149,6 +149,10 @@ struct MenubarView: View {
                             modifiers: .command
                         )
                         .contextMenu {
+                            Button("Android Mirror") {
+                                appState.isNativeMirroring = true
+                            }
+                            
                             Button("Desktop Mode") {
                                 ADBConnector.startScrcpy(
                                     ip: appState.device?.ipAddress ?? "",
@@ -163,6 +167,16 @@ struct MenubarView: View {
                             modifiers: [.command, .shift]
                         )
                     }
+
+                    GlassButtonView(
+                        label: appState.silenceAllNotifications ? "Disable DND" : "Enable DND",
+                        systemImage: appState.silenceAllNotifications ? "bell.slash.fill" : "bell.badge",
+                        iconOnly: true,
+                        circleSize: toolButtonSize
+                    ) {
+                        appState.silenceAllNotifications.toggle()
+                    }
+                    .help(appState.silenceAllNotifications ? "Do Not Disturb is ON" : "Turn on Do Not Disturb")
 
                     GlassButtonView(
                         label: "Quit",

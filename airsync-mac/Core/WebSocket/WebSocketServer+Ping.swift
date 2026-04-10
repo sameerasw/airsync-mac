@@ -33,11 +33,14 @@ extension WebSocketServer {
     
     /// Performs a session health check.
     /// Identifies and forcibly disconnects stale sessions that have exceeded the activity timeout.
+    /// Only the *primary* session going stale triggers a full server restart. Non-primary zombie
+    /// sessions are force-closed silently to avoid cascading restarts.
     func performPing() {
         self.lock.lock()
         let sessions = activeSessions
         let timeout = self.activityTimeout
         let key = self.symmetricKey
+        let primary = self.primarySessionID
         self.lock.unlock()
         
         if sessions.isEmpty { return }
@@ -55,17 +58,27 @@ extension WebSocketServer {
             let isStale = now.timeIntervalSince(lastDate) > timeout
             
             if isStale {
-                print("[websocket] Session \(sessionId) is stale. Performing hard reset and discovery restart.")
-                DispatchQueue.main.async {
-                    // Disconnect and restart
-                    AppState.shared.disconnectDevice()
-                    ADBConnector.disconnectADB()
-                    AppState.shared.adbConnected = false
-                    
-                    self.stop()
-                    self.start(port: self.localPort ?? Defaults.serverPort)
+                let isPrimary = (sessionId == primary)
+                if isPrimary {
+                    // Primary session has gone silent — full reconnect cycle
+                    print("[websocket] Primary session \(sessionId) is stale (>\(Int(timeout))s). Restarting server.")
+                    DispatchQueue.main.async {
+                        AppState.shared.disconnectDevice()
+                        ADBConnector.disconnectADB()
+                        AppState.shared.adbConnected = false
+                        self.restartServer()
+                    }
+                    return // Let the restart handle everything; stop iterating
+                } else {
+                    // Non-primary zombie — just evict it without touching app state
+                    print("[websocket] Non-primary session \(sessionId) is stale. Force-closing silently.")
+                    self.lock.lock()
+                    self.activeSessions.removeAll { $0 === session }
+                    self.lastActivity.removeValue(forKey: sessionId)
+                    self.lock.unlock()
+                    session.writeBinary([]) // Force-close
+                    continue
                 }
-                return
             }
             
             let pingJson = "{\"type\":\"ping\",\"data\":{}}"

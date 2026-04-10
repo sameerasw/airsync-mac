@@ -84,6 +84,17 @@ struct airsync_macApp: App {
                 HomeView()
                     .applyMainWindowSetup(appDelegate: appDelegate, appState: appState)
                     .dropTarget(appState: appState)
+                    .onAppear {
+                        if !appState.isNativeMirroring {
+                            dismissWindow(id: "nativeMirror")
+                        }
+                        if appState.activeCall == nil {
+                            dismissWindow(id: "callWindow")
+                        }
+                        if !appState.showingQuickShareTransfer {
+                            dismissWindow(id: "quickShareWindow")
+                        }
+                    }
             }
         }
         .onChange(of: appState.activeCall) { oldValue, newValue in
@@ -98,6 +109,13 @@ struct airsync_macApp: App {
                 openWindow(id: "quickShareWindow")
             } else {
                 dismissWindow(id: "quickShareWindow")
+            }
+        }
+        .onChange(of: appState.isNativeMirroring) { oldValue, newValue in
+            if newValue {
+                openWindow(id: "nativeMirror")
+            } else {
+                dismissWindow(id: "nativeMirror")
             }
         }
         .commands {
@@ -122,7 +140,7 @@ struct airsync_macApp: App {
             // Mirror menu: launch full device mirror or specific apps via scrcpy
             CommandMenu("Mirror") {
                 // Primary full-device mirror option
-                Button("Android Mirror") {
+                Button("Android Mirror (scrcpy)") {
                     if let device = appState.device, appState.adbConnected {
                         ADBConnector.startScrcpy(
                             ip: device.ipAddress,
@@ -131,6 +149,11 @@ struct airsync_macApp: App {
                             package: nil
                         )
                     }
+                }
+                .disabled(!(appState.device != nil && appState.adbConnected))
+                
+                Button("Android Mirror") {
+                    appState.isNativeMirroring = true
                 }
                 .disabled(!(appState.device != nil && appState.adbConnected))
 
@@ -156,16 +179,21 @@ struct airsync_macApp: App {
 
         // Secondary Tool Window for Calls
         Window("Call", id: "callWindow") {
-            if let activeCall = appState.activeCall {
-                if #available(macOS 15.0, *) {
-                    CallWindowView(callEvent: activeCall)
-                        .environmentObject(appState)
-                        .containerBackground(.ultraThinMaterial, for: .window)
-                } else {
-                    CallWindowView(callEvent: activeCall)
-                        .environmentObject(appState)
+            Group {
+                if let activeCall = appState.activeCall {
+                    if #available(macOS 15.0, *) {
+                        CallWindowView(callEvent: activeCall)
+                            .environmentObject(appState)
+                            .containerBackground(.ultraThinMaterial, for: .window)
+                    } else {
+                        CallWindowView(callEvent: activeCall)
+                            .environmentObject(appState)
+                    }
                 }
             }
+            .background(WindowAccessor(callback: { window in
+                window.isRestorable = false
+            }))
         }
         .defaultPosition(.topTrailing)
         .defaultSize(width: 320, height: 480)
@@ -182,6 +210,7 @@ struct airsync_macApp: App {
                     window.title = Localizer.shared.text("quickshare.title")
                     window.titlebarAppearsTransparent = true
                     window.isMovableByWindowBackground = true
+                    window.isRestorable = false
                     window.styleMask.remove(.resizable)
                     window.standardWindowButton(.closeButton)?.isHidden = false
                     window.standardWindowButton(.miniaturizeButton)?.isHidden = true
@@ -198,6 +227,21 @@ struct airsync_macApp: App {
         .defaultPosition(.topTrailing)
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
+
+        Window("Mirror", id: "nativeMirror") {
+            if #available(macOS 15.0, *) {
+                ScrcpyMirrorView()
+                    .environmentObject(appState)
+                    .containerBackground(.ultraThinMaterial, for: .window)
+            } else {
+                ScrcpyMirrorView()
+                    .environmentObject(appState)
+            }
+        }
+        .windowResizability(.contentSize)
+        .defaultSize(width: 320, height: 680)
+        .windowStyle(.hiddenTitleBar)
+        .defaultPosition(.center)
 
     }
 }
