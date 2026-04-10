@@ -15,17 +15,6 @@ struct AppContentView: View {
     @State private var showDisconnectAlert = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            if appState.device != nil {
-                HStack {
-                    Spacer()
-                    ConnectionStatusPill()
-                }
-                .padding(.horizontal, 12)
-                .padding(.top, 10)
-                .padding(.bottom, 6)
-            }
-
             TabView(selection: $appState.selectedTab) {
                 // QR Scanner Tab (only when device is NOT connected)
                 if appState.device == nil {
@@ -128,7 +117,6 @@ struct AppContentView: View {
                             }
                         }
                     }
-            }
         }
         .tabViewStyle(.automatic)
         .frame(minWidth: 550)
