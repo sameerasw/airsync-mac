@@ -16,6 +16,7 @@
 		B99B04C62F641E1400FF3E2D /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = B99B04C52F641E1400FF3E2D /* AppIcon.icon */; };
 		B9AEBC0A2E6235D3006BA027 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B9AEBC092E6235D3006BA027 /* Sparkle */; };
 		B9B1C00D2E94E15D0005F6CB /* LottieUI in Frameworks */ = {isa = PBXBuildFile; productRef = B9B1C00C2E94E15D0005F6CB /* LottieUI */; };
+		B9C0AA122F7D2B4F00BA0961 /* scrcpy-server-v3.3.4 in Resources */ = {isa = PBXBuildFile; fileRef = B9C0AA112F7D2B4F00BA0961 /* scrcpy-server-v3.3.4 */; };
 		B9C3181E2E37AA1D00367F16 /* QRCode in Frameworks */ = {isa = PBXBuildFile; productRef = B9C3181D2E37AA1D00367F16 /* QRCode */; };
 		B9D2631B2F60D97900628704 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = B9D2631A2F60D97900628704 /* Sentry */; };
 		B9D263292F60D9CF00628704 /* SentrySwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = B9D263282F60D9CF00628704 /* SentrySwiftUI */; };
@@ -26,6 +27,7 @@
 		B9673B572E35A2A1006D284A /* AirSync.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AirSync.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B995A3322E4D2B3F00FA7A41 /* AppIcon-uni.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = "AppIcon-uni.icon"; sourceTree = "<group>"; };
 		B99B04C52F641E1400FF3E2D /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
+		B9C0AA112F7D2B4F00BA0961 /* scrcpy-server-v3.3.4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = "scrcpy-server-v3.3.4"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -78,6 +80,7 @@
 		B9673B4E2E35A2A1006D284A = {
 			isa = PBXGroup;
 			children = (
+				B9C0AA112F7D2B4F00BA0961 /* scrcpy-server-v3.3.4 */,
 				B995A3322E4D2B3F00FA7A41 /* AppIcon-uni.icon */,
 				B9673B592E35A2A1006D284A /* airsync-mac */,
 				B9D263192F60D97900628704 /* Frameworks */,
@@ -188,6 +191,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B99B04C62F641E1400FF3E2D /* AppIcon.icon in Resources */,
+				B9C0AA122F7D2B4F00BA0961 /* scrcpy-server-v3.3.4 in Resources */,
 				B995A3332E4D2B3F00FA7A41 /* AppIcon-uni.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
