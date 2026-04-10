@@ -716,9 +716,10 @@ class AppState: ObservableObject {
         // Only fetch if connected
         guard device != nil else { return }
         
-        isBrowsingLoading = true
-        // Keep the path updated immediately for UI responsiveness
-        browsePath = path
+        DispatchQueue.main.async {
+            self.isBrowsingLoading = true
+            self.browsePath = path
+        }
         WebSocketServer.shared.sendBrowseRequest(path: path, showHidden: showHiddenFiles)
     }
 

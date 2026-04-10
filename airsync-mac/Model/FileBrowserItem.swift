@@ -1,6 +1,6 @@
 import Foundation
 
-struct FileBrowserItem: Codable, Identifiable {
+struct FileBrowserItem: Codable, Identifiable, Equatable {
     var id: String { name }
     let name: String
     let isDir: Bool
