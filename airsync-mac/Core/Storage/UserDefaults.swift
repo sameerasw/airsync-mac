@@ -26,6 +26,7 @@ extension UserDefaults {
         static let continueApp = "continueApp"
         static let directKeyInput = "directKeyInput"
         static let sendNowPlayingStatus = "sendNowPlayingStatus"
+        static let syncAndroidPlaybackSeekbar = "syncAndroidPlaybackSeekbar"
         static let isMusicCardHidden = "isMusicCardHidden"
         static let lastOnboarding = "lastOnboarding"
 
@@ -128,6 +129,15 @@ extension UserDefaults {
     var sendNowPlayingStatus: Bool {
         get { bool(forKey: Keys.sendNowPlayingStatus)}
         set { set(newValue, forKey: Keys.sendNowPlayingStatus)}
+    }
+
+    /// When enabled, AirSync plays a silent audio loop to claim macOS Now Playing focus,
+    /// allowing the Android playback seekbar to be exposed in boringNotch / Control Center.
+    /// Disabled by default because it causes Bluetooth multipoint headphones to route
+    /// audio to the Mac, preventing Android media from playing through the headphones.
+    var syncAndroidPlaybackSeekbar: Bool {
+        get { bool(forKey: Keys.syncAndroidPlaybackSeekbar) }
+        set { set(newValue, forKey: Keys.syncAndroidPlaybackSeekbar) }
     }
 
     var isMusicCardHidden: Bool {

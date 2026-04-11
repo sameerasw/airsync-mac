@@ -108,8 +108,30 @@ extension WebSocketServer {
     func like() { sendMediaAction("like") }
     func unlike() { sendMediaAction("unlike") }
 
+    /// Seek Android playback to a specific position (in seconds).
+    func seekTo(positionSeconds: Double) {
+        let positionMs = Int(positionSeconds * 1000)
+        sendMessage(type: "mediaControl", data: ["action": "seekTo", "positionMs": positionMs])
+    }
+
     private func sendMediaAction(_ action: String) {
         sendMessage(type: "mediaControl", data: ["action": action])
+    }
+
+    /// Forward a system media command (from MPRemoteCommandCenter) back to Android.
+    /// - action: "play", "pause", "playPause", "nextTrack", "previousTrack"
+    func sendAndroidMediaControl(action: String) {
+        // Map MPRemoteCommandCenter-style names to the Android protocol's action names
+        let androidAction: String
+        switch action {
+        case "play":          androidAction = "play"
+        case "pause":         androidAction = "pause"
+        case "playPause":     androidAction = "playPause"
+        case "nextTrack":     androidAction = "next"
+        case "previousTrack": androidAction = "previous"
+        default:              androidAction = action
+        }
+        sendMediaAction(androidAction)
     }
 
     // MARK: - Volume Controls
