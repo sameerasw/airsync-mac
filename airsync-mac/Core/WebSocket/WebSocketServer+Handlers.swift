@@ -254,6 +254,32 @@ extension WebSocketServer {
         {
             let albumArt = (music["albumArt"] as? String) ?? ""
             let likeStatus = (music["likeStatus"] as? String) ?? "none"
+            let isBuffering = (music["isBuffering"] as? Bool) ?? false
+
+            // Android sends duration/position in ms; convert to seconds.
+            // Using NSNumber because Swift's `as? Double` fails if the JSON parser inferred an Int.
+            let durationSec = (music["duration"] as? NSNumber).map { $0.doubleValue / 1000.0 } ?? -1.0
+            var positionSec = (music["position"] as? NSNumber).map { $0.doubleValue / 1000.0 } ?? -1.0
+
+            // Timestamp-based position correction:
+            // Android includes the wall-clock ms when the position snapshot was taken.
+            // We add the elapsed time since then (which includes WiFi transit) to get a
+            // much more accurate "current" position — effectively NTP-style compensation.
+            // Clamp: only correct for realistic WiFi delays (< 5s). Larger deltas likely
+            // indicate clock skew between devices, which would worsen accuracy if applied.
+            if positionSec >= 0, playing, !isBuffering,
+               let tsMs = music["positionTimestamp"] as? NSNumber {
+                let capturedAt = tsMs.doubleValue / 1000.0
+                let nowSec = Date().timeIntervalSince1970
+                let networkDelta = nowSec - capturedAt
+                if networkDelta > -2.0 && networkDelta < 5.0 {
+                    positionSec += max(0.0, networkDelta)
+                }
+            }
+            // Clamp to duration to prevent the seekbar going past the end
+            if durationSec > 0 && positionSec > durationSec {
+                positionSec = durationSec
+            }
 
             AppState.shared.status = DeviceStatus(
                 battery: .init(level: level, isCharging: isCharging),
@@ -265,9 +291,38 @@ extension WebSocketServer {
                     volume: volume,
                     isMuted: isMuted,
                     albumArt: albumArt,
-                    likeStatus: likeStatus
+                    likeStatus: likeStatus,
+                    duration: durationSec,
+                    position: positionSec,
+                    isBuffering: isBuffering
                 )
             )
+
+            // Publish Android now-playing info to MPNowPlayingInfoCenter only when
+            // the user has opted in, because this requires playing silent audio which
+            // causes multipoint Bluetooth headphones to route audio to the Mac.
+            if UserDefaults.standard.syncAndroidPlaybackSeekbar {
+                var npInfo = NowPlayingInfo()
+                npInfo.title = title
+                npInfo.artist = artist
+                npInfo.isPlaying = playing
+                if let data = Data(base64Encoded: albumArt) {
+                    npInfo.artworkData = data
+                }
+                // Seekbar: Android sends duration/position in ms; MPNowPlayingInfoCenter needs seconds.
+                // positionMs uses optDouble so missing/null safely falls back to -1.
+                // NOTE: Use NSNumber because Swift's JSON parser returns an Int type for flat numbers.
+                if let nsNum = music["duration"] as? NSNumber, nsNum.doubleValue > 0 {
+                    npInfo.duration = nsNum.doubleValue / 1000.0
+                }
+                if let pMs = music["position"] as? NSNumber, pMs.doubleValue >= 0 {
+                    npInfo.elapsedTime = pMs.doubleValue / 1000.0
+                }
+                NowPlayingPublisher.shared.update(info: npInfo)
+            } else {
+                // If the setting is off, ensure any previously running session is cleared
+                NowPlayingPublisher.shared.clear()
+            }
         }
     }
 
