@@ -137,6 +137,7 @@ class AppState: ObservableObject {
     }
 
     @Published var minAndroidVersion = Bundle.main.infoDictionary?["AndroidVersion"] as? String ?? "2.0.0"
+    @Published var isManuallyDisconnected: Bool = false
 
     @Published var device: Device? = nil {
         didSet {
@@ -738,6 +739,8 @@ class AppState: ObservableObject {
 
     func disconnectDevice() {
         DispatchQueue.main.async {
+            self.isManuallyDisconnected = true
+            
             // Send request to remote device to disconnect
             WebSocketServer.shared.sendDisconnectRequest()
 
@@ -762,6 +765,32 @@ class AppState: ObservableObject {
             
             self.showFileBrowser = false
             self.browseItems.removeAll()
+        }
+    }
+
+    func handleAutomaticDisconnect() {
+        DispatchQueue.main.async {
+            self.device = nil
+            self.activeMacIp = nil
+            self.notifications.removeAll()
+            self.status = nil
+            self.currentDeviceWallpaperBase64 = nil
+            
+            if QuickShareManager.shared.transferState != .idle {
+                QuickShareManager.shared.transferState = .idle
+            }
+
+            if self.adbConnected {
+                ADBConnector.disconnectADB()
+                self.adbConnected = false
+            }
+            
+            self.showFileBrowser = false
+            self.browseItems.removeAll()
+            
+            if BLECentralManager.shared.isAuthenticated {
+                self.updateVirtualDeviceForBLE()
+            }
         }
     }
 

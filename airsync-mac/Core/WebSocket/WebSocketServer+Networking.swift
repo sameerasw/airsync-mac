@@ -153,17 +153,25 @@ extension WebSocketServer {
             }
 
             if let lastIP = lastIP, lastIP != chosenIP {
-                print("[websocket] (network) IP changed from \(lastIP) to \(chosenIP ?? "N/A"), restarting WebSocket in 5 seconds")
+                print("[websocket] (network) IP changed from \(lastIP) to \(chosenIP ?? "N/A"), stopping server immediately and restarting in 5 seconds")
                 
                 DispatchQueue.main.async {
                     self.lock.lock()
                     self.lastKnownIP = chosenIP
                     self.lock.unlock()
                     AppState.shared.shouldRefreshQR = true
+                    
+                    self.reconnectGraceTimer?.invalidate()
+                    self.reconnectGraceTimer = nil
+                    
+                    AppState.shared.handleAutomaticDisconnect()
                 }
                 
+                // Stop the server immediately to close existing connections
+                self.stop()
+                
+                // Delay the startup of the new server to let network interfaces stabilize
                 DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-                    self.stop()
                     self.start(port: Defaults.serverPort)
                 }
             } else if lastIP == nil {

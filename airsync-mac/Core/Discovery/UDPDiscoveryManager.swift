@@ -94,22 +94,43 @@ class UDPDiscoveryManager: ObservableObject {
                 guard Date().timeIntervalSince(self.lastBroadcastTime) >= 2.0 else { return }
                 print("[Discovery] Network change detected – broadcasting presence")
                 self.broadcastBurst()
+                // Also send peer exchange for no-WiFi scenarios
+                self.sendPeerExchange()
             }
             self.networkChangePendingWork = work
             queue.asyncAfter(deadline: .now() + 2.0, execute: work)
         }
         networkMonitor?.start(queue: queue)
+        
+        // 3. Start periodic peer exchange for no-WiFi discovery
+        startPeerExchangeTimer()
+    }
+    
+    private var peerExchangeTimer: Timer?
+    
+    private func startPeerExchangeTimer() {
+        peerExchangeTimer?.invalidate()
+        peerExchangeTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+            self?.sendPeerExchange()
+        }
     }
     
     private func stopMonitoring() {
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         networkMonitor?.cancel()
         networkMonitor = nil
+        peerExchangeTimer?.invalidate()
+        peerExchangeTimer = nil
     }
     
     @objc private func handleSystemWake() {
         print("[Discovery] System wake detected")
         broadcastBurst()
+        sendPeerExchange()
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            self?.tryAutoConnectToKnownDevice()
+        }
     }
     
     // MARK: - Broadcasting
@@ -306,6 +327,12 @@ class UDPDiscoveryManager: ObservableObject {
             return
         }
         
+        // Handle peerExchange messages for no-WiFi discovery
+        if type == "peerExchange" {
+            handlePeerExchange(json, sourceIp: json["sourceIP"] as? String)
+            return
+        }
+        
         guard type == "presence" else { return }
         
         let name = json["name"] as? String ?? "Unknown Android"
@@ -344,7 +371,97 @@ class UDPDiscoveryManager: ObservableObject {
                     self.discoveredDevices.append(device)
                 }
             }
+            if !AppState.shared.isManuallyDisconnected {
+                self.tryAutoConnectToKnownDevice()
+            }
         }
+    }
+    
+    private func handlePeerExchange(_ json: [String: Any], sourceIp: String?) {
+        let id = json["id"] as? String ?? UUID().uuidString
+        let name = json["name"] as? String ?? "Unknown Android"
+        let port = json["port"] as? Int ?? 0
+        
+        // Get IPs
+        var incomingIps: Set<String> = []
+        if let ipsArray = json["ips"] as? [String] {
+            incomingIps = Set(ipsArray)
+        } else if let singleIp = json["ip"] as? String {
+            incomingIps = [singleIp]
+        }
+        
+        // Get known peers from the exchange
+        if let knownPeers = json["knownPeers"] as? [String: [String]] {
+            // Learn about peer's known peers for recursive discovery
+            for (peerName, peerIps) in knownPeers {
+                print("[Discovery] Learned peer \(peerName) with IPs \(peerIps) from peer exchange")
+            }
+        }
+        
+        let validIps = incomingIps.filter { isValidCandidateIP($0) }
+        guard !validIps.isEmpty else { return }
+        
+        DispatchQueue.main.async {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                if let index = self.discoveredDevices.firstIndex(where: { $0.deviceId == id }) {
+                    var device = self.discoveredDevices[index]
+                    device.ips.formUnion(validIps)
+                    device.lastSeen = Date()
+                    self.discoveredDevices[index] = device
+                } else {
+                    let device = DiscoveredDevice(
+                        deviceId: id,
+                        name: name,
+                        ips: validIps,
+                        port: port,
+                        type: "android",
+                        lastSeen: Date()
+                    )
+                    self.discoveredDevices.append(device)
+                }
+            }
+        }
+    }
+    
+    func sendPeerExchange() {
+        let adapters = WebSocketServer.shared.getAvailableNetworkAdapters()
+        let allIPs = adapters.map { $0.address }
+        
+        guard !allIPs.isEmpty else { return }
+        
+        let info = AppState.shared.myDevice
+        let port = info?.port ?? Int(Defaults.serverPort)
+        let name = info?.name ?? Host.current().localizedName ?? "Mac"
+        let uuid = getStableUUID()
+        
+        // Build peer exchange message with known peers
+        var knownPeers: [String: [String]] = [:]
+        for (_, device) in QuickConnectManager.shared.lastConnectedDevices {
+            knownPeers[device.name] = [device.ipAddress]
+        }
+        
+        let payload: [String: Any] = [
+            "type": "peerExchange",
+            "deviceType": "mac",
+            "id": uuid,
+            "name": name,
+            "ips": allIPs,
+            "port": port,
+            "knownPeers": knownPeers
+        ]
+        
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let jsonString = String(data: data, encoding: .utf8) else { return }
+        
+        // Send to all known peers (Tailscale IPs)
+        for (_, device) in QuickConnectManager.shared.lastConnectedDevices {
+            if device.ipAddress.hasPrefix("100.") {
+                sendUnicast(message: jsonString, targetIP: device.ipAddress)
+            }
+        }
+        
+        // Also broadcast normally
+        broadcastPresence()
     }
     
     /// IP validation
@@ -406,6 +523,26 @@ class UDPDiscoveryManager: ObservableObject {
                 }) {
                     self.objectWillChange.send()
                 }
+            }
+            
+            self.tryAutoConnectToKnownDevice()
+        }
+    }
+    
+    private func tryAutoConnectToKnownDevice() {
+        guard WebSocketServer.shared.connectedDevice == nil,
+              !AppState.shared.isManuallyDisconnected else { return }
+        
+        let lastDevice = QuickConnectManager.shared.getLastConnectedDevice() 
+            ?? QuickConnectManager.shared.lastConnectedDevices.values.first
+            
+        guard let validLastDevice = lastDevice else { return }
+        
+        if let match = discoveredDevices.first(where: { $0.name == validLastDevice.name }) {
+            let bestIP = QuickConnectManager.shared.getBestTargetIP(from: match.ips)
+            if !bestIP.isEmpty {
+                print("[Discovery] Auto-connecting to known Android: \(validLastDevice.name) at \(bestIP):\(match.port)")
+                QuickConnectManager.shared.connect(to: match)
             }
         }
     }

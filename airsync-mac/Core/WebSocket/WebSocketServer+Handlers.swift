@@ -22,6 +22,8 @@ extension WebSocketServer {
         }
 
         switch message.type {
+        case .pong:
+            break
         case .device:
             handleDeviceHandshake(message, session: session)
         case .notification:

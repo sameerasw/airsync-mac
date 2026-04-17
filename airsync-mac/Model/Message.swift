@@ -7,6 +7,7 @@
 import Foundation
 
 enum MessageType: String, Codable {
+    case pong
     case device
     case macInfo
     case notification
