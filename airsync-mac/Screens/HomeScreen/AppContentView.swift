@@ -122,10 +122,12 @@ struct AppContentView: View {
         .frame(minWidth: 550, minHeight: 510)
         .onAppear {
             // Ensure the correct tab is selected when the view appears
-            if appState.device == nil {
-                AppState.shared.selectedTab = .qr
-            } else {
-                AppState.shared.selectedTab = .notifications
+            DispatchQueue.main.async {
+                if appState.device == nil {
+                    AppState.shared.selectedTab = .qr
+                } else {
+                    AppState.shared.selectedTab = .notifications
+                }
             }
         }
         .sheet(isPresented: $showAboutSheet) {

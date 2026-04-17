@@ -5,6 +5,7 @@
 
 import Foundation
 import UniformTypeIdentifiers
+import Network
 #if canImport(MobileCoreServices)
 import MobileCoreServices
 #endif
@@ -128,6 +129,53 @@ extension WebSocketServer {
         }
     }
 
+    func startFastNetworkMonitoring() {
+        self.lock.lock()
+        networkPathMonitor?.cancel()
+        
+        let monitor = NWPathMonitor()
+        networkPathMonitor = monitor
+        self.lock.unlock()
+        
+        monitor.pathUpdateHandler = { [weak self] path in
+            guard let self = self else { return }
+            if path.status == .unsatisfied {
+                self.lock.lock()
+                self.networkLossGraceTimer?.cancel()
+                
+                let work = DispatchWorkItem { [weak self] in
+                    guard let self = self else { return }
+                    DispatchQueue.main.async {
+                        guard let dev = AppState.shared.device, dev.ipAddress != "BLE", !AppState.shared.isManuallyDisconnected else { return }
+                        print("[websocket] Network path lost — triggering fast disconnect")
+                        AppState.shared.handleAutomaticDisconnect()
+                        self.restartServer()
+                    }
+                }
+                self.networkLossGraceTimer = work
+                self.lock.unlock()
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: work)
+            } else {
+                self.lock.lock()
+                self.networkLossGraceTimer?.cancel()
+                self.networkLossGraceTimer = nil
+                self.lock.unlock()
+            }
+        }
+        
+        monitor.start(queue: DispatchQueue(label: "com.airsync.netpath.fast"))
+    }
+
+    func stopFastNetworkMonitoring() {
+        self.lock.lock()
+        networkLossGraceTimer?.cancel()
+        networkLossGraceTimer = nil
+        networkPathMonitor?.cancel()
+        networkPathMonitor = nil
+        self.lock.unlock()
+    }
+
     /// Monitors network adapter state changes.
     /// Triggers a WebSocket server restart if the active IP address changes to maintain connectivity.
     func checkNetworkChange() {
@@ -138,6 +186,7 @@ extension WebSocketServer {
         let lastAddresses = lastKnownAdapters.map { $0.address }
         let currentAddresses = adapters.map { $0.address }
         let lastIP = lastKnownIP
+        let hasActiveServers = !servers.isEmpty
         self.lock.unlock()
 
         if currentAddresses != lastAddresses {
@@ -153,7 +202,35 @@ extension WebSocketServer {
             }
 
             if let lastIP = lastIP, lastIP != chosenIP {
-                print("[websocket] (network) IP changed from \(lastIP) to \(chosenIP ?? "N/A"), restarting WebSocket in 5 seconds")
+                print("[websocket] (network) IP changed from \(lastIP) to \(chosenIP ?? "N/A"), stopping server immediately and restarting in 5 seconds")
+                
+                DispatchQueue.main.async {
+                    self.lock.lock()
+                    self.lastKnownIP = chosenIP
+                    self.lock.unlock()
+                    AppState.shared.shouldRefreshQR = true
+                    
+                    self.reconnectGraceTimer?.invalidate()
+                    self.reconnectGraceTimer = nil
+                    
+                    if let dev = AppState.shared.device, dev.ipAddress != "BLE" {
+                        AppState.shared.handleAutomaticDisconnect()
+                    }
+                }
+                
+                // Stop the server immediately to close existing connections
+                self.stop()
+                
+                // Delay the startup of the new server to let network interfaces stabilize
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                    self.start(port: Defaults.serverPort)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        print("[websocket] Network restarted, triggering auto wake-up of last connected device...")
+                        QuickConnectManager.shared.wakeUpLastConnectedDevice()
+                    }
+                }
+            } else if chosenIP != nil && (lastIP == nil || !hasActiveServers) {
+                print("[websocket] (network) Network restored or active IP became available (\(chosenIP!)), starting server immediately")
                 
                 DispatchQueue.main.async {
                     self.lock.lock()
@@ -162,9 +239,10 @@ extension WebSocketServer {
                     AppState.shared.shouldRefreshQR = true
                 }
                 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-                    self.stop()
-                    self.start(port: Defaults.serverPort)
+                self.start(port: Defaults.serverPort)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    print("[websocket] Network active, triggering auto wake-up of last connected device...")
+                    QuickConnectManager.shared.wakeUpLastConnectedDevice()
                 }
             } else if lastIP == nil {
                 DispatchQueue.main.async {

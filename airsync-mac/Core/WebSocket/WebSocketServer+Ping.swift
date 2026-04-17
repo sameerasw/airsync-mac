@@ -63,7 +63,7 @@ extension WebSocketServer {
                     // Primary session has gone silent — full reconnect cycle
                     print("[websocket] Primary session \(sessionId) is stale (>\(Int(timeout))s). Restarting server.")
                     DispatchQueue.main.async {
-                        AppState.shared.disconnectDevice()
+                        AppState.shared.disconnectDevice(isManual: false)
                         ADBConnector.disconnectADB()
                         AppState.shared.adbConnected = false
                         self.restartServer()

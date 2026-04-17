@@ -47,7 +47,7 @@ class BLETransportBridge {
             case "remote":
                 if action == "manual_disconnect" {
                     print("[BLE] Received manual disconnect from Android client! Instantly disconnecting...")
-                    BLECentralManager.shared.disconnect()
+                    BLECentralManager.shared.disconnect(isManual: true)
                 } else {
                     self.handleRemoteControl(action, value: value)
                 }

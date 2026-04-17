@@ -50,7 +50,9 @@ struct HomeView: View {
         .onAppear {
             if needsOnboarding {
                 showOnboarding = true
-                appState.isOnboardingActive = true
+                DispatchQueue.main.async {
+                    appState.isOnboardingActive = true
+                }
             }
             updateSidebarVisibility()
         }
@@ -63,7 +65,9 @@ struct HomeView: View {
         }
         .onChange(of: showOnboarding) { oldValue, newValue in
             if !newValue {
-                appState.isOnboardingActive = false
+                DispatchQueue.main.async {
+                    appState.isOnboardingActive = false
+                }
             }
         }
         .onChange(of: appState.isOnboardingActive) { oldValue, newValue in

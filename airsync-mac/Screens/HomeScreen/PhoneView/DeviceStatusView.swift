@@ -148,8 +148,10 @@ struct DeviceStatusView: View {
         
         // If no valid media info and card is currently expanded, collapse it
         if !hasValidMedia && !appState.isMusicCardHidden {
-            withAnimation(.easeInOut(duration: 0.28)) {
-                appState.isMusicCardHidden = true
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 0.28)) {
+                    appState.isMusicCardHidden = true
+                }
             }
         }
     }

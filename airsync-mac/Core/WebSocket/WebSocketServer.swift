@@ -10,6 +10,7 @@ import Swifter
 import CryptoKit
 import UserNotifications
 import Combine
+import Network
 
 class WebSocketServer: ObservableObject {
     static let shared = WebSocketServer()
@@ -18,9 +19,12 @@ class WebSocketServer: ObservableObject {
     internal var activeSessions: [WebSocketSession] = []
     internal var primarySessionID: ObjectIdentifier?
     internal var pingTimer: Timer?
-    internal let pingInterval: TimeInterval = 12.5
+    internal let pingInterval: TimeInterval = 5.0
     internal var lastActivity: [ObjectIdentifier: Date] = [:]
-    internal let activityTimeout: TimeInterval = 45.0
+    internal let activityTimeout: TimeInterval = 25.0
+    internal var reconnectGraceTimer: Timer?
+    internal var networkPathMonitor: NWPathMonitor?
+    internal var networkLossGraceTimer: DispatchWorkItem?
     
     @Published var symmetricKey: SymmetricKey?
     @Published var localPort: UInt16?
@@ -81,8 +85,8 @@ class WebSocketServer: ObservableObject {
                     return
                 }
 
-                self.lock.lock()
                 self.stopAllServers()
+                self.lock.lock()
                 
                 if let specificAdapter = adapterName {
                     self.isListeningOnAll = false
@@ -125,11 +129,18 @@ class WebSocketServer: ObservableObject {
                             self.lastKnownIP = ipList
                         }
                         print("[websocket] WebSocket server started on all available adapters at port \(port)")
+                    } else {
+                        DispatchQueue.main.async {
+                            AppState.shared.webSocketStatus = .failed(error: "No active network adapters")
+                            self.lastKnownIP = nil
+                        }
+                        print("[websocket] Failed to start WebSocket server: no active adapters")
                     }
                 }
                 self.lock.unlock()
 
                 self.startNetworkMonitoring()
+                self.startFastNetworkMonitoring()
             } catch {
                 self.lock.unlock()
                 DispatchQueue.main.async { AppState.shared.webSocketStatus = .failed(error: "\(error)") }
@@ -138,21 +149,26 @@ class WebSocketServer: ObservableObject {
     }
 
     internal func stopAllServers() {
-        for (_, server) in servers {
+        self.lock.lock()
+        let serversToStop = Array(servers.values)
+        servers.removeAll()
+        self.lock.unlock()
+        
+        for server in serversToStop {
             server.stop()
         }
-        servers.removeAll()
     }
 
     func stop() {
-        lock.lock()
         stopAllServers()
+        lock.lock()
         activeSessions.removeAll()
         primarySessionID = nil
         stopPing()
         lock.unlock()
         DispatchQueue.main.async { AppState.shared.webSocketStatus = .stopped }
         stopNetworkMonitoring()
+        stopFastNetworkMonitoring()
     }
 
     /// Configures WebSocket routes and event callbacks.
@@ -207,6 +223,14 @@ class WebSocketServer: ObservableObject {
                 self.lock.unlock()
                 print("[websocket] Session \(sessionId) connected.")
                 
+                DispatchQueue.main.async {
+                    if self.reconnectGraceTimer != nil {
+                        print("[websocket] Client reconnected within grace period. Cancelling disconnect timer.")
+                        self.reconnectGraceTimer?.invalidate()
+                        self.reconnectGraceTimer = nil
+                    }
+                }
+                
                 if self.primarySessionID == nil {
                     self.primarySessionID = sessionId
                 }
@@ -232,11 +256,26 @@ class WebSocketServer: ObservableObject {
                 
                 if wasPrimary {
                     DispatchQueue.main.async {
-                        AppState.shared.disconnectDevice()
-                        ADBConnector.disconnectADB()
-                        AppState.shared.adbConnected = false
-                        // Guard against cascading restarts from multiple disconnected callbacks
-                        self.restartServer()
+                        self.reconnectGraceTimer?.invalidate()
+                        if !AppState.shared.isManuallyDisconnected {
+                            self.reconnectGraceTimer = Timer.scheduledTimer(withTimeInterval: 6.0, repeats: false) { [weak self] _ in
+                                guard let self = self else { return }
+                                self.lock.lock()
+                                let activeCount = self.activeSessions.count
+                                self.lock.unlock()
+                                
+                                if activeCount == 0 {
+                                    print("[websocket] Grace period expired without reconnection. Disconnecting device.")
+                                    AppState.shared.handleAutomaticDisconnect()
+                                    self.restartServer()
+                                } else {
+                                    print("[websocket] Grace period expired, but an active session is running. Skipping disconnect.")
+                                }
+                            }
+                        } else {
+                            print("[websocket] Manual disconnect detected. Restarting server immediately.")
+                            self.restartServer()
+                        }
                     }
                 }
             }
@@ -298,13 +337,16 @@ class WebSocketServer: ObservableObject {
         self.lock.unlock()
 
         print("[websocket] Scheduling server restart in 1.5 s…")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+        // Use a background queue so stop()/start() don't block the main thread / UI
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1.5) {
             self.stop()
             self.start(port: port)
 
             // Re-announce presence immediately after restart so Android can find us
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                UDPDiscoveryManager.shared.broadcastBurst()
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1.0) {
+                DispatchQueue.main.async {
+                    UDPDiscoveryManager.shared.broadcastBurst()
+                }
                 self.lock.lock()
                 self.isRestarting = false
                 self.lock.unlock()

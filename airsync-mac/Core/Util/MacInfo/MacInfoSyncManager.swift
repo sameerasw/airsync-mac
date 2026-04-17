@@ -235,8 +235,14 @@ class MacInfoSyncManager: ObservableObject {
                 isMuted: MacRemoteManager.shared.lastVolumeLevel == 0,
                 albumArt: currentHash ?? "", // Use hash for snapshot comparison
                 likeStatus: "none", // must match payload default
-                elapsedTime: Int(info.elapsedTime ?? 0),
-                duration: Int(info.duration ?? 0)
+                elapsedTime: {
+                    let v = info.elapsedTime ?? 0
+                    return v.isFinite ? Int(max(0, min(Double(Int.max), v))) : 0
+                }(),
+                duration: {
+                    let v = info.duration ?? 0
+                    return v.isFinite ? Int(max(0, min(Double(Int.max), v))) : 0
+                }()
             )
         }()
 

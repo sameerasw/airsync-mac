@@ -71,10 +71,12 @@ struct OnboardingView: View {
 
                     case .done:
                         Color.clear.onAppear {
-                            hasPairedDeviceOnce = true
-                            UserDefaults.standard.markOnboardingCompleted()
-                            AppState.shared.isOnboardingActive = false
-                            dismiss()
+                            DispatchQueue.main.async {
+                                hasPairedDeviceOnce = true
+                                UserDefaults.standard.markOnboardingCompleted()
+                                AppState.shared.isOnboardingActive = false
+                                dismiss()
+                            }
                         }
                 }
             }

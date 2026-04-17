@@ -31,10 +31,35 @@ class QuickConnectManager: ObservableObject {
     
     // MARK: - Public Interface
     
-    /// Gets the last connected device for the current network
+    /// Gets the last connected device for the current network, with a gateway fallback for hotspots
     func getLastConnectedDevice() -> Device? {
         guard let currentIP = getCurrentMacIP() else { return nil }
-        return lastConnectedDevices[currentIP]
+        
+        // 1. Exact match for this Mac IP (if we connected on this network/hotspot before)
+        if let exactMatch = lastConnectedDevices[currentIP] {
+            return exactMatch
+        }
+        
+        // 2. Hotspot Fallback: if no exact match, find the most recently connected device from ANY network
+        // and target the default gateway (.1) of the current network.
+        let allDevices = lastConnectedDevices.values
+        guard let fallbackDevice = allDevices.first else { return nil }
+        
+        // Construct gateway IP by replacing the last octet with .1
+        let parts = currentIP.split(separator: ".")
+        if parts.count == 4 {
+            let gatewayIP = parts[0...2].joined(separator: ".") + ".1"
+            print("[quick-connect] No exact device history for IP \(currentIP). Hotspot fallback: targeting gateway \(gatewayIP) for \(fallbackDevice.name)")
+            return Device(
+                name: fallbackDevice.name,
+                ipAddress: gatewayIP,
+                port: fallbackDevice.port,
+                version: fallbackDevice.version,
+                adbPorts: fallbackDevice.adbPorts
+            )
+        }
+        
+        return nil
     }
     
     /// Saves a device as the last connected for the current network
@@ -64,8 +89,8 @@ class QuickConnectManager: ObservableObject {
     
     /// Attempts to wake up and reconnect to a specific discovered device
     func connect(to discoveredDevice: DiscoveredDevice) {
-        // Pick best IP: prefer local (non-100.x) over VPN
-        let bestIP = discoveredDevice.ips.first(where: { !$0.hasPrefix("100.") }) ?? discoveredDevice.ips.first ?? ""
+        // Pick best IP using subnet matching
+        let bestIP = getBestTargetIP(from: discoveredDevice.ips)
         
         // Convert DiscoveredDevice to Device model
         let device = Device(
@@ -81,17 +106,27 @@ class QuickConnectManager: ObservableObject {
         print("[quick-connect] Initiating connection to discovered device: \(device.name) at \(device.ipAddress)")
         
         // Show progress in UI
-        DispatchQueue.main.async {
+        if Thread.isMainThread {
             self.connectingDeviceID = discoveredDevice.id
+            AppState.shared.isManuallyDisconnected = false
+        } else {
+            DispatchQueue.main.async {
+                self.connectingDeviceID = discoveredDevice.id
+                AppState.shared.isManuallyDisconnected = false
+            }
         }
         
         Task {
-            await sendWakeUpRequest(to: device)
+            await sendWakeUpRequest(to: device, isManual: true)
         }
     }
 
     /// Attempts to wake up and reconnect to the last connected device
     func wakeUpLastConnectedDevice() {
+        guard !AppState.shared.isManuallyDisconnected else {
+            print("[quick-connect] Skipping wake-up request because isManuallyDisconnected is true")
+            return
+        }
         guard let lastDevice = getLastConnectedDevice() else {
             print("[quick-connect] No last connected device to wake up")
             return
@@ -101,7 +136,7 @@ class QuickConnectManager: ObservableObject {
         print("[quick-connect] Will try HTTP port \(Self.ANDROID_HTTP_WAKEUP_PORT), then UDP port \(Self.ANDROID_UDP_WAKEUP_PORT) if needed")
         
         Task {
-            await sendWakeUpRequest(to: lastDevice)
+            await sendWakeUpRequest(to: lastDevice, isManual: false)
         }
     }
     
@@ -141,7 +176,7 @@ class QuickConnectManager: ObservableObject {
     
     // MARK: - Wake-up Implementation
     
-    private func sendWakeUpRequest(to device: Device) async {
+    private func sendWakeUpRequest(to device: Device, isManual: Bool) async {
         // Get current connection info to send in wake-up request
         var currentIP = getBestLocalIP(for: device.ipAddress)
         var currentPort = getCurrentMacPort()
@@ -178,18 +213,69 @@ class QuickConnectManager: ObservableObject {
                 "macIP": "\(finalIP)",
                 "macPort": \(finalPort),
                 "macName": "\(macName)",
-                "isPlus": \(AppState.shared.isPlus)
+                "isPlus": \(AppState.shared.isPlus),
+                "isManual": \(isManual)
             }
         }
         """
         
         // Try to send HTTP POST request to the Android device
+        Task {
+            await sendUDPWakeUpRequest(to: device, message: wakeUpMessage)
+        }
         await sendHTTPWakeUpRequest(to: device, message: wakeUpMessage)
         
         // Clear progress after short delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
             self.connectingDeviceID = nil
         }
+    }
+    
+    /// Selects the best target IP from a set of discovered IPs by matching subnets with the Mac's adapters
+    func getBestTargetIP(from targetIPs: Set<String>) -> String {
+        let adapters = WebSocketServer.shared.getAvailableNetworkAdapters()
+        let allMacIPs = adapters.map { $0.address }
+        
+        // 1. Try to find a target IP that shares the first 3 octets (same subnet) with one of our Mac IPs
+        for macIP in allMacIPs {
+            let macParts = macIP.split(separator: ".")
+            if macParts.count >= 3 {
+                let macSubnet = macParts[0...2].joined(separator: ".") + "."
+                if let match = targetIPs.first(where: { $0.hasPrefix(macSubnet) }) {
+                    return match
+                }
+            }
+        }
+        
+        // 2. Try to find a target IP that shares the first 2 octets with one of our Mac IPs
+        for macIP in allMacIPs {
+            let macParts = macIP.split(separator: ".")
+            if macParts.count >= 2 {
+                let macSubnet = macParts[0...1].joined(separator: ".") + "."
+                if let match = targetIPs.first(where: { $0.hasPrefix(macSubnet) }) {
+                    return match
+                }
+            }
+        }
+        
+        // 3. Try to find a target IP that shares the first octet with one of our Mac IPs
+        for macIP in allMacIPs {
+            let macParts = macIP.split(separator: ".")
+            if let firstOctet = macParts.first {
+                let macSubnet = "\(firstOctet)."
+                if let match = targetIPs.first(where: { $0.hasPrefix(macSubnet) }) {
+                    return match
+                }
+            }
+        }
+        
+        // 4. Fallback: Prefer non-Tailscale local IPs
+        if let localIP = targetIPs.first(where: { !$0.hasPrefix("100.") }) {
+            return localIP
+        }
+        
+        // 5. Ultimate fallback
+        return targetIPs.first ?? ""
     }
     
     /// Selects the best local IP to present to the target device
@@ -243,38 +329,19 @@ class QuickConnectManager: ObservableObject {
         request.httpBody = message.data(using: .utf8)
         request.timeoutInterval = 5.0
         
-        var success = false
-        
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
             
             if let httpResponse = response as? HTTPURLResponse {
                 if httpResponse.statusCode == 200 {
                     print("[quick-connect] Wake-up request successful - device should reconnect soon")
-                    success = true
-                } else if httpResponse.statusCode == 502 {
-                    print("[quick-connect] Wake-up request failed with 502 (Bad Gateway). Retrying once...")
-                    
-                    // Small delay before retry
-                    try? await Task.sleep(nanoseconds: 500_000_000)
-                    
-                    if let (_, secondResponse) = try? await URLSession.shared.data(for: request),
-                       let secondHttpResponse = secondResponse as? HTTPURLResponse,
-                       secondHttpResponse.statusCode == 200 {
-                        print("[quick-connect] Wake-up retry successful")
-                        success = true
-                    } else {
-                        print("[quick-connect] Wake-up retry failed")
-                    }
                 } else {
                     print("[quick-connect] Wake-up request failed with status: \(httpResponse.statusCode)")
                 }
             }
         } catch {
             print("[quick-connect] Failed to send wake-up request: \(error)")
-        }
-        
-        if !success {
+            
             // Fallback: Try UDP broadcast
             await sendUDPWakeUpRequest(to: device, message: message)
         }
@@ -284,28 +351,48 @@ class QuickConnectManager: ObservableObject {
         print("[quick-connect] Trying UDP wake-up to \(device.ipAddress):\(Self.ANDROID_UDP_WAKEUP_PORT) as fallback")
         
         // Simple UDP wake-up attempt (fire and forget)
-        let udpMessage = "AIRSYNC_WAKEUP:\(message)"
+        let udpMessage = message
         
         DispatchQueue.global(qos: .background).async {
             // Create UDP socket and send wake-up message
-            let socket = socket(AF_INET, SOCK_DGRAM, 0)
-            defer { close(socket) }
+            let socketFd = socket(AF_INET, SOCK_DGRAM, 0)
+            defer { close(socketFd) }
             
-            guard socket >= 0 else {
+            guard socketFd >= 0 else {
                 print("[quick-connect] Failed to create UDP socket")
                 return
             }
             
-            var addr = sockaddr_in()
-            addr.sin_family = sa_family_t(AF_INET)
-            addr.sin_port = in_port_t(UInt16(Self.ANDROID_UDP_WAKEUP_PORT).bigEndian)
-            inet_aton(device.ipAddress, &addr.sin_addr)
+            // Enable broadcast
+            var broadcastEnable: Int32 = 1
+            setsockopt(socketFd, SOL_SOCKET, SO_BROADCAST, &broadcastEnable, socklen_t(MemoryLayout<Int32>.size))
             
             let messageData = udpMessage.data(using: .utf8) ?? Data()
+            
+            // 1. Send Unicast
+            var unicastAddr = sockaddr_in()
+            unicastAddr.sin_family = sa_family_t(AF_INET)
+            unicastAddr.sin_port = in_port_t(UInt16(Self.ANDROID_UDP_WAKEUP_PORT).bigEndian)
+            inet_aton(device.ipAddress, &unicastAddr.sin_addr)
+            
             _ = messageData.withUnsafeBytes { bytes in
-                withUnsafePointer(to: addr) { addrPtr in
+                withUnsafePointer(to: unicastAddr) { addrPtr in
                     addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
-                        return sendto(socket, bytes.bindMemory(to: Int8.self).baseAddress, messageData.count, 0, sockaddrPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
+                        sendto(socketFd, bytes.bindMemory(to: Int8.self).baseAddress, messageData.count, 0, sockaddrPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
+                    }
+                }
+            }
+            
+            // 2. Send Broadcast
+            var broadcastAddr = sockaddr_in()
+            broadcastAddr.sin_family = sa_family_t(AF_INET)
+            broadcastAddr.sin_port = in_port_t(UInt16(Self.ANDROID_UDP_WAKEUP_PORT).bigEndian)
+            broadcastAddr.sin_addr.s_addr = inet_addr("255.255.255.255")
+            
+            _ = messageData.withUnsafeBytes { bytes in
+                withUnsafePointer(to: broadcastAddr) { addrPtr in
+                    addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
+                        sendto(socketFd, bytes.bindMemory(to: Int8.self).baseAddress, messageData.count, 0, sockaddrPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
                     }
                 }
             }

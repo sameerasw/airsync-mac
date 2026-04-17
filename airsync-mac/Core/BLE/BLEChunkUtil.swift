@@ -8,7 +8,8 @@ struct BLEChunkUtil {
         
         guard maxPayloadSize > 0 else { return [] }
         
-        let totalChunks = Int(ceil(Double(data.count) / Double(maxPayloadSize)))
+        let totalChunksVal = Int(ceil(Double(data.count) / Double(maxPayloadSize)))
+        let totalChunks = min(totalChunksVal, Int(UInt16.max))
         var chunks: [Data] = []
         
         for i in 0..<totalChunks {

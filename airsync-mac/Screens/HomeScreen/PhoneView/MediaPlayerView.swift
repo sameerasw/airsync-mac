@@ -42,7 +42,7 @@ private struct MediaSeekbarView: View {
     }
 
     private func formatTime(_ seconds: Double) -> String {
-        guard seconds >= 0 else { return "--:--" }
+        guard seconds.isFinite, seconds >= 0 else { return "--:--" }
         let s = Int(seconds)
         let m = s / 60
         let h = m / 60

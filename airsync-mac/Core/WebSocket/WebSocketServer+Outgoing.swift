@@ -190,7 +190,8 @@ extension WebSocketServer {
 
     /// Seek Android playback to a specific position (in seconds).
     func seekTo(positionSeconds: Double) {
-        let positionMs = Int(positionSeconds * 1000)
+        guard positionSeconds.isFinite, positionSeconds >= 0 else { return }
+        let positionMs = Int(min(positionSeconds * 1000, Double(Int.max)))
         sendMessage(type: "mediaControl", data: ["action": "seekTo", "positionMs": positionMs])
     }
 

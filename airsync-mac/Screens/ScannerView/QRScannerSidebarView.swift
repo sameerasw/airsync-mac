@@ -22,6 +22,9 @@ struct QRScannerSidebarView: View {
         case .started:
             return ("Ready", "checkmark.circle", .green)
         case .failed(let error):
+            if error == "No active network adapters" {
+                return ("Offline", "wifi.slash", .gray)
+            }
             return ("Failed: \(error)", "exclamationmark.triangle", .red)
         }
     }
@@ -167,6 +170,12 @@ struct QRScannerSidebarView: View {
         }
         .onDisappear {
             qrManager.cleanUpTimer()
+        }
+        .onChange(of: appState.shouldRefreshQR) { _, shouldRefresh in
+            if shouldRefresh {
+                qrManager.generateQRAsync()
+                appState.shouldRefreshQR = false
+            }
         }
     }
 }

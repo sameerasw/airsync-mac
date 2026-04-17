@@ -22,6 +22,8 @@ extension WebSocketServer {
         }
 
         switch message.type {
+        case .pong:
+            break
         case .device:
             handleDeviceHandshake(message, session: session)
         case .notification:
@@ -101,24 +103,76 @@ extension WebSocketServer {
            let ip = dict["ipAddress"] as? String,
            let port = dict["port"] as? Int {
 
-            if let targetIp = dict["targetIpAddress"] as? String {
-                AppState.shared.activeMacIp = targetIp.trimmingCharacters(in: .whitespaces)
-            }
-
+            let targetIpVal = (dict["targetIpAddress"] as? String)?.trimmingCharacters(in: .whitespaces)
             let version = dict["version"] as? String ?? "2.0.0"
             let adbPorts = dict["adbPorts"] as? [String] ?? []
-
-            AppState.shared.device = Device(
+            let deviceVal = Device(
                 name: name,
                 ipAddress: ip,
                 port: port,
                 version: version,
                 adbPorts: adbPorts
             )
+            let wallpaperBase64 = dict["wallpaper"] as? String
 
-            if let base64 = dict["wallpaper"] as? String {
-                AppState.shared.currentDeviceWallpaperBase64 = base64
+            DispatchQueue.main.async {
+                if let targetIp = targetIpVal {
+                    AppState.shared.activeMacIp = targetIp
+                }
+
+                AppState.shared.isManuallyDisconnected = false
+                AppState.shared.device = deviceVal
+
+                if let base64 = wallpaperBase64 {
+                    AppState.shared.currentDeviceWallpaperBase64 = base64
+                }
+
+                let state = AppState.shared
+                if (!state.adbConnected && (state.adbEnabled || state.manualAdbConnectionPending || state.wiredAdbEnabled) && state.isPlus) {
+                    if state.wiredAdbEnabled {
+                        ADBConnector.getWiredDeviceSerial(completion: { serial in
+                            if let serial = serial {
+                                DispatchQueue.main.async {
+                                    state.adbConnected = true
+                                    state.adbConnectionMode = .wired
+                                    state.adbConnectionResult = "Connected via Wired ADB (Serial: \(serial))"
+                                    state.manualAdbConnectionPending = false
+                                }
+                            } else if state.adbEnabled || state.manualAdbConnectionPending {
+                                // Try wireless connection if wired failed or no device found
+                                ADBConnector.connectToADB(ip: ip)
+                                DispatchQueue.main.async {
+                                    state.manualAdbConnectionPending = false
+                                }
+                            }
+                        })
+                    } else if state.adbEnabled || state.manualAdbConnectionPending {
+                        // Try wireless connection directly
+                        ADBConnector.connectToADB(ip: ip)
+                        state.manualAdbConnectionPending = false
+                    }
+                }
+
+                if let bleToken = dict["bleAuthToken"] as? String {
+                    let oldToken = UserDefaults.standard.string(forKey: "bleAuthToken")
+                    UserDefaults.standard.set(bleToken, forKey: "bleAuthToken")
+                    UserDefaults.standard.set(name, forKey: "bleDeviceName")
+                    print("[websocket] Received BLE auth token and device name: \(name)")
+                    
+                    // If token changed or was new, and BLE is enabled, we might want to reconnect
+                    if oldToken != bleToken && state.isBLEEnabled {
+                        BLECentralManager.shared.startScanning()
+                    }
+                }
+
+                if UserDefaults.standard.hasPairedDeviceOnce == false {
+                    UserDefaults.standard.hasPairedDeviceOnce = true
+                }
                 
+                self.sendMacInfoResponse()
+            }
+
+            if let base64 = wallpaperBase64 {
                 // Save wallpaper to disk for DeviceCard
                 if let id = dict["id"] as? String,
                    let data = Data(base64Encoded: base64, options: .ignoreUnknownCharacters) {
@@ -140,48 +194,6 @@ extension WebSocketServer {
                     }
                 }
             }
-
-            if (!AppState.shared.adbConnected && (AppState.shared.adbEnabled || AppState.shared.manualAdbConnectionPending || AppState.shared.wiredAdbEnabled) && AppState.shared.isPlus) {
-                if AppState.shared.wiredAdbEnabled {
-                    ADBConnector.getWiredDeviceSerial(completion: { serial in
-                        if let serial = serial {
-                            DispatchQueue.main.async {
-                                AppState.shared.adbConnected = true
-                                AppState.shared.adbConnectionMode = .wired
-                                AppState.shared.adbConnectionResult = "Connected via Wired ADB (Serial: \(serial))"
-                                AppState.shared.manualAdbConnectionPending = false
-                            }
-                        } else if AppState.shared.adbEnabled || AppState.shared.manualAdbConnectionPending {
-                            // Try wireless connection if wired failed or no device found
-                            ADBConnector.connectToADB(ip: ip)
-                            DispatchQueue.main.async {
-                                AppState.shared.manualAdbConnectionPending = false
-                            }
-                        }
-                    })
-                } else if AppState.shared.adbEnabled || AppState.shared.manualAdbConnectionPending {
-                    // Try wireless connection directly
-                    ADBConnector.connectToADB(ip: ip)
-                    AppState.shared.manualAdbConnectionPending = false
-                }
-            }
-
-            if let bleToken = dict["bleAuthToken"] as? String {
-                let oldToken = UserDefaults.standard.string(forKey: "bleAuthToken")
-                UserDefaults.standard.set(bleToken, forKey: "bleAuthToken")
-                print("[websocket] Received BLE auth token")
-                
-                // If token changed or was new, and BLE is enabled, we might want to reconnect
-                if oldToken != bleToken && AppState.shared.isBLEEnabled {
-                    BLECentralManager.shared.startScanning()
-                }
-            }
-
-            if UserDefaults.standard.hasPairedDeviceOnce == false {
-                UserDefaults.standard.hasPairedDeviceOnce = true
-            }
-            
-            sendMacInfoResponse()
         }
     }
 
@@ -292,9 +304,7 @@ extension WebSocketServer {
                 positionSec = durationSec
             }
 
-            let oldTitle = AppState.shared.status?.music?.title
-
-            AppState.shared.status = DeviceStatus(
+            let newStatus = DeviceStatus(
                 battery: .init(level: level, isCharging: isCharging),
                 isPaired: paired,
                 music: .init(
@@ -312,6 +322,9 @@ extension WebSocketServer {
             )
 
             DispatchQueue.main.async {
+                let oldTitle = AppState.shared.status?.music?.title
+                AppState.shared.status = newStatus
+
                 if oldTitle != title {
                     AppState.shared.handleTrackChange()
                 } else {
@@ -349,70 +362,74 @@ extension WebSocketServer {
 
     private func handleAppIcons(_ message: Message) {
         if let dict = message.data.value as? [String: [String: Any]] {
-            DispatchQueue.global(qos: .background).async {
-                let incomingPackages = Set(dict.keys)
+            DispatchQueue.main.async {
                 let existingPackages = Set(AppState.shared.androidApps.keys)
 
-                for (package, details) in dict {
-                    guard let name = details["name"] as? String,
-                          let iconBase64 = details["icon"] as? String,
-                          let systemApp = details["systemApp"] as? Bool,
-                          let listening = details["listening"] as? Bool else { continue }
+                DispatchQueue.global(qos: .background).async {
+                    let incomingPackages = Set(dict.keys)
+                    var iconPaths: [String: String] = [:]
 
-                    var cleaned = iconBase64
-                    if let range = cleaned.range(of: "base64,") { cleaned = String(cleaned[range.upperBound...]) }
+                    for (package, details) in dict {
+                        guard let iconBase64 = details["icon"] as? String else { continue }
 
-                    var iconPath: String? = nil
-                    if let data = Data(base64Encoded: cleaned), !cleaned.isEmpty {
-                        let fileURL = appIconsDirectory().appendingPathComponent("\(package).png")
-                        do {
-                            try data.write(to: fileURL, options: .atomic)
-                            iconPath = fileURL.path
-                        } catch {
-                            print("[websocket] Failed to write icon for \(package): \(error)")
+                        var cleaned = iconBase64
+                        if let range = cleaned.range(of: "base64,") { cleaned = String(cleaned[range.upperBound...]) }
+
+                        if let data = Data(base64Encoded: cleaned), !cleaned.isEmpty {
+                            let fileURL = appIconsDirectory().appendingPathComponent("\(package).png")
+                            do {
+                                try data.write(to: fileURL, options: .atomic)
+                                iconPaths[package] = fileURL.path
+                            } catch {
+                                print("[websocket] Failed to write icon for \(package): \(error)")
+                            }
                         }
                     }
 
                     DispatchQueue.main.async {
-                        if var existingApp = AppState.shared.androidApps[package] {
-                            existingApp.listening = listening
-                            if let newIconPath = iconPath {
-                                existingApp.iconUrl = newIconPath
-                            }
-                            AppState.shared.androidApps[package] = existingApp
-                        } else {
-                            let app = AndroidApp(
-                                packageName: package,
-                                name: name,
-                                iconUrl: iconPath,
-                                listening: listening,
-                                systemApp: systemApp
-                            )
-                            AppState.shared.androidApps[package] = app
-                        }
-                    }
-                }
+                        for (package, details) in dict {
+                            guard let name = details["name"] as? String,
+                                  let systemApp = details["systemApp"] as? Bool,
+                                  let listening = details["listening"] as? Bool else { continue }
 
-                let toRemove = existingPackages.subtracting(incomingPackages)
-                if !toRemove.isEmpty {
-                    DispatchQueue.main.async {
-                        var pathsToRemove: [String] = []
-                        for pkg in toRemove {
-                            if let iconPath = AppState.shared.androidApps[pkg]?.iconUrl {
-                                pathsToRemove.append(iconPath)
-                            }
-                            AppState.shared.androidApps.removeValue(forKey: pkg)
-                        }
-                        DispatchQueue.global(qos: .background).async {
-                            for path in pathsToRemove {
-                                try? FileManager.default.removeItem(atPath: path)
-                            }
-                        }
-                    }
-                }
+                            let iconPath = iconPaths[package]
 
-                DispatchQueue.main.async {
-                    AppState.shared.saveAppsToDisk()
+                            if var existingApp = AppState.shared.androidApps[package] {
+                                existingApp.listening = listening
+                                if let newIconPath = iconPath {
+                                    existingApp.iconUrl = newIconPath
+                                }
+                                AppState.shared.androidApps[package] = existingApp
+                            } else {
+                                let app = AndroidApp(
+                                    packageName: package,
+                                    name: name,
+                                    iconUrl: iconPath,
+                                    listening: listening,
+                                    systemApp: systemApp
+                                )
+                                AppState.shared.androidApps[package] = app
+                            }
+                        }
+
+                        let toRemove = existingPackages.subtracting(incomingPackages)
+                        if !toRemove.isEmpty {
+                            var pathsToRemove: [String] = []
+                            for pkg in toRemove {
+                                if let iconPath = AppState.shared.androidApps[pkg]?.iconUrl {
+                                    pathsToRemove.append(iconPath)
+                                }
+                                AppState.shared.androidApps.removeValue(forKey: pkg)
+                            }
+                            DispatchQueue.global(qos: .background).async {
+                                for path in pathsToRemove {
+                                    try? FileManager.default.removeItem(atPath: path)
+                                }
+                            }
+                        }
+
+                        AppState.shared.saveAppsToDisk()
+                    }
                 }
             }
         }
@@ -662,6 +679,11 @@ extension WebSocketServer {
                 MacRemoteManager.shared.increaseBrightness()
             case "brightness_down":
                 MacRemoteManager.shared.decreaseBrightness()
+            case "manual_disconnect":
+                print("[WebSocketServer] Received manual disconnect from Android client! Instantly setting manually disconnected...")
+                DispatchQueue.main.async {
+                    AppState.shared.disconnectDevice()
+                }
             default: break
             }
         }
@@ -800,45 +822,49 @@ extension WebSocketServer {
     }
 
     private func sendMacInfoResponse() {
-        let macName = AppState.shared.myDevice?.name ?? (Host.current().localizedName ?? "My Mac")
-        let categoryTypeRaw = DeviceTypeUtil.deviceTypeDescription()
-        let exactDeviceNameRaw = DeviceTypeUtil.deviceFullDescription()
-        let categoryType = categoryTypeRaw.isEmpty ? "Mac" : categoryTypeRaw
-        let exactDeviceName = exactDeviceNameRaw.isEmpty ? categoryType : exactDeviceNameRaw
-        let isPlusSubscription = AppState.shared.isPlus
-        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
-        let savedAppPackages = Array(AppState.shared.androidApps.keys)
+        DispatchQueue.main.async {
+            let macName = AppState.shared.myDevice?.name ?? (Host.current().localizedName ?? "My Mac")
+            let categoryTypeRaw = DeviceTypeUtil.deviceTypeDescription()
+            let exactDeviceNameRaw = DeviceTypeUtil.deviceFullDescription()
+            let categoryType = categoryTypeRaw.isEmpty ? "Mac" : categoryTypeRaw
+            let exactDeviceName = exactDeviceNameRaw.isEmpty ? categoryType : exactDeviceNameRaw
+            let isPlusSubscription = AppState.shared.isPlus
+            let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
+            let savedAppPackages = Array(AppState.shared.androidApps.keys)
 
-        let modelId = DeviceTypeUtil.modelIdentifier()
-        let macInfo = MacInfo(
-            name: macName,
-            modelIdentifier: modelId,
-            categoryType: categoryType,
-            exactDeviceName: exactDeviceName,
-            isPlusSubscription: isPlusSubscription,
-            version: appVersion,
-            savedAppPackages: savedAppPackages
-        )
+            DispatchQueue.global(qos: .background).async {
+                let modelId = DeviceTypeUtil.modelIdentifier()
+                let macInfo = MacInfo(
+                    name: macName,
+                    modelIdentifier: modelId,
+                    categoryType: categoryType,
+                    exactDeviceName: exactDeviceName,
+                    isPlusSubscription: isPlusSubscription,
+                    version: appVersion,
+                    savedAppPackages: savedAppPackages
+                )
 
-        do {
-            let jsonData = try JSONEncoder().encode(macInfo)
-            if var jsonDict = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
-                jsonDict["model"] = modelId
-                jsonDict["type"] = categoryType
-                jsonDict["isPlus"] = isPlusSubscription
+                do {
+                    let jsonData = try JSONEncoder().encode(macInfo)
+                    if var jsonDict = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                        jsonDict["model"] = modelId
+                        jsonDict["type"] = categoryType
+                        jsonDict["isPlus"] = isPlusSubscription
 
-                let messageDict: [String: Any] = [
-                    "type": "macInfo",
-                    "data": jsonDict
-                ]
+                        let messageDict: [String: Any] = [
+                            "type": "macInfo",
+                            "data": jsonDict
+                        ]
 
-                let messageJsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
-                if let messageJsonString = String(data: messageJsonData, encoding: .utf8) {
-                    sendToFirstAvailable(message: messageJsonString)
+                        let messageJsonData = try JSONSerialization.data(withJSONObject: messageDict, options: [])
+                        if let messageJsonString = String(data: messageJsonData, encoding: .utf8) {
+                            self.sendToFirstAvailable(message: messageJsonString)
+                        }
+                    }
+                } catch {
+                    print("[websocket] Error creating mac info response: \(error)")
                 }
             }
-        } catch {
-            print("[websocket] Error creating mac info response: \(error)")
         }
     }
 }

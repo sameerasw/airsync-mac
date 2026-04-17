@@ -120,17 +120,26 @@ class MacRemoteManager: ObservableObject {
     }
 
     func simulateMouseScroll(dx: CGFloat, dy: Double) {
+        // Guard against non-finite values before casting to Int32
+        guard dy.isFinite, dx.isFinite else { return }
+        let clampedDy = Int32(max(Double(Int32.min), min(Double(Int32.max), dy)))
+        let clampedDx = Int32(max(Double(Int32.min), min(Double(Int32.max), Double(dx))))
         // wheel1 is vertical, wheel2 is horizontal
-        let event = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: Int32(dy), wheel2: Int32(dx), wheel3: 0)
+        let event = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: clampedDy, wheel2: clampedDx, wheel3: 0)
         event?.post(tap: .cghidEventTap)
     }
 
     func simulateKeyCode(_ code: Int, modifiers: [String] = []) {
+        guard code >= 0 && code <= UInt16.max else {
+            print("[MacRemoteManager] Error: Keycode \(code) is out of bounds for CGKeyCode")
+            return
+        }
+        let keyCode = CGKeyCode(code)
         let flags = parseModifiers(modifiers)
         let src: CGEventSource? = nil // Better compatibility for system shortcuts
         
-        let keyDown = CGEvent(keyboardEventSource: src, virtualKey: CGKeyCode(code), keyDown: true)
-        let keyUp = CGEvent(keyboardEventSource: src, virtualKey: CGKeyCode(code), keyDown: false)
+        let keyDown = CGEvent(keyboardEventSource: src, virtualKey: keyCode, keyDown: true)
+        let keyUp = CGEvent(keyboardEventSource: src, virtualKey: keyCode, keyDown: false)
         
         keyDown?.flags = flags
         keyUp?.flags = flags
@@ -219,7 +228,16 @@ class MacRemoteManager: ObservableObject {
     
     func getVolume() -> Int {
         let vol = getSystemVolume()
-        return Int(vol * 100)
+        guard vol.isFinite, !vol.isNaN else {
+            print("[MacRemoteManager] Warning: System volume returned non-finite value: \(vol)")
+            return 0
+        }
+        let scaledVol = vol * 100
+        guard scaledVol >= Float(Int.min) && scaledVol <= Float(Int.max) else {
+            print("[MacRemoteManager] Warning: Scaled volume \(scaledVol) is out of bounds for Int")
+            return 0
+        }
+        return Int(max(0.0, min(100.0, scaledVol)))
     }
     
     func increaseVolume() {
