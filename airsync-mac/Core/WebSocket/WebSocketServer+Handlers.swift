@@ -281,6 +281,8 @@ extension WebSocketServer {
                 positionSec = durationSec
             }
 
+            let oldTitle = AppState.shared.status?.music.title
+
             AppState.shared.status = DeviceStatus(
                 battery: .init(level: level, isCharging: isCharging),
                 isPaired: paired,
@@ -297,6 +299,14 @@ extension WebSocketServer {
                     isBuffering: isBuffering
                 )
             )
+
+            DispatchQueue.main.async {
+                if oldTitle != title {
+                    AppState.shared.handleTrackChange()
+                } else {
+                    AppState.shared.syncMediaPosition(incoming: positionSec)
+                }
+            }
 
             // Publish Android now-playing info to MPNowPlayingInfoCenter only when
             // the user has opted in, because this requires playing silent audio which

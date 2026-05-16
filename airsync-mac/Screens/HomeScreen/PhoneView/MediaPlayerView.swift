@@ -12,30 +12,18 @@ import Combine
 
 private struct MediaSeekbarView: View {
     let music: DeviceStatus.Music
-
-    @State private var displayedPosition: Double = 0
-    @State private var isDragging = false
-    /// When the user last performed a seek (to enforce a blackout window)
-    @State private var lastSeekTime: Date = .distantPast
-    /// The position the user seeked to, used for delta-based stale-packet rejection
-    @State private var seekTargetPosition: Double = -1
-
-    // A single declarative timer that ticks every second.
-    // We simply ignore ticks when paused or dragging.
-    @State private var timer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
+    @ObservedObject var appState = AppState.shared
 
     var body: some View {
         VStack(spacing: 2) {
             // Slider
             Slider(
-                value: $displayedPosition,
+                value: $appState.mediaPosition,
                 in: 0...max(music.duration, 1),
                 onEditingChanged: { editing in
-                    isDragging = editing
+                    appState.isDraggingMedia = editing
                     if !editing {
-                        seekTargetPosition = displayedPosition
-                        lastSeekTime = Date()
-                        WebSocketServer.shared.seekTo(positionSeconds: displayedPosition)
+                        appState.handleMediaSeek(to: appState.mediaPosition)
                     }
                 }
             )
@@ -44,90 +32,12 @@ private struct MediaSeekbarView: View {
 
             // Time labels
             HStack {
-                Text(formatTime(displayedPosition))
+                Text(formatTime(appState.mediaPosition))
                 Spacer()
                 Text(formatTime(music.duration))
             }
             .font(.system(size: 10, design: .monospaced))
             .foregroundStyle(.secondary)
-        }
-        .onAppear { syncFromStatus() }
-        .onChange(of: music.position) { _ in
-            guard !isDragging else { return }
-            let incoming = music.position >= 0 ? music.position : 0
-            let sinceSeeked = Date().timeIntervalSince(lastSeekTime)
-
-            // Seek-target confirmation guard (replaces the old 5-second blanket blackout):
-            // After a Mac-initiated seek, we know the target position. Instead of blocking
-            // everything for N seconds, we selectively accept packets that land near our target
-            // and reject packets that are still at the old pre-seek position.
-            //
-            //  - seekTargetPosition >= 0 means we have a pending unconfirmed Mac seek.
-            //  - Accept: incoming is within 10s of the target → fresh post-seek packet. Confirmed!
-            //  - Reject: incoming is far behind the target → stale pre-seek packet. Drop it.
-            //  - Expire: if 10 seconds pass without confirmation, clear the guard and resume normally.
-            if seekTargetPosition >= 0 && sinceSeeked < 10.0 {
-                // A packet is a "fresh confirmation" only if its position is within 10 seconds
-                // of the seek target in EITHER direction (handles both forward and backward seeks).
-                //
-                // Forward seek (3:00→6:00):  stale=3:05 → |3:05-6:00|=175s → reject ✅
-                //                            fresh=6:01 → |6:01-6:00|=1s   → accept ✅
-                //
-                // Backward seek (6:00→3:00): stale=6:05 → |6:05-3:00|=185s → reject ✅
-                //                            fresh=3:01 → |3:01-3:00|=1s   → accept ✅
-                if abs(incoming - seekTargetPosition) <= 10.0 {
-                    seekTargetPosition = -1
-                    syncFromStatus()
-                }
-                // else: stale packet (far from seek target), drop silently.
-                return
-            }
-            // If we get here, either no pending seek or the 10s guard expired.
-            // Clear any stale seekTargetPosition.
-            if seekTargetPosition >= 0 { seekTargetPosition = -1 }
-
-            // Residual delta guard (8s window): catches very delayed stale packets that
-            // somehow slipped past the seek-target guard after it expired.
-            if sinceSeeked < 8.0 && incoming < displayedPosition - 5.0 { return }
-
-            syncFromStatus()
-        }
-        .onReceive(timer) { _ in
-            // Declarative tick: advance only when playing, not buffering, and not dragging
-            guard music.isPlaying, !music.isBuffering, !isDragging else { return }
-            let next = displayedPosition + 1.0
-            displayedPosition = music.duration > 0 ? min(next, music.duration) : next
-        }
-        .onChange(of: music.title) { _ in
-            // Track changed — immediately clear the seek guard and adopt the new position.
-            // Without this, the seek-target filter would reject the new song's 0:00 start
-            // as a "stale packet" for up to 10 seconds if a seek was recent.
-            seekTargetPosition = -1
-            lastSeekTime = .distantPast
-            syncFromStatus()
-        }
-    }
-
-    // MARK: - Helpers
-
-    private func syncFromStatus() {
-        guard music.position >= 0 else { return }
-        let incoming = music.position
-        let delta = incoming - displayedPosition   // positive = Android ahead, negative = Android behind
-
-        // Asymmetric dead zone:
-        //
-        // • Android ahead of Mac by > 3s  → we drifted behind → snap forward.
-        //   This is uncommon (Mac's local timer usually runs slightly ahead).
-        //
-        // • Android behind Mac by > 10s  → genuine desync (Android was buffering/paused and
-        //   we didn't catch it) → snap backward to re-sync.
-        //
-        // • |delta| <= threshold → ignore. The Mac's local timer is already close.
-        //   In particular, this swallows the "7:50 arrives while Mac is at 7:55" case
-        //   (Mac ran 5s ahead of the stale packet → within the 10s backward tolerance → no snap).
-        if delta > 3.0 || delta < -10.0 {
-            displayedPosition = incoming
         }
     }
 
