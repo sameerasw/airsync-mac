@@ -943,7 +943,7 @@ class AppState: ObservableObject {
             withAnimation {
                 self.notifications.removeAll { $0.id == notif.id }
             }
-            self.removeNotification(notif)
+            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [notif.nid])
         }
     }
 
@@ -1058,12 +1058,19 @@ class AppState: ObservableObject {
 
     func addNotification(_ notif: Notification) {
         DispatchQueue.main.async {
+            var contentChanged = true
             withAnimation {
-                self.notifications.insert(notif, at: 0)
+                if let idx = self.notifications.firstIndex(where: { $0.nid == notif.nid }) {
+                    let old = self.notifications[idx]
+                    contentChanged = (old.title != notif.title || old.body != notif.body || old.actions != notif.actions)
+                    self.notifications[idx] = notif
+                } else {
+                    self.notifications.insert(notif, at: 0)
+                }
             }
-            // Trigger native macOS notification if not silent
+            // Trigger native macOS notification if not silent and content actually changed/new
             // Default to alerting if priority is missing (backwards compatibility)
-            if notif.priority != "silent" {
+            if notif.priority != "silent" && contentChanged {
                 var appIcon: NSImage? = nil
                 if let iconPath = self.androidApps[notif.package]?.iconUrl {
                     appIcon = NSImage(contentsOfFile: iconPath)
@@ -1196,17 +1203,22 @@ class AppState: ObservableObject {
     }
 
     func syncWithSystemNotifications() {
-        UNUserNotificationCenter.current().getDeliveredNotifications { systemNotifs in
-            let systemNIDs = Set(systemNotifs.map { $0.request.identifier })
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            guard settings.authorizationStatus == .authorized else {
+                return
+            }
+            UNUserNotificationCenter.current().getDeliveredNotifications { systemNotifs in
+                let systemNIDs = Set(systemNotifs.map { $0.request.identifier })
 
-            DispatchQueue.main.async {
-                // Only sync notifications that were actually posted to system (non-silent)
-                let currentSystemNIDs = Set(self.notifications.filter { $0.priority != "silent" }.map { $0.nid })
-                let removedNIDs = currentSystemNIDs.subtracting(systemNIDs)
+                DispatchQueue.main.async {
+                    // Only sync notifications that were actually posted to system (non-silent)
+                    let currentSystemNIDs = Set(self.notifications.filter { $0.priority != "silent" }.map { $0.nid })
+                    let removedNIDs = currentSystemNIDs.subtracting(systemNIDs)
 
-                for nid in removedNIDs {
-                    print("[state] (notification) System notification \(nid) was dismissed manually.")
-                    self.removeNotificationById(nid)
+                    for nid in removedNIDs {
+                        print("[state] (notification) System notification \(nid) was dismissed manually.")
+                        self.removeNotificationById(nid)
+                    }
                 }
             }
         }

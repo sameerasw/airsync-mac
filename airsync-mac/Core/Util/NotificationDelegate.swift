@@ -11,16 +11,6 @@ import UserNotifications
 @MainActor
 class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                didRemoveDeliveredNotifications identifiers: [String]) {
-        for nid in identifiers {
-            print("[notification-delegate] User dismissed system notification with nid: \(nid)")
-            DispatchQueue.main.async {
-                AppState.shared.removeNotificationById(nid)
-            }
-        }
-    }
-
-    func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         completionHandler([.banner, .sound])
