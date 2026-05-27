@@ -53,6 +53,10 @@ class UDPDiscoveryManager: ObservableObject {
     // MARK: - Lifecycle
     
     func start() {
+        guard !AppState.shared.isSystemSleeping else {
+            print("[Discovery] System is sleeping, refusing to start discovery.")
+            return
+        }
         if !isListening {
             startListening()
             startPruning()
@@ -126,11 +130,13 @@ class UDPDiscoveryManager: ObservableObject {
     }
     
     @objc private func handleSystemWake() {
+        guard !AppState.shared.isSystemSleeping else { return }
         print("[Discovery] System wake detected")
         broadcastBurst()
         sendPeerExchange()
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            guard !AppState.shared.isSystemSleeping else { return }
             self?.tryAutoConnectToKnownDevice()
         }
     }
@@ -529,7 +535,7 @@ class UDPDiscoveryManager: ObservableObject {
                 
                 let newCount = self.discoveredDevices.count
                 if newCount < initialCount {
-                   // print("[Discovery] Pruned \(initialCount - newCount) devices. Remaining: \(newCount)")
+                    // print("[Discovery] Pruned \(initialCount - newCount) devices. Remaining: \(newCount)")
                 }
                 
                 if self.discoveredDevices.contains(where: { device in 

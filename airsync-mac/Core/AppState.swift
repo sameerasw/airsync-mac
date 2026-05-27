@@ -126,7 +126,9 @@ class AppState: ObservableObject {
         self.isBLEAutoConnectEnabled = UserDefaults.standard.object(forKey: "isBLEAutoConnectEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "isBLEAutoConnectEnabled")
 
         if isBLEEnabled {
-            BLECentralManager.shared.startScanning()
+            DispatchQueue.main.async {
+                BLECentralManager.shared.startScanning()
+            }
         }
 
         BLECentralManager.shared.$connectionStatus
@@ -175,6 +177,7 @@ class AppState: ObservableObject {
 
     @Published var minAndroidVersion = Bundle.main.infoDictionary?["AndroidVersion"] as? String ?? "2.0.0"
     @Published var isManuallyDisconnected: Bool = false
+    @Published var isSystemSleeping: Bool = false
 
     @Published var device: Device? = nil {
         didSet {
@@ -228,7 +231,10 @@ class AppState: ObservableObject {
 
             // UDP scan management: stop when regular connection is active, start when connection is lost or only BLE is active
             let isRegularConnectionActive = device != nil && device?.ipAddress != "BLE"
-            if isRegularConnectionActive {
+            if isSystemSleeping {
+                print("[state] System is sleeping — keeping UDP discovery stopped")
+                UDPDiscoveryManager.shared.stop()
+            } else if isRegularConnectionActive {
                 print("[state] Regular connection established — stopping UDP discovery")
                 UDPDiscoveryManager.shared.stop()
             } else {

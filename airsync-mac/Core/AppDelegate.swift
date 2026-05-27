@@ -42,10 +42,84 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Register Services Provider
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()
+
+        // Register for System Sleep/Wake Notifications
+        registerForSleepWakeNotifications()
     }
 
     private func setupSentry() {
         SentryInitializer.start()
+    }
+
+    private func registerForSleepWakeNotifications() {
+        let nc = NSWorkspace.shared.notificationCenter
+        nc.addObserver(
+            self,
+            selector: #selector(handleSystemSleep),
+            name: NSWorkspace.willSleepNotification,
+            object: nil
+        )
+        nc.addObserver(
+            self,
+            selector: #selector(handleSystemWake),
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+    }
+
+    @objc private func handleSystemSleep() {
+        print("[AppDelegate] System going to sleep. Cleaning up connections and background tasks.")
+        
+        // 1. Mark system as sleeping to block automatic background connections/scans
+        AppState.shared.isSystemSleeping = true
+        
+        // 2. Disconnect active device connection cleanly
+        AppState.shared.disconnectDevice(isManual: false)
+        
+        // 3. Stop WebSocket server
+        WebSocketServer.shared.stop()
+        
+        // 4. Stop BLE scanning explicitly
+        BLECentralManager.shared.stopScanning()
+        
+        // 5. Stop UDP Discovery
+        UDPDiscoveryManager.shared.stop()
+    }
+
+    @objc private func handleSystemWake() {
+        print("[AppDelegate] System waking up. Resuming services.")
+        
+        // 1. Mark system as awake
+        AppState.shared.isSystemSleeping = false
+        
+        // 2. Restart WebSocket server
+        startWebSocketServer()
+        
+        // 3. Restart UDP Discovery
+        UDPDiscoveryManager.shared.start()
+        
+        // 4. If BLE Auto Connect is enabled, start BLE scanning
+        if AppState.shared.isBLEAutoConnectEnabled {
+            BLECentralManager.shared.isManuallyDisconnected = false
+            BLECentralManager.shared.startScanning()
+        }
+        
+        // 5. Auto connect to known/last connected device via Quick Connect
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            QuickConnectManager.shared.wakeUpLastConnectedDevice()
+        }
+    }
+
+    private func startWebSocketServer() {
+        let rawPortInt = AppState.shared.myDevice?.port ?? Int(Defaults.serverPort)
+        let chosenPort: UInt16
+        if rawPortInt <= 0 || rawPortInt > 65_535 {
+            print("[AppDelegate] Invalid configured port \(rawPortInt). Falling back to 8080.")
+            chosenPort = UInt16(8080)
+        } else {
+            chosenPort = UInt16(rawPortInt)
+        }
+        WebSocketServer.shared.start(port: chosenPort)
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

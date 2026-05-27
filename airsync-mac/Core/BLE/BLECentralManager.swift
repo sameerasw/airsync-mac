@@ -54,6 +54,10 @@ class BLECentralManager: NSObject, ObservableObject {
     private var watchdogTimer: Timer?
     
     func startScanning() {
+        guard !AppState.shared.isSystemSleeping else {
+            print("[BLE] System is sleeping, refusing to start BLE scanning.")
+            return
+        }
         guard centralManager.state == .poweredOn else { return }
         let isRegularConnectionActive = AppState.shared.device != nil && AppState.shared.device?.ipAddress != "BLE"
         guard !isRegularConnectionActive else {
