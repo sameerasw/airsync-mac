@@ -10,6 +10,8 @@ struct DiscoveredDevice: Identifiable, Equatable, Hashable {
     let port: Int
     let type: String
     var lastSeen: Date
+    var autoConnect: Bool = true
+    var bleAutoConnect: Bool = true
     
     var id: String {
         return deviceId
@@ -338,6 +340,8 @@ class UDPDiscoveryManager: ObservableObject {
         
         let name = json["name"] as? String ?? "Unknown Android"
         let port = json["port"] as? Int ?? 0
+        let autoConnect = json["autoConnect"] as? Bool ?? true
+        let bleAutoConnect = json["bleAutoConnect"] as? Bool ?? true
         
         // Support both "ips" (array) and legacy "ip" (string)
         var incomingIps: Set<String> = []
@@ -358,6 +362,8 @@ class UDPDiscoveryManager: ObservableObject {
                     var device = self.discoveredDevices[index]
                     device.ips.formUnion(validIps)
                     device.lastSeen = Date()
+                    device.autoConnect = autoConnect
+                    device.bleAutoConnect = bleAutoConnect
                     self.discoveredDevices[index] = device
                 } else {
                     // New device
@@ -367,7 +373,9 @@ class UDPDiscoveryManager: ObservableObject {
                         ips: validIps,
                         port: port,
                         type: deviceType,
-                        lastSeen: Date()
+                        lastSeen: Date(),
+                        autoConnect: autoConnect,
+                        bleAutoConnect: bleAutoConnect
                     )
                     self.discoveredDevices.append(device)
                 }
@@ -382,6 +390,8 @@ class UDPDiscoveryManager: ObservableObject {
         let id = json["id"] as? String ?? UUID().uuidString
         let name = json["name"] as? String ?? "Unknown Android"
         let port = json["port"] as? Int ?? 0
+        let autoConnect = json["autoConnect"] as? Bool ?? true
+        let bleAutoConnect = json["bleAutoConnect"] as? Bool ?? true
         
         // Get IPs
         var incomingIps: Set<String> = []
@@ -408,6 +418,8 @@ class UDPDiscoveryManager: ObservableObject {
                     var device = self.discoveredDevices[index]
                     device.ips.formUnion(validIps)
                     device.lastSeen = Date()
+                    device.autoConnect = autoConnect
+                    device.bleAutoConnect = bleAutoConnect
                     self.discoveredDevices[index] = device
                 } else {
                     let device = DiscoveredDevice(
@@ -416,7 +428,9 @@ class UDPDiscoveryManager: ObservableObject {
                         ips: validIps,
                         port: port,
                         type: "android",
-                        lastSeen: Date()
+                        lastSeen: Date(),
+                        autoConnect: autoConnect,
+                        bleAutoConnect: bleAutoConnect
                     )
                     self.discoveredDevices.append(device)
                 }
@@ -532,6 +546,7 @@ class UDPDiscoveryManager: ObservableObject {
     }
     
     private func tryAutoConnectToKnownDevice() {
+        guard AppState.shared.isBLEAutoConnectEnabled else { return }
         let isRegularConnectionActive = AppState.shared.device != nil && AppState.shared.device?.ipAddress != "BLE"
         guard !isRegularConnectionActive,
               QuickConnectManager.shared.connectingDeviceID == nil,
@@ -543,6 +558,10 @@ class UDPDiscoveryManager: ObservableObject {
         guard let validLastDevice = lastDevice else { return }
         
         if let match = discoveredDevices.first(where: { $0.name == validLastDevice.name }) {
+            guard match.autoConnect else {
+                print("[Discovery] Skipping auto-connect to \(validLastDevice.name) because auto-connect is disabled on the device")
+                return
+            }
             let bestIP = QuickConnectManager.shared.getBestTargetIP(from: match.ips)
             if !bestIP.isEmpty {
                 print("[Discovery] Auto-connecting to known Android: \(validLastDevice.name) at \(bestIP):\(match.port)")

@@ -37,7 +37,9 @@ struct MenubarDeviceDiscoveryView: View {
                         ips: bleDevice.ips,
                         port: bleDevice.port,
                         type: bleDevice.type,
-                        lastSeen: bleDevice.lastSeen
+                        lastSeen: bleDevice.lastSeen,
+                        autoConnect: bleDevice.autoConnect,
+                        bleAutoConnect: bleDevice.bleAutoConnect
                     )
                     mergedDevices.append(cleanedBLEDevice)
                 }

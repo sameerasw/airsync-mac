@@ -123,6 +123,10 @@ class QuickConnectManager: ObservableObject {
 
     /// Attempts to wake up and reconnect to the last connected device
     func wakeUpLastConnectedDevice() {
+        guard AppState.shared.isBLEAutoConnectEnabled else {
+            print("[quick-connect] Skipping wake-up request because isBLEAutoConnectEnabled is false")
+            return
+        }
         guard !AppState.shared.isManuallyDisconnected else {
             print("[quick-connect] Skipping wake-up request because isManuallyDisconnected is true")
             return
@@ -130,6 +134,13 @@ class QuickConnectManager: ObservableObject {
         guard let lastDevice = getLastConnectedDevice() else {
             print("[quick-connect] No last connected device to wake up")
             return
+        }
+        
+        if let match = UDPDiscoveryManager.shared.discoveredDevices.first(where: { $0.name == lastDevice.name }) {
+            guard match.autoConnect else {
+                print("[quick-connect] Skipping wake-up request because autoConnect is disabled on \(lastDevice.name)")
+                return
+            }
         }
         
         print("[quick-connect] Attempting to wake up device: \(lastDevice.name) at \(lastDevice.ipAddress)")

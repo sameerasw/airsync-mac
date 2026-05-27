@@ -178,13 +178,16 @@ class BLECentralManager: NSObject, ObservableObject {
                 displayName = String(displayName.dropFirst(8))
             }
             
+            let udpDevice = UDPDiscoveryManager.shared.discoveredDevices.first(where: { $0.name == displayName })
             return DiscoveredDevice(
                 deviceId: record.peripheral.identifier.uuidString,
                 name: displayName,
                 ips: ["Bluetooth LE"],
                 port: 0,
                 type: "ble",
-                lastSeen: record.lastSeen
+                lastSeen: record.lastSeen,
+                autoConnect: udpDevice?.autoConnect ?? true,
+                bleAutoConnect: udpDevice?.bleAutoConnect ?? true
             )
         }
     }
@@ -276,6 +279,14 @@ extension BLECentralManager: CBCentralManagerDelegate {
         // Auto connect if enabled, not manually disconnected, and no active regular connection exists
         let isRegularConnectionActive = AppState.shared.device != nil && AppState.shared.device?.ipAddress != "BLE"
         if AppState.shared.isBLEAutoConnectEnabled && !isManuallyDisconnected && !isRegularConnectionActive {
+            // Guard: check if we have a UDP discovered device record and if it disables BLE auto-connect
+            if let match = UDPDiscoveryManager.shared.discoveredDevices.first(where: { $0.name == name }) {
+                guard match.bleAutoConnect else {
+                    print("[BLE] Skipping BLE auto-connect because bleAutoConnect is disabled for \(name)")
+                    return
+                }
+            }
+            
             // Guard: must not be already connecting or connected
             guard connectionTimer == nil && connectionStatus != .connected && connectionStatus != .authenticated else { return }
             
