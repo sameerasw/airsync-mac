@@ -15,6 +15,7 @@ struct SyncSettingsView: View {
 
     @AppStorage("showInControlCenter") private var showInControlCenter = false
     @State private var showControlCenterInfo = false
+    @State private var showPairingSheet = false
 
     // State for notification permissions
     @State private var notificationsGranted = false
@@ -24,7 +25,18 @@ struct SyncSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 // 1. Wireless / Wired ADB
-                headerSection(title: "Connection & ADB", icon: "bolt.horizontal.circle")
+                HStack {
+                    headerSection(title: "Connection & ADB", icon: "bolt.horizontal.circle")
+                    Spacer()
+                    GlassButtonView(
+                        label: L("settings.newDevice"),
+                        systemImage: "qrcode",
+                        action: {
+                            showPairingSheet = true
+                        }
+                    )
+                    .padding(.trailing, 8)
+                }
                 VStack(spacing: 12) {
                     ZStack {
                         HStack {
@@ -261,9 +273,11 @@ struct SyncSettingsView: View {
                     }
                 }
                 .padding()
-                .glassBoxIfAvailable(radius: 18)
                 .sheet(isPresented: $showRemoteSheet) {
                     RemotePermissionView()
+                }
+                .sheet(isPresented: $showPairingSheet) {
+                    ADBPairingSheetView()
                 }
             }
             .padding()

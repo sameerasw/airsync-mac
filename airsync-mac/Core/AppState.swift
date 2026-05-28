@@ -5,6 +5,7 @@
 //  Created by Sameera Sandakelum on 2025-07-29.
 //
 import SwiftUI
+import ServiceManagement
 import Foundation
 import Cocoa
 import Combine
@@ -64,6 +65,7 @@ class AppState: ObservableObject {
         self.menubarNotificationStyle = UserDefaults.standard.string(forKey: "menubarNotificationStyle") ?? "both"
 
         self.isClipboardSyncEnabled = UserDefaults.standard.bool(forKey: "isClipboardSyncEnabled")
+        self.autoStartAtLogin = UserDefaults.standard.bool(forKey: "autoStartAtLogin")
         self.windowOpacity = UserDefaults.standard.double(forKey: "windowOpacity")
         self.hideDockIcon = UserDefaults.standard.bool(forKey: "hideDockIcon")
         self.alwaysOpenWindow = UserDefaults.standard.bool(forKey: "alwaysOpenWindow")
@@ -160,6 +162,7 @@ class AppState: ObservableObject {
         
         // Ensure dock icon visibility is applied on launch
         updateDockIconVisibility()
+        updateAutoStart()
 
         // Reset mirroring state on launch to prevent auto-opening if it was open during last session
         self.isNativeMirroring = false
@@ -500,6 +503,13 @@ class AppState: ObservableObject {
         didSet {
             UserDefaults.standard.set(hideDockIcon, forKey: "hideDockIcon")
             updateDockIconVisibility()
+        }
+    }
+
+    @Published var autoStartAtLogin: Bool {
+        didSet {
+            UserDefaults.standard.set(autoStartAtLogin, forKey: "autoStartAtLogin")
+            updateAutoStart()
         }
     }
 
@@ -1504,6 +1514,29 @@ class AppState: ObservableObject {
                 NSApp.setActivationPolicy(.accessory)
             } else {
                 NSApp.setActivationPolicy(.regular)
+            }
+        }
+    }
+
+    func updateAutoStart() {
+        let service = SMAppService.mainApp
+        if autoStartAtLogin {
+            if service.status != .enabled {
+                do {
+                    try service.register()
+                    print("[state] Successfully registered auto start at login")
+                } catch {
+                    print("[state] Failed to register auto start at login: \(error.localizedDescription)")
+                }
+            }
+        } else {
+            if service.status == .enabled {
+                do {
+                    try service.unregister()
+                    print("[state] Successfully unregistered auto start at login")
+                } catch {
+                    print("[state] Failed to unregister auto start at login: \(error.localizedDescription)")
+                }
             }
         }
     }

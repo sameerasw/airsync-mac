@@ -72,7 +72,12 @@ extension WebSocketServer {
             }
         case "volumeControl":
             if let action = data["action"] as? String {
-                BLECentralManager.shared.writeChunked(characteristicUUID: BLEConstants.charMediaControl, payload: action)
+                if action == "setVolume", let volume = data["volume"] as? Int {
+                    let payload = "setVolume|\(volume)"
+                    BLECentralManager.shared.writeChunked(characteristicUUID: BLEConstants.charMediaControl, payload: payload)
+                } else {
+                    BLECentralManager.shared.writeChunked(characteristicUUID: BLEConstants.charMediaControl, payload: action)
+                }
             }
         case "callControl":
             if let action = data["action"] as? String {
@@ -122,6 +127,11 @@ extension WebSocketServer {
                 ].joined(separator: BLEConstants.delimiter)
                 
                 BLECentralManager.shared.writeChunked(characteristicUUID: BLEConstants.charMacMediaState, payload: payload)
+            }
+        case "toggleAppNotif":
+            if let package = data["package"] as? String, let state = data["state"] as? String {
+                let payload = "toggleNotif|\(package)|\(state)"
+                BLECentralManager.shared.writeChunked(characteristicUUID: BLEConstants.charMediaControl, payload: payload)
             }
         case "disconnectRequest":
             // Maybe handle disconnect?

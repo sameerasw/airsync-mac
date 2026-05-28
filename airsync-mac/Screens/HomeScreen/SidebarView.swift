@@ -118,11 +118,6 @@ struct SidebarView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 12)
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
-            } else {
-                HStack{
-                    Label("Connect your device", systemImage: "arrow.2.circlepath.circle")
-                }
-                .padding(16)
             }
         }
     }

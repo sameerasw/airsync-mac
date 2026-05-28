@@ -18,7 +18,7 @@ class MenuBarManager: NSObject {
     private var cancellables = Set<AnyCancellable>()
     private var appState = AppState.shared
     private var temporaryDragLabel: String?
-    private var hostingView: ClickThroughHostingView<MenubarStatusView>?
+    private var hostingView: ClickThroughHostingView?
     
     private let statusButton: MenuBarStatusButton = {
         let view = MenuBarStatusButton(frame: NSRect(x: 0, y: 0, width: 22, height: 22))
@@ -289,7 +289,7 @@ class MenuBarStatusButton: NSView {
 }
 
 // MARK: - Click-Through Hosting View Subclass
-class ClickThroughHostingView<Content: View>: NSHostingView<Content> {
+class ClickThroughHostingView: NSHostingView<MenubarStatusView> {
     override func hitTest(_ point: NSPoint) -> NSView? {
         return nil
     }

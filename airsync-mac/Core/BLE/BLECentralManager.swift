@@ -82,7 +82,7 @@ class BLECentralManager: NSObject, ObservableObject {
             }
             
             guard self.connectionStatus == .scanning || self.connectionStatus == .disconnected else { return }
-            print("[BLE] Restarting scan...")
+//             print("[BLE] Restarting scan...")
             
             // Prune stale devices older than 25 seconds
             let now = Date()
@@ -265,9 +265,12 @@ extension BLECentralManager: CBCentralManagerDelegate {
         }
         
         let serviceUUIDs = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []
-        print("[BLE] Discovered \(name) with RSSI: \(RSSI), Services: \(serviceUUIDs.map { $0.uuidString }.joined(separator: ", "))")
-        
         let uuidStr = peripheral.identifier.uuidString
+        let isNewDevice = discoveredPeripherals[uuidStr] == nil
+        if isNewDevice {
+            print("[BLE] Discovered \(name) with RSSI: \(RSSI), Services: \(serviceUUIDs.map { $0.uuidString }.joined(separator: ", "))")
+        }
+        
         DispatchQueue.main.async {
             self.discoveredPeripherals[uuidStr] = BLEDiscoveryRecord(
                 peripheral: peripheral,

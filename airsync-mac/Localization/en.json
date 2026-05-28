@@ -137,5 +137,11 @@
   "menubar.call.ringing": "Ringing...",
   "menubar.call.accepted": "Accepted",
   "settings.menubar.notifications.calls": "Calls",
-  "settings.menubar.calls.plusFeatureMessage": "Ongoing call pill details are available in AirSync+"
+  "settings.menubar.calls.plusFeatureMessage": "Ongoing call pill details are available in AirSync+",
+  "settings.autoStartAtLogin": "Auto start at login",
+  "settings.newDevice": "New device?",
+  "settings.pairing.howToPair": "How to pair?",
+  "settings.pairing.instructions": "In order to pair your device, follow these steps:\n\n1. Go to Android device's Settings -> About phone\n2. Tap on \"Build number\" 7 times to unlcok developer options\n3. Go to Settings -> System -> Developer options\n4. Look for \"USB debugging\" and enable\n5. Look for \"Wireless debugging\",  enable and go in\n6. Tap on \"Pair device with QR code\" option and scan the above QR code to authenticate the device. If prompted, Select \"Always allow on this network\" if prompted.\n\nDone! You are ready to connect.",
+  "settings.pairing.troubleshooting": "Troubleshooting",
+  "settings.pairing.troubleshooting.text": "If pairing is failing, please check the following:\n\n• Ensure both devices are connected to the exact same Wi-Fi network.\n• Check if you have an active VPN on your Mac or Android device, which can block local network traffic (mDNS).\n• Turn Wireless Debugging off and back on in Android Developer options.\n• Check if your router blocks Multicast or local network discovery (AP Isolation)."
 }

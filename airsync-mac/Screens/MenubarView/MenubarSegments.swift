@@ -84,7 +84,7 @@ struct TopSegmentView: View {
                         }
                     )
                     
-                    if appState.adbConnected {
+                    if appState.adbConnected && (appState.isPlus || !appState.licenseCheck) {
                         GlassButtonView(
                             label: "Mirror",
                             systemImage: "apps.iphone",
