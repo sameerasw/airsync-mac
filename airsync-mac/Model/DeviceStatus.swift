@@ -32,4 +32,5 @@ struct DeviceStatus: Codable {
     var battery: Battery
     var isPaired: Bool
     var music: Music?
+    var cellularNetwork: String?
 }

@@ -105,6 +105,8 @@ class MenuBarManager: NSObject {
             appState.$temporaryDragLabel.map { _ in () }.eraseToAnyPublisher(),
             appState.$showMenubarPillStroke.map { _ in () }.eraseToAnyPublisher(),
             appState.$menubarNotificationStyle.map { _ in () }.eraseToAnyPublisher(),
+            appState.$showMenubarNetworkStatus.map { _ in () }.eraseToAnyPublisher(),
+            appState.$cellularNetwork.map { _ in () }.eraseToAnyPublisher(),
             BLECentralManager.shared.$connectionStatus.map { _ in () }.eraseToAnyPublisher(),
             BLECentralManager.shared.$connectedDeviceName.map { _ in () }.eraseToAnyPublisher()
         ]
@@ -345,73 +347,79 @@ struct MenubarStatusView: View {
                                 .frame(maxWidth: CGFloat(appState.menubarTextMaxLength), alignment: .leading)
                         }
                     } else {
-                        HStack(spacing: 5) {
-                            // Left part: Device Name or Music Info
-                            let showMusic = appState.showMenubarMusicIcon && (appState.status?.music?.isPlaying ?? false)
-                            
-                            if appState.showMenubarCallDetails, let callEvent = appState.activeCall {
-                                HStack(spacing: 4) {
-                                    if let photoString = callEvent.contactPhoto,
-                                       !photoString.isEmpty,
-                                       let data = Data(base64Encoded: photoString, options: .ignoreUnknownCharacters) ?? Data(base64Encoded: photoString),
-                                       let nsImage = NSImage(data: data) {
-                                        let avatarSize = appState.menubarFontSize + 2
-                                        Image(nsImage: nsImage)
-                                            .resizable()
-                                            .aspectRatio(contentMode: .fill)
-                                            .frame(width: avatarSize, height: avatarSize)
-                                            .clipShape(Circle())
-                                    } else {
-                                        Image(systemName: callEvent.direction == .incoming ? "phone.arrow.down.left.fill" : "phone.arrow.up.right.fill")
-                                            .font(.system(size: appState.menubarFontSize))
-                                            .foregroundColor(.green)
-                                    }
-                                    
-                                    Text(callEvent.contactName)
-                                        .font(.system(size: appState.menubarFontSize, weight: .medium))
-                                        .lineLimit(1)
-                                    
-                                    Text("•")
-                                        .font(.system(size: appState.menubarFontSize))
-                                        .foregroundColor(.secondary)
-                                    
-                                    Text(formatCallDuration(seconds: appState.activeCallDurationSec))
-                                        .font(.system(size: appState.menubarFontSize, design: .monospaced))
-                                        .layoutPriority(1)
-                                }
-                            } else if showMusic, let music = appState.status?.music {
-                                let musicText = "\(music.title) — \(music.artist)"
-                                
-                                HStack(spacing: 3) {
-                                    if appState.showMenubarAlbumArt,
-                                       !music.albumArt.isEmpty,
-                                       let data = Data(base64Encoded: music.albumArt.stripBase64Prefix()) ?? Data(base64Encoded: music.albumArt),
-                                       let nsImage = NSImage(data: data) {
-                                        let albumArtSize = appState.menubarFontSize + 2
-                                        let cornerRadius = albumArtSize * 3 / 14
-                                        Image(nsImage: nsImage)
-                                            .resizable()
-                                            .aspectRatio(contentMode: .fill)
-                                            .frame(width: albumArtSize, height: albumArtSize)
-                                            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                                    } else {
-                                        Image(systemName: "music.note")
-                                            .font(.system(size: appState.menubarFontSize))
-                                            .foregroundColor(.accentColor)
-                                    }
-                                    
-                                    if appState.enableMarquee {
-                                        MarqueeText(text: musicText, fontSize: appState.menubarFontSize, containerWidth: CGFloat(appState.menubarTextMaxLength))
-                                    } else {
-                                        Text(musicText)
-                                            .font(.system(size: appState.menubarFontSize))
+                        let showMusic = appState.showMenubarMusicIcon && (appState.status?.music?.isPlaying ?? false)
+                        let hasDeviceName = !(appState.device?.name ?? bleManager.connectedDeviceName ?? "").isEmpty
+                        let showLeftPart = (appState.showMenubarCallDetails && appState.activeCall != nil) || showMusic || (appState.showMenubarDeviceName && hasDeviceName)
+                        
+                        let showNetwork = appState.showMenubarNetworkStatus && appState.cellularNetwork != nil
+                        let showBattery = appState.status?.battery != nil && appState.menubarBatteryStyle != "none"
+                        let showRightPart = showNetwork || showBattery
+                        
+                        if showLeftPart || showRightPart {
+                            HStack(spacing: 5) {
+                                // Left part: Device Name or Music Info
+                                if appState.showMenubarCallDetails, let callEvent = appState.activeCall {
+                                    HStack(spacing: 4) {
+                                        if let photoString = callEvent.contactPhoto,
+                                           !photoString.isEmpty,
+                                           let data = Data(base64Encoded: photoString, options: .ignoreUnknownCharacters) ?? Data(base64Encoded: photoString),
+                                           let nsImage = NSImage(data: data) {
+                                            let avatarSize = appState.menubarFontSize + 2
+                                            Image(nsImage: nsImage)
+                                                .resizable()
+                                                .aspectRatio(contentMode: .fill)
+                                                .frame(width: avatarSize, height: avatarSize)
+                                                .clipShape(Circle())
+                                        } else {
+                                            Image(systemName: callEvent.direction == .incoming ? "phone.arrow.down.left.fill" : "phone.arrow.up.right.fill")
+                                                .font(.system(size: appState.menubarFontSize))
+                                                .foregroundColor(.green)
+                                        }
+                                        
+                                        Text(callEvent.contactName)
+                                            .font(.system(size: appState.menubarFontSize, weight: .medium))
                                             .lineLimit(1)
-                                            .frame(maxWidth: CGFloat(appState.menubarTextMaxLength), alignment: .leading)
+                                        
+                                        Text("•")
+                                            .font(.system(size: appState.menubarFontSize))
+                                            .foregroundColor(.secondary)
+                                        
+                                        Text(formatCallDuration(seconds: appState.activeCallDurationSec))
+                                            .font(.system(size: appState.menubarFontSize, design: .monospaced))
+                                            .layoutPriority(1)
                                     }
-                                }
-                            } else if appState.showMenubarDeviceName {
-                                let deviceName = appState.device?.name ?? (bleManager.isAuthenticated ? bleManager.connectedDeviceName : nil) ?? ""
-                                if !deviceName.isEmpty {
+                                } else if showMusic, let music = appState.status?.music {
+                                    let musicText = "\(music.title) — \(music.artist)"
+                                    
+                                    HStack(spacing: 3) {
+                                        if appState.showMenubarAlbumArt,
+                                           !music.albumArt.isEmpty,
+                                           let data = Data(base64Encoded: music.albumArt.stripBase64Prefix()) ?? Data(base64Encoded: music.albumArt),
+                                           let nsImage = NSImage(data: data) {
+                                            let albumArtSize = appState.menubarFontSize + 2
+                                            let cornerRadius = albumArtSize * 3 / 14
+                                            Image(nsImage: nsImage)
+                                                .resizable()
+                                                .aspectRatio(contentMode: .fill)
+                                                .frame(width: albumArtSize, height: albumArtSize)
+                                                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+                                        } else {
+                                            Image(systemName: "music.note")
+                                                .font(.system(size: appState.menubarFontSize))
+                                                .foregroundColor(.accentColor)
+                                        }
+                                        
+                                        if appState.enableMarquee {
+                                            MarqueeText(text: musicText, fontSize: appState.menubarFontSize, containerWidth: CGFloat(appState.menubarTextMaxLength))
+                                        } else {
+                                            Text(musicText)
+                                                .font(.system(size: appState.menubarFontSize))
+                                                .lineLimit(1)
+                                                .frame(maxWidth: CGFloat(appState.menubarTextMaxLength), alignment: .leading)
+                                        }
+                                    }
+                                } else if appState.showMenubarDeviceName && hasDeviceName {
+                                    let deviceName = appState.device?.name ?? (bleManager.isAuthenticated ? bleManager.connectedDeviceName : nil) ?? ""
                                     if appState.enableMarquee {
                                         MarqueeText(text: deviceName, fontSize: appState.menubarFontSize, fontWeight: .medium, containerWidth: CGFloat(appState.menubarTextMaxLength))
                                     } else {
@@ -421,29 +429,44 @@ struct MenubarStatusView: View {
                                             .frame(maxWidth: CGFloat(appState.menubarTextMaxLength), alignment: .leading)
                                     }
                                 }
-                            }
-                            
-                            // Right part: Battery
-                            if let battery = appState.status?.battery {
-                                let style = appState.menubarBatteryStyle
-                                HStack(spacing: 3) {
-                                    // Show separator if there was a prefix shown
-                                    let hasPrefix = showMusic || (appState.showMenubarDeviceName && !(appState.device?.name ?? bleManager.connectedDeviceName ?? "").isEmpty)
-                                    if hasPrefix {
-                                        Text("•")
-                                            .font(.system(size: appState.menubarFontSize))
-                                            .foregroundColor(.secondary)
-                                    }
-                                    
-                                    if style == "icon" || style == "both" {
-                                        Image(systemName: getBatteryIconName(level: battery.level, isCharging: battery.isCharging))
-                                            .font(.system(size: appState.menubarFontSize))
-                                            .foregroundColor(batteryColor(level: battery.level, isCharging: battery.isCharging))
-                                    }
-                                    
-                                    if style == "percentage" || style == "both" {
-                                        Text("\(battery.level)%")
-                                            .font(.system(size: appState.menubarFontSize - 1, design: .monospaced))
+                                
+                                // Right part: Battery & Network
+                                if showRightPart {
+                                    HStack(spacing: 3) {
+                                        // Show separator if there was a prefix shown
+                                        if showLeftPart {
+                                            Text("•")
+                                                .font(.system(size: appState.menubarFontSize))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        
+                                        if appState.showMenubarNetworkStatus, let network = appState.cellularNetwork {
+                                            if network == "NO_SIGNAL" {
+                                                Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                                                    .font(.system(size: appState.menubarFontSize - 1, weight: .semibold))
+                                                    .foregroundColor(.red)
+                                                    .padding(.trailing, showBattery ? 2 : 0)
+                                            } else {
+                                                Text(network.replacingOccurrences(of: "_", with: " "))
+                                                    .font(.system(size: appState.menubarFontSize - 1, weight: .semibold))
+                                                    .foregroundColor(network.contains("5G") ? .green : (network == "LTE" ? .orange : .primary))
+                                                    .padding(.trailing, showBattery ? 2 : 0)
+                                            }
+                                        }
+                                        
+                                        if showBattery, let battery = appState.status?.battery {
+                                            let style = appState.menubarBatteryStyle
+                                            if style == "icon" || style == "both" {
+                                                Image(systemName: getBatteryIconName(level: battery.level, isCharging: battery.isCharging))
+                                                    .font(.system(size: appState.menubarFontSize))
+                                                    .foregroundColor(batteryColor(level: battery.level, isCharging: battery.isCharging))
+                                            }
+                                            
+                                            if style == "percentage" || style == "both" {
+                                                Text("\(battery.level)%")
+                                                    .font(.system(size: appState.menubarFontSize - 1, design: .monospaced))
+                                            }
+                                        }
                                     }
                                 }
                             }

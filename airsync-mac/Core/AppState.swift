@@ -55,6 +55,7 @@ class AppState: ObservableObject {
         self.menubarTextMaxLength = (savedMaxLength >= 50) ? savedMaxLength : 150
 
         self.showMenubarIcon = UserDefaults.standard.object(forKey: "showMenubarIcon") == nil ? true : UserDefaults.standard.bool(forKey: "showMenubarIcon")
+        self.showMenubarNetworkStatus = UserDefaults.standard.object(forKey: "showMenubarNetworkStatus") == nil ? true : UserDefaults.standard.bool(forKey: "showMenubarNetworkStatus")
         self.menubarBatteryStyle = UserDefaults.standard.string(forKey: "menubarBatteryStyle") ?? "both"
         self.showMenubarMusicIcon = UserDefaults.standard.object(forKey: "showMenubarMusicIcon") == nil ? true : UserDefaults.standard.bool(forKey: "showMenubarMusicIcon")
         self.showMenubarAlbumArt = UserDefaults.standard.object(forKey: "showMenubarAlbumArt") == nil ? true : UserDefaults.standard.bool(forKey: "showMenubarAlbumArt")
@@ -290,6 +291,7 @@ class AppState: ObservableObject {
     @Published var status: DeviceStatus? = nil {
         didSet { syncMediaTimerToPlayState() }
     }
+    @Published var cellularNetwork: String? = nil
     @Published var myDevice: Device? = nil
     @Published var port: UInt16 = Defaults.serverPort
     @Published var androidApps: [String: AndroidApp] = [:]
@@ -420,6 +422,12 @@ class AppState: ObservableObject {
     @Published var showMenubarIcon: Bool {
         didSet {
             UserDefaults.standard.set(showMenubarIcon, forKey: "showMenubarIcon")
+        }
+    }
+
+    @Published var showMenubarNetworkStatus: Bool {
+        didSet {
+            UserDefaults.standard.set(showMenubarNetworkStatus, forKey: "showMenubarNetworkStatus")
         }
     }
 

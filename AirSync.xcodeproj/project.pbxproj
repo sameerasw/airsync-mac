@@ -185,7 +185,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				B9E423832FBD914900526D40 /* scrcpy-server in Resources */,
-				B99B04C62F641E1400FF3E2D /* AppIcon.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -269,16 +268,16 @@
 			baseConfigurationReferenceAnchor = B9673B592E35A2A1006D284A /* airsync-mac */;
 			baseConfigurationReferenceRelativePath = Configs/SelfCompiled.xcconfig;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_ENTITLEMENTS = "";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 29;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = WCB4HTANA6;
+				DEVELOPMENT_TEAM = 52WCJ39DLM;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -449,16 +448,16 @@
 			baseConfigurationReferenceAnchor = B9673B592E35A2A1006D284A /* airsync-mac */;
 			baseConfigurationReferenceRelativePath = Configs/Shared.xcconfig;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_ENTITLEMENTS = "";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 29;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = WCB4HTANA6;
+				DEVELOPMENT_TEAM = 52WCJ39DLM;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -501,16 +500,16 @@
 			baseConfigurationReferenceAnchor = B9673B592E35A2A1006D284A /* airsync-mac */;
 			baseConfigurationReferenceRelativePath = Configs/Shared.xcconfig;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_ENTITLEMENTS = "";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 29;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = WCB4HTANA6;
+				DEVELOPMENT_TEAM = 52WCJ39DLM;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;

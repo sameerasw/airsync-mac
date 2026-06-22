@@ -156,6 +156,8 @@
   "settings.menubar.batteryStyle.both": "Both Icon & Percentage",
   "settings.menubar.batteryStyle.icon": "Icon Only",
   "settings.menubar.batteryStyle.percentage": "Percentage Only",
+  "settings.menubar.batteryStyle.none": "Disable",
+  "settings.menubar.showNetworkStatus": "Show Network Status",
   "settings.menubar.notifications": "Notifications",
   "settings.menubar.notifications.both": "Both Count & Icons",
   "settings.menubar.notifications.count": "Count Only",

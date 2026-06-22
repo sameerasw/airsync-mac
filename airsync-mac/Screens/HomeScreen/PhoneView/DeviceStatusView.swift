@@ -34,11 +34,29 @@ struct DeviceStatusView: View {
 
 
                 HStack{
-                    Image(systemName: batteryIcon(for: batteryLevel, isCharging: batteryIsCharging))
-                        .help("\(batteryLevel)%")
-                        .contentTransition(.symbolEffect)
-                    Text("\(batteryLevel)%")
-                        .font(.caption2)
+                    if appState.showMenubarNetworkStatus, let network = appState.cellularNetwork {
+                        if network == "NO_SIGNAL" {
+                            Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundColor(.red)
+                        } else {
+                            Text(network.replacingOccurrences(of: "_", with: " "))
+                                .font(.caption2.weight(.semibold))
+                                .foregroundColor(network.contains("5G") ? .green : (network == "LTE" ? .orange : .primary))
+                        }
+                    }
+                    
+                    if appState.menubarBatteryStyle != "none" {
+                        if appState.menubarBatteryStyle == "icon" || appState.menubarBatteryStyle == "both" {
+                            Image(systemName: batteryIcon(for: batteryLevel, isCharging: batteryIsCharging))
+                                .help("\(batteryLevel)%")
+                                .contentTransition(.symbolEffect)
+                        }
+                        if appState.menubarBatteryStyle == "percentage" || appState.menubarBatteryStyle == "both" {
+                            Text("\(batteryLevel)%")
+                                .font(.caption2)
+                        }
+                    }
                 }
                 .padding(.leading, 4)
 
