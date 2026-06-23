@@ -446,8 +446,12 @@ struct MenubarStatusView: View {
                                                     .font(.system(size: appState.menubarFontSize - 1, weight: .semibold))
                                                     .foregroundColor(.red)
                                                     .padding(.trailing, showBattery ? 2 : 0)
+                                                    .help(Localizer.shared.text("network.no_signal"))
                                             } else {
-                                                Text(network.replacingOccurrences(of: "_", with: " "))
+                                                let locKey = "network.\(network.lowercased())"
+                                                let locVal = Localizer.shared.text(locKey)
+                                                let displayText = locVal == locKey ? network.replacingOccurrences(of: "_", with: " ") : locVal
+                                                Text(displayText)
                                                     .font(.system(size: appState.menubarFontSize - 1, weight: .semibold))
                                                     .foregroundColor(network.contains("5G") ? .green : (network == "LTE" ? .orange : .primary))
                                                     .padding(.trailing, showBattery ? 2 : 0)
