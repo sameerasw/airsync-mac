@@ -10,6 +10,7 @@ import AppKit
 
 struct DeviceStatusView: View {
     @ObservedObject var appState = AppState.shared
+    @ObservedObject var bleManager = BLECentralManager.shared
     @State private var showingVolumePopover = false
     @State private var tempVolume: Double = 100
     @State private var isDragging = false
@@ -34,11 +35,29 @@ struct DeviceStatusView: View {
 
 
                 HStack{
-                    Image(systemName: batteryIcon(for: batteryLevel, isCharging: batteryIsCharging))
-                        .help("\(batteryLevel)%")
-                        .contentTransition(.symbolEffect)
-                    Text("\(batteryLevel)%")
-                        .font(.caption2)
+                    if appState.showFloatingDeviceName {
+                        let deviceName = appState.device?.name ?? (bleManager.isAuthenticated ? bleManager.connectedDeviceName : nil) ?? ""
+                        if !deviceName.isEmpty {
+                            Text(deviceName)
+                                .font(.caption2.weight(.semibold))
+                                .lineLimit(1)
+                                .padding(.trailing, 2)
+                        }
+                    }
+
+
+                    if appState.floatingBatteryStyle != "none" {
+                        let batteryStyle = appState.floatingBatteryStyle
+                        if batteryStyle == "icon" || batteryStyle == "both" {
+                            Image(systemName: batteryIcon(for: batteryLevel, isCharging: batteryIsCharging))
+                                .help("\(batteryLevel)%")
+                                .contentTransition(.symbolEffect)
+                        }
+                        if batteryStyle == "percentage" || batteryStyle == "both" {
+                            Text("\(batteryLevel)%")
+                                .font(.caption2)
+                        }
+                    }
                 }
                 .padding(.leading, 4)
 

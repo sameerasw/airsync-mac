@@ -56,6 +56,11 @@ class AppState: ObservableObject {
 
         self.showMenubarIcon = UserDefaults.standard.object(forKey: "showMenubarIcon") == nil ? true : UserDefaults.standard.bool(forKey: "showMenubarIcon")
         self.menubarBatteryStyle = UserDefaults.standard.string(forKey: "menubarBatteryStyle") ?? "both"
+        
+        self.showFloatingDeviceName = UserDefaults.standard.object(forKey: "showFloatingDeviceName") == nil ? true : UserDefaults.standard.bool(forKey: "showFloatingDeviceName")
+        self.showFloatingNetworkStatus = UserDefaults.standard.object(forKey: "showFloatingNetworkStatus") == nil ? true : UserDefaults.standard.bool(forKey: "showFloatingNetworkStatus")
+        self.floatingBatteryStyle = UserDefaults.standard.string(forKey: "floatingBatteryStyle") ?? "both"
+
         self.showMenubarMusicIcon = UserDefaults.standard.object(forKey: "showMenubarMusicIcon") == nil ? true : UserDefaults.standard.bool(forKey: "showMenubarMusicIcon")
         self.showMenubarAlbumArt = UserDefaults.standard.object(forKey: "showMenubarAlbumArt") == nil ? true : UserDefaults.standard.bool(forKey: "showMenubarAlbumArt")
         if UserDefaults.standard.object(forKey: "showMenubarCallDetails") == nil {
@@ -426,6 +431,24 @@ class AppState: ObservableObject {
     @Published var menubarBatteryStyle: String {
         didSet {
             UserDefaults.standard.set(menubarBatteryStyle, forKey: "menubarBatteryStyle")
+        }
+    }
+    
+    @Published var showFloatingDeviceName: Bool {
+        didSet {
+            UserDefaults.standard.set(showFloatingDeviceName, forKey: "showFloatingDeviceName")
+        }
+    }
+
+    @Published var showFloatingNetworkStatus: Bool {
+        didSet {
+            UserDefaults.standard.set(showFloatingNetworkStatus, forKey: "showFloatingNetworkStatus")
+        }
+    }
+
+    @Published var floatingBatteryStyle: String {
+        didSet {
+            UserDefaults.standard.set(floatingBatteryStyle, forKey: "floatingBatteryStyle")
         }
     }
 
