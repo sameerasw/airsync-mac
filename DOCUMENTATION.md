@@ -416,7 +416,7 @@ For button-only actions without reply text:
 
 **Direction:** Android → Mac
 
-**Purpose:** Report device state: battery level, music playback status, and pairing information
+**Purpose:** Report device state: battery level, music playback status, pairing information, and cellular network status
 
 ```json
 {
@@ -435,7 +435,8 @@ For button-only actions without reply text:
       "isMuted": false,
       "albumArt": "data:image/png;base64,iVBORw0KG...",
       "likeStatus": "liked"
-    }
+    },
+    "cellularNetwork": "5G"
   }
 }
 ```

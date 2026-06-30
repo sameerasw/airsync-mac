@@ -76,3 +76,4 @@ AGENTS.md
 docs/plans/
 build.log
 *.trace
+build/

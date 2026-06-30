@@ -185,7 +185,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				B9E423832FBD914900526D40 /* scrcpy-server in Resources */,
-				B99B04C62F641E1400FF3E2D /* AppIcon.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

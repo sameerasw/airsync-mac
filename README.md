@@ -12,7 +12,7 @@
 
 ## Requirements
 - Min : macOS 14.5
-- Opt: scrcpy, adb & media-control brew installs
+- Opt: scrcpy, adb & media-control installed from brew
 
 > For Windows? I don't build for that platform but check this cool project out at [shrimqy/Sefirah](https://github.com/shrimqy/Sefirah)
 
