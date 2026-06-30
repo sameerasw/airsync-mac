@@ -353,6 +353,7 @@ extension WebSocketServer {
             }
 
             let oldTitle = AppState.shared.status?.music?.title
+            let cellularNetwork = dict["cellularNetwork"] as? String
 
             AppState.shared.status = DeviceStatus(
                 battery: .init(level: level, isCharging: isCharging),
@@ -368,10 +369,12 @@ extension WebSocketServer {
                     duration: durationSec,
                     position: positionSec,
                     isBuffering: isBuffering
-                )
+                ),
+                cellularNetwork: cellularNetwork
             )
 
             DispatchQueue.main.async {
+                AppState.shared.cellularNetwork = cellularNetwork
                 if oldTitle != title {
                     AppState.shared.handleTrackChange()
                 } else {
