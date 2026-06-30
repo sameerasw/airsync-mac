@@ -62,6 +62,7 @@ struct SettingsFeaturesView: View {
                                     if !appState.adbConnecting {
                                         appState.adbConnectionResult = "" // Clear console
                                         appState.manualAdbConnectionPending = true
+                                        appState.userInitiatedAdbConnect = true
                                         WebSocketServer.shared.sendRefreshAdbPortsRequest()
                                         appState.adbConnectionResult = "Refreshing latest ADB ports from device..."
                                     }
@@ -357,13 +358,13 @@ struct SettingsFeaturesView: View {
                 SettingsToggleView(name: "Send now playing status", icon: "play.circle", isOn: $appState.sendNowPlayingStatus)
 
                 HStack {
-                    Label("Show in Control Center", systemImage: "slider.horizontal.below.rectangle")
+                    Label("Show in control center", systemImage: "slider.horizontal.below.rectangle")
                     Button(action: { showControlCenterInfo = true }) {
                         Image(systemName: "info.circle")
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
-                    .alert("Show in Control Center", isPresented: $showControlCenterInfo) {
+                    .alert("Show in control center", isPresented: $showControlCenterInfo) {
                         Button("OK", role: .cancel) {}
                     } message: {
                         Text("This feature plays a silent audio track in background in order to show up in macOS media. This may prevent your multi-device bluetooth audio devices to not switch correctly.")
@@ -392,7 +393,7 @@ struct SettingsFeaturesView: View {
             // Call Alerts
             VStack{
                 HStack {
-                    Label("Call Alert", systemImage: "phone")
+                    Label("Call alert", systemImage: "phone")
                     Spacer()
 
                     Picker("", selection: $appState.callNotificationMode) {

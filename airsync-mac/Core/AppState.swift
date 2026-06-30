@@ -113,6 +113,8 @@ class AppState: ObservableObject {
         self.showAIToolbarButton = UserDefaults.standard.object(forKey: "showAIToolbarButton") == nil ? true : UserDefaults.standard.bool(forKey: "showAIToolbarButton")
         self.includeSilentInAIOption = UserDefaults.standard.bool(forKey: "includeSilentInAIOption")
         self.enableMenubarAISummary = UserDefaults.standard.bool(forKey: "enableMenubarAISummary")
+        self.autoMenubarSummary = UserDefaults.standard.bool(forKey: "autoMenubarSummary")
+        self.alwaysKillAdbBeforeConnect = UserDefaults.standard.bool(forKey: "alwaysKillAdbBeforeConnect")
 
         let savedCrashReportingMode = UserDefaults.standard.string(forKey: "crashReportingMode") ?? CrashReportingMode.manual.rawValue
         self.crashReportingMode = CrashReportingMode(rawValue: savedCrashReportingMode) ?? .manual
@@ -331,6 +333,7 @@ class AppState: ObservableObject {
     }
     @Published var adbConnecting: Bool = false
     @Published var manualAdbConnectionPending: Bool = false
+    @Published var userInitiatedAdbConnect: Bool = false
     @Published var currentDeviceWallpaperBase64: String? = nil
     @Published var isMenubarWindowOpen: Bool = false
     @Published var adbConnectionMode: ADBConnectionMode? = nil
@@ -488,10 +491,12 @@ class AppState: ObservableObject {
     var recentNotifyingPackages: [String] {
         var packages: [String] = []
         for notif in notifications {
-            if !packages.contains(notif.package) {
-                packages.append(notif.package)
-                if packages.count == 3 {
-                    break
+            if notif.priority != "silent" {
+                if !packages.contains(notif.package) {
+                    packages.append(notif.package)
+                    if packages.count == 3 {
+                        break
+                    }
                 }
             }
         }
@@ -758,10 +763,22 @@ class AppState: ObservableObject {
             UserDefaults.standard.set(enableMenubarAISummary, forKey: "enableMenubarAISummary")
         }
     }
+    
+    @Published var autoMenubarSummary: Bool {
+        didSet {
+            UserDefaults.standard.set(autoMenubarSummary, forKey: "autoMenubarSummary")
+        }
+    }
 
     @Published var crashReportingMode: CrashReportingMode {
         didSet {
             UserDefaults.standard.set(crashReportingMode.rawValue, forKey: "crashReportingMode")
+        }
+    }
+
+    @Published var alwaysKillAdbBeforeConnect: Bool {
+        didSet {
+            UserDefaults.standard.set(alwaysKillAdbBeforeConnect, forKey: "alwaysKillAdbBeforeConnect")
         }
     }
 

@@ -23,7 +23,7 @@ struct MyMacSettingsView: View {
                 SettingsHeaderView(title: "Server Configuration", icon: "server.rack")
                 VStack(spacing: 12) {
                     HStack {
-                        Label("Network Adapter", systemImage: "rectangle.connected.to.line.below")
+                        Label("Network adapter", systemImage: "rectangle.connected.to.line.below")
                         Spacer()
 
                         Picker("", selection: Binding(
@@ -53,14 +53,14 @@ struct MyMacSettingsView: View {
                     }
 
                     ConnectionInfoText(
-                        label: "IP Address",
+                        label: "IP address",
                         icon: "wifi",
                         text: currentIPAddress,
                         activeIp: appState.activeMacIp
                     )
 
                     HStack {
-                        Label("Server Port", systemImage: "rectangle.connected.to.line.below")
+                        Label("Server port", systemImage: "rectangle.connected.to.line.below")
                             .padding(.trailing, 20)
                         Spacer()
                         TextField("Server Port", text: $port)

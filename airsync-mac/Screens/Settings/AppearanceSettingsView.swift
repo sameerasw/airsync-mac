@@ -12,7 +12,7 @@ struct AppearanceSettingsView: View {
                 SettingsHeaderView(title: "Appearance", icon: "paintbrush")
                 VStack(spacing: 12) {
                     HStack {
-                        Label("Liquid Opacity", systemImage: "app.background.dotted")
+                        Label("Liquid opacity", systemImage: "app.background.dotted")
                         Spacer()
                         Slider(
                             value: $appState.windowOpacity,
@@ -22,14 +22,14 @@ struct AppearanceSettingsView: View {
                     }
 
                     HStack {
-                        Label("Hide Dock Icon", systemImage: "dock.rectangle")
+                        Label("Hide dock icon", systemImage: "dock.rectangle")
                         Spacer()
                         Toggle("", isOn: $appState.hideDockIcon)
                             .toggleStyle(.switch)
                     }
 
                     HStack {
-                        Label("Always Open Window", systemImage: "macwindow")
+                        Label("Always open window at launch", systemImage: "macwindow")
                         Spacer()
                         Toggle("", isOn: $appState.alwaysOpenWindow)
                             .toggleStyle(.switch)
@@ -49,7 +49,7 @@ struct AppearanceSettingsView: View {
                 .glassBoxIfAvailable(radius: 18)
 
                 // 3. Crash Reporting
-                SettingsHeaderView(title: "Crash Reporting", icon: "ladybug")
+                SettingsHeaderView(title: "Crash reporting", icon: "ladybug")
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         Label("Crash Reporting", systemImage: "ladybug")

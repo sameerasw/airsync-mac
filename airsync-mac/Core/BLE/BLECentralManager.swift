@@ -51,6 +51,13 @@ class BLECentralManager: NSObject, ObservableObject {
     
     func startScanning() {
         guard centralManager.state == .poweredOn else { return }
+        
+        let isRegularConnection = AppState.shared.device?.ipAddress != nil && AppState.shared.device?.ipAddress != "BLE"
+        guard !isRegularConnection else {
+            print("[BLE] Skip scan: Regular connection is active.")
+            return
+        }
+        
         print("[BLE] Starting scan...")
         connectionStatus = .scanning
         

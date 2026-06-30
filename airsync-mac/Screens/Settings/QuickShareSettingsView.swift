@@ -84,6 +84,14 @@ struct QuickShareSettingsView: View {
                         ZStack {
                             HStack {
                                 Label(Localizer.shared.text("settings.fileAccess.enabled"), systemImage: "externaldrive")
+                                Text("BETA")
+                                    .font(.caption2)
+                                    .fontWeight(.semibold)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background(Color.orange.opacity(0.18))
+                                    .foregroundStyle(.orange)
+                                    .clipShape(Capsule())
                                 Spacer()
                                 Toggle("", isOn: $appState.isFileAccessEnabled)
                                     .toggleStyle(.switch)

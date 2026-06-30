@@ -480,7 +480,7 @@ struct MenubarStatusView: View {
                 
                 // 3. Unread Badge Count
                 if appState.menubarNotificationStyle == "both" || appState.menubarNotificationStyle == "count" {
-                    let unreadCount = appState.notifications.count
+                    let unreadCount = appState.notifications.filter { $0.priority != "silent" }.count
                     if unreadCount > 0 {
                         if appState.menubarUnreadBadgeStyle == "badge" {
                             Text("\(unreadCount)")

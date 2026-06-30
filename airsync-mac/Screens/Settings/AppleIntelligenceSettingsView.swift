@@ -47,6 +47,14 @@ struct AppleIntelligenceSettingsView: View {
                                 icon: "menubar.arrow.up.rectangle",
                                 isOn: $appState.enableMenubarAISummary
                             )
+                            
+                            SettingsToggleView(
+                                name: L("settings.notifications.ai.autoMenubarSummary"),
+                                icon: "sparkles.rectangle.stack",
+                                isOn: $appState.autoMenubarSummary
+                            )
+                            .disabled(!appState.enableMenubarAISummary)
+                            .opacity(appState.enableMenubarAISummary ? 1.0 : 0.5)
                         }
                         .padding()
                         .glassBoxIfAvailable(radius: 18)

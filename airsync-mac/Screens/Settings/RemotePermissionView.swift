@@ -20,7 +20,7 @@ struct RemotePermissionView: View {
                 .foregroundColor(.accentColor)
                 .padding(.bottom, 10)
             
-            Text("Remote Control Permission")
+            Text("Remote control permission")
                 .font(.title2)
                 .fontWeight(.bold)
             

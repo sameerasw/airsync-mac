@@ -21,6 +21,7 @@ class NotificationSummaryViewModel: ObservableObject {
     @Published var summaryText: String = ""
     @Published var isGeneratingSummary: Bool = false
     @Published var showSummary: Bool = false
+    @Published var showMenubarSummary: Bool = false
     
     private var lastGeneratedTime: Date?
     private var lastNotificationsHash: String = ""

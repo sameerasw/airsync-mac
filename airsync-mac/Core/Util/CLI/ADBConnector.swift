@@ -148,7 +148,7 @@ struct ADBConnector {
         connectionLock.unlock()
     }
 
-    static func connectToADB(ip: String) {
+    static func connectToADB(ip: String, killServer: Bool = false) {
         connectionLock.lock()
         if isConnecting {
             connectionLock.unlock()
@@ -172,6 +172,16 @@ struct ADBConnector {
                     }
                     clearConnectionFlag()
                     return
+                }
+
+                if killServer {
+                    logBinaryDetection("Manual connection requested. Killing ADB server first...")
+                    let process = Process()
+                    process.executableURL = URL(fileURLWithPath: adbPath)
+                    process.arguments = ["kill-server"]
+                    try? process.run()
+                    process.waitUntilExit()
+                    logBinaryDetection("ADB server killed.")
                 }
 
                 if devicePorts.isEmpty {

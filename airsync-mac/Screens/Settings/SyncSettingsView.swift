@@ -60,6 +60,7 @@ struct SyncSettingsView: View {
                                                 if !appState.adbConnecting {
                                                     appState.adbConnectionResult = "" // Clear console
                                                     appState.manualAdbConnectionPending = true
+                                                    appState.userInitiatedAdbConnect = true
                                                     WebSocketServer.shared.sendRefreshAdbPortsRequest()
                                                     appState.adbConnectionResult = "Refreshing latest ADB ports from device..."
                                                 }
@@ -100,6 +101,13 @@ struct SyncSettingsView: View {
                                     .onTapGesture {
                                         showingPlusPopover = false
                                     }
+                            }
+
+                            HStack {
+                                Label(L("settings.alwaysKillAdbBeforeConnect"), systemImage: "arrow.clockwise.circle")
+                                Spacer()
+                                Toggle("", isOn: $appState.alwaysKillAdbBeforeConnect)
+                                    .toggleStyle(.switch)
                             }
 
                             HStack {
@@ -167,72 +175,19 @@ struct SyncSettingsView: View {
                         .padding()
                         .glassBoxIfAvailable(radius: 18)
 
-                        // 3. Notifications
-                        headerSection(title: "Notifications Sync", icon: "bell.badge")
+                        // 3. Media Player
+                        headerSection(title: "Media Player", icon: "play.circle")
                         VStack {
-                            SettingsToggleView(name: "Sync notification dismissals", icon: "bell.badge", isOn: $appState.dismissNotif)
-
-                            // Open app on notification click — BETA
-                            HStack {
-                                Label("Open app on notification click", systemImage: "arrow.up.forward.app")
-                                Text("BETA")
-                                    .font(.caption2)
-                                    .fontWeight(.semibold)
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 2)
-                                    .background(Color.orange.opacity(0.18))
-                                    .foregroundStyle(.orange)
-                                    .clipShape(Capsule())
-                                Spacer()
-                                Toggle("", isOn: $appState.openAppOnNotificationClick)
-                                    .toggleStyle(.switch)
-                            }
-
-
-
-                            HStack {
-                                Label("System Notifications", systemImage: "bell.badge")
-                                Spacer()
-
-                                if notificationsGranted {
-                                    Picker("", selection: $appState.notificationSound) {
-                                        Text("Default").tag("default")
-                                        ForEach(SystemSounds.availableSounds, id: \.self) { sound in
-                                            Text(sound).tag(sound)
-                                        }
-                                    }
-                                    .pickerStyle(MenuPickerStyle())
-                                    .frame(minWidth: 100)
-
-                                    Button(action: {
-                                        SystemSounds.playSound(appState.notificationSound)
-                                    }) {
-                                        Image(systemName: "play.circle")
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .help("Test notification sound")
-                                } else {
-                                    GlassButtonView(
-                                        label: "Grant Permission",
-                                        systemImage: "bell.badge",
-                                        primary: true,
-                                        action: {
-                                            openNotificationSettings()
-                                        }
-                                    )
-                                }
-                            }
-
                             SettingsToggleView(name: "Send now playing status", icon: "play.circle", isOn: $appState.sendNowPlayingStatus)
 
                             HStack {
-                                Label("Show in Control Center", systemImage: "slider.horizontal.below.rectangle")
+                                Label("Show in control center", systemImage: "slider.horizontal.below.rectangle")
                                 Button(action: { showControlCenterInfo = true }) {
                                     Image(systemName: "info.circle")
                                         .foregroundStyle(.secondary)
                                 }
                                 .buttonStyle(.plain)
-                                .alert("Show in Control Center", isPresented: $showControlCenterInfo) {
+                                .alert("Show in control center", isPresented: $showControlCenterInfo) {
                                     Button("OK", role: .cancel) {}
                                 } message: {
                                     Text("This feature plays a silent audio track in background in order to show up in macOS media. This may prevent your multi-device bluetooth audio devices to not switch correctly.")
@@ -251,39 +206,12 @@ struct SyncSettingsView: View {
                         }
                         .padding()
                         .glassBoxIfAvailable(radius: 18)
-                        .onAppear {
-                            checkNotificationPermissions()
-                        }
-                        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                            checkNotificationPermissions()
-                        }
 
-                        // 4. Call Alerts
-                        headerSection(title: "Call Alerts", icon: "phone")
+                        // 5. Remote Controls
+                        headerSection(title: "Remote Controls", icon: "accessibility")
                         VStack {
                             HStack {
-                                Label("Call Alert", systemImage: "phone")
-                                Spacer()
-
-                                Picker("", selection: $appState.callNotificationMode) {
-                                    ForEach(CallNotificationMode.allCases, id: \.self) { mode in
-                                        Text(mode.displayName).tag(mode)
-                                    }
-                                }
-                                .pickerStyle(MenuPickerStyle())
-                                .frame(minWidth: 120)
-                            }
-
-                            SettingsToggleView(name: "Ring for calls", icon: "speaker.wave.3", isOn: $appState.ringForCalls)
-                        }
-                        .padding()
-                        .glassBoxIfAvailable(radius: 18)
-
-                        // 5. Remote Accessibility Control
-                        headerSection(title: "Remote Accessibility", icon: "accessibility")
-                        VStack {
-                            HStack {
-                                Label("Remote Control Permission", systemImage: "accessibility")
+                                Label("Remote control permission", systemImage: "accessibility")
                                 Spacer()
                                 GlassButtonView(label: "Configure", systemImage: "gearshape") {
                                     showRemoteSheet = true
@@ -291,6 +219,7 @@ struct SyncSettingsView: View {
                             }
                         }
                         .padding()
+                        .glassBoxIfAvailable(radius: 18)
                         .sheet(isPresented: $showRemoteSheet) {
                             RemotePermissionView()
                         }

@@ -27,6 +27,21 @@ struct NotificationsSettingsView: View {
                     SettingsToggleView(name: L("settings.notifications.dismiss"), icon: "bell.badge", isOn: $appState.dismissNotif)
 
                     HStack {
+                        Label("Open app on notification click", systemImage: "arrow.up.forward.app")
+                        Text("BETA")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.18))
+                            .foregroundStyle(.orange)
+                            .clipShape(Capsule())
+                        Spacer()
+                        Toggle("", isOn: $appState.openAppOnNotificationClick)
+                            .toggleStyle(.switch)
+                    }
+
+                    HStack {
                         Label(L("settings.notifications.system"), systemImage: "bell.badge")
                         Spacer()
 
