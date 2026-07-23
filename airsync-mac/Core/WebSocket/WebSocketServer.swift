@@ -21,7 +21,7 @@ class WebSocketServer: ObservableObject {
     internal var pingTimer: Timer?
     internal let pingInterval: TimeInterval = 4.5
     internal var lastActivity: [ObjectIdentifier: Date] = [:]
-    internal let activityTimeout: TimeInterval = 45.0
+    internal let activityTimeout: TimeInterval = 20.0
     
     @Published var symmetricKey: SymmetricKey?
     @Published var localPort: UInt16?

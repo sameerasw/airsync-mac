@@ -179,10 +179,11 @@ class BLECentralManager: NSObject, ObservableObject {
             return []
         }
         
+        let preferredName = AppState.getPreferredDeviceName(fallback: nil)
         return discoveredPeripherals.values.map { record in
             DiscoveredDevice(
                 deviceId: record.peripheral.identifier.uuidString,
-                name: record.peripheral.name ?? "Android Device",
+                name: preferredName.isEmpty ? (record.peripheral.name ?? "Android Device") : preferredName,
                 ips: ["Bluetooth LE"],
                 port: 0,
                 type: "ble",
@@ -434,7 +435,8 @@ extension BLECentralManager: CBPeripheralDelegate {
             if data.first == BLEConstants.authSuccess {
                 print("[BLE] Auth Success!")
                 connectionStatus = .authenticated
-                let devName = discoveredPeripheral?.name ?? "Android Device"
+                let rawName = discoveredPeripheral?.name
+                let devName = AppState.getPreferredDeviceName(fallback: rawName)
                 connectedDeviceName = devName
                 
                 let bleDeviceId = discoveredPeripheral?.identifier.uuidString ?? ""

@@ -219,6 +219,10 @@ class AppState: ObservableObject {
                 self.selectedTab = .notifications
             }
 
+            if let d = device, !d.isBLE, !d.name.isEmpty {
+                UserDefaults.standard.set(d.name, forKey: "lastRegularDeviceName")
+            }
+
             // BLE connection management: Wi-Fi priority over BLE
             let isRegularConnection = device?.isRegularConnection ?? false
             let wasRegularConnection = oldValue?.isRegularConnection ?? false
@@ -1740,8 +1744,23 @@ class AppState: ObservableObject {
         }
     }
 
+    static func getPreferredDeviceName(fallback: String?) -> String {
+        if let savedName = UserDefaults.standard.string(forKey: "lastRegularDeviceName"), !savedName.isEmpty {
+            return savedName
+        }
+        if let wifiDevice = QuickConnectManager.shared.lastConnectedDevices.values.first(where: { !$0.isBLE }),
+           !wifiDevice.name.isEmpty {
+            return wifiDevice.name
+        }
+        if let fallback = fallback, !fallback.isEmpty {
+            return fallback
+        }
+        return "Android Device"
+    }
+
     private func updateVirtualDeviceForBLE() {
-        let name = BLECentralManager.shared.connectedDeviceName ?? "Android Device"
+        let rawName = BLECentralManager.shared.connectedDeviceName
+        let name = AppState.getPreferredDeviceName(fallback: rawName)
         self.device = Device(
             name: name,
             ipAddress: "BLE",
@@ -1750,6 +1769,28 @@ class AppState: ObservableObject {
             adbPorts: [],
             deviceId: BLECentralManager.shared.connectingDeviceUUID ?? "ble_device"
         )
+        
+        // Reuse cached wallpaper for BLE connection
+        if self.currentDeviceWallpaperBase64 == nil {
+            if let cachedBase64 = UserDefaults.standard.string(forKey: "lastCachedWallpaperBase64"), !cachedBase64.isEmpty {
+                self.currentDeviceWallpaperBase64 = cachedBase64
+                print("[state] (BLE) Loaded last cached wallpaper from UserDefaults for BLE connection")
+            } else {
+                let fileManager = FileManager.default
+                if let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+                    let wallpaperDir = appSupport.appendingPathComponent("Wallpapers")
+                    let devId = BLECentralManager.shared.connectingDeviceUUID ?? ""
+                    let fileURL = wallpaperDir.appendingPathComponent("\(devId).jpg")
+                    let fallbackURL = wallpaperDir.appendingPathComponent("last_wallpaper.jpg")
+                    let targetURL = fileManager.fileExists(atPath: fileURL.path) ? fileURL : (fileManager.fileExists(atPath: fallbackURL.path) ? fallbackURL : nil)
+                    if let targetURL = targetURL, let data = try? Data(contentsOf: targetURL) {
+                        self.currentDeviceWallpaperBase64 = data.base64EncodedString()
+                        print("[state] (BLE) Loaded last cached wallpaper from disk for BLE connection")
+                    }
+                }
+            }
+        }
+        
         print("[state] (BLE) Created virtual device: \(name)")
     }
 

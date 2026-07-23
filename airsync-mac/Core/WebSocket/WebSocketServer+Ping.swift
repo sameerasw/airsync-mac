@@ -84,13 +84,13 @@ extension WebSocketServer {
                         return
                     }
                     
-                    print("[websocket] Primary session \(sessionId) is stale (>\(Int(timeout))s). Scheduling restart in 10s.")
+                    print("[websocket] Primary session \(sessionId) is stale (>\(Int(timeout))s). Disconnecting now.")
                     
                     self.lock.lock()
                     self.isRestarting = true
                     self.lock.unlock()
                     
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) { [weak self] in
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.0) { [weak self] in
                         guard let self = self else { return }
                         
                         self.lock.lock()
