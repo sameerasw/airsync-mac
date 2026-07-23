@@ -26,7 +26,7 @@ struct SidebarView: View {
 
                 if let wifiDevice = discoveryManager.availableWifiDeviceForCurrentBLE {
                     GlassButtonView(
-                        label: "WiFi",
+                        label: "Switch",
                         systemImage: "wifi",
                         action: {
                             QuickConnectManager.shared.connect(to: wifiDevice)

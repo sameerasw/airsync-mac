@@ -60,7 +60,7 @@ extension WebSocketServer {
             
             let isPrimary = (sessionId == primary)
             if isPrimary && !isStale {
-                let isWeak = timeSinceLastActivity > 15.0
+                let isWeak = timeSinceLastActivity > 10
                 DispatchQueue.main.async {
                     if AppState.shared.isConnectionWeak != isWeak {
                         AppState.shared.isConnectionWeak = isWeak

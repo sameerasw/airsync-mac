@@ -19,7 +19,7 @@ class WebSocketServer: ObservableObject {
     internal var activeSessions: [WebSocketSession] = []
     internal var primarySessionID: ObjectIdentifier?
     internal var pingTimer: Timer?
-    internal let pingInterval: TimeInterval = 12.5
+    internal let pingInterval: TimeInterval = 4.5
     internal var lastActivity: [ObjectIdentifier: Date] = [:]
     internal let activityTimeout: TimeInterval = 45.0
     

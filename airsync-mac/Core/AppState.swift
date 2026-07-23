@@ -141,6 +141,7 @@ class AppState: ObservableObject {
 
         self.isBLEEnabled = UserDefaults.standard.bool(forKey: "isBLEEnabled")
         self.isBLEAutoConnectEnabled = UserDefaults.standard.object(forKey: "isBLEAutoConnectEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "isBLEAutoConnectEnabled")
+        self.isAutoSwitchWithBLEEnabled = UserDefaults.standard.object(forKey: "isAutoSwitchWithBLEEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "isAutoSwitchWithBLEEnabled")
 
         if isBLEEnabled {
             BLECentralManager.shared.startScanning()
@@ -241,8 +242,8 @@ class AppState: ObservableObject {
                 let workItem = DispatchWorkItem { [weak self] in
                     guard let self = self else { return }
                     let stillDisconnected = self.device == nil || self.device?.isBLE == true
-                    if stillDisconnected && self.isBLEEnabled && !BLECentralManager.shared.isAuthenticated {
-                        print("[state] Regular connection stayed lost for 5s — resuming BLE scan")
+                    if stillDisconnected && self.isBLEEnabled && self.isBLEAutoConnectEnabled && !BLECentralManager.shared.isAuthenticated {
+                        print("[state] Regular connection stayed lost for 5s — resuming BLE scan to auto-connect nearby")
                         BLECentralManager.shared.isManuallyDisconnected = false
                         BLECentralManager.shared.startScanning()
                     }
@@ -617,6 +618,13 @@ class AppState: ObservableObject {
             if isBLEAutoConnectEnabled {
                 BLECentralManager.shared.isManuallyDisconnected = false
             }
+        }
+    }
+
+    @Published var isAutoSwitchWithBLEEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(isAutoSwitchWithBLEEnabled, forKey: "isAutoSwitchWithBLEEnabled")
+            DiscoveryManager.shared.updateAvailableWifiDevice()
         }
     }
 

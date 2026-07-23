@@ -260,6 +260,16 @@ struct ConnectionPillPopover: View {
                         .controlSize(.small)
                         .disabled(!appState.isBLEEnabled)
                 }
+
+                HStack {
+                    Label("Auto switch with nearby", systemImage: "arrow.triangle.swap")
+                        .font(.system(size: 12))
+                    Spacer()
+                    Toggle("", isOn: $appState.isAutoSwitchWithBLEEnabled)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .disabled(!appState.isBLEEnabled)
+                }
             }
             .frame(width: 240)
             }
