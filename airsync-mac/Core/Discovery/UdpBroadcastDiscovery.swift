@@ -182,6 +182,7 @@ class UdpBroadcastDiscovery: ObservableObject {
            let jsonString = String(data: data, encoding: .utf8) {
             for peerIP in knownPeerIPs {
                 if allIPs.contains(peerIP) { continue }
+                guard DiscoveryManager.shared.isIPOnLocalNetwork(peerIP) else { continue }
                 sendUnicast(message: jsonString, targetIP: peerIP)
             }
         }
@@ -204,7 +205,7 @@ class UdpBroadcastDiscovery: ObservableObject {
                 connection.send(content: message.data(using: .utf8), completion: .contentProcessed({ _ in
                     connection.cancel()
                 }))
-            case .failed(_):
+            case .failed(_), .cancelled:
                 connection.cancel()
             default:
                 break
@@ -223,14 +224,10 @@ class UdpBroadcastDiscovery: ObservableObject {
         connection.stateUpdateHandler = { state in
             switch state {
             case .ready:
-                connection.send(content: message.data(using: .utf8), completion: .contentProcessed({ error in
-                    if let error = error {
-                        print("[UDP] Unicast send error (to \(targetIP)): \(error)")
-                    }
+                connection.send(content: message.data(using: .utf8), completion: .contentProcessed({ _ in
                     connection.cancel()
                 }))
-            case .failed(let error):
-                print("[UDP] Unicast connection failed (to \(targetIP)): \(error)")
+            case .failed(_), .cancelled:
                 connection.cancel()
             default:
                 break

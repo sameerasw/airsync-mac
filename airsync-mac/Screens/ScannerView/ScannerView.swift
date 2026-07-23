@@ -77,7 +77,7 @@ struct ScannerView: View {
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
-                    .transition(.opacity.combined(with: .scale))
+                    .transition(.opacity)
                     .frame(maxWidth: .infinity, minHeight: 240)
 
                 } else {

@@ -139,7 +139,7 @@ class DiscoveryManager: ObservableObject {
         self.discoveredDevices = Array(merged.values)
     }
     
-    private func isIPOnLocalNetwork(_ targetIP: String) -> Bool {
+    func isIPOnLocalNetwork(_ targetIP: String) -> Bool {
         if targetIP == "Bluetooth LE" || targetIP == "Nearby" {
             return true
         }
@@ -239,15 +239,10 @@ class DiscoveryManager: ObservableObject {
                     
                     if checkedCount == total {
                         if !reachable {
-                            print("[Discovery] Device \(name) (\(deviceId)) is not reachable on any IP. Removing and restarting Bonjour browser.")
+                            print("[Discovery] Device \(name) (\(deviceId)) is not reachable on any IP. Removing device.")
                             DispatchQueue.main.async {
                                 self.mdnsDevices.removeValue(forKey: deviceId)
                                 self.mergeAndPublish()
-                                
-                                if self.isRunning {
-                                    self.bonjourBrowser.stop()
-                                    self.bonjourBrowser.start()
-                                }
                             }
                         }
                     }
