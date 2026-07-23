@@ -17,10 +17,14 @@ struct WiredADBDevice: Hashable, Identifiable {
 struct ADBConnector {
 
     // Potential fallback paths
-    static let possibleADBPaths = [
-        "/opt/homebrew/bin/adb",  // Apple Silicon Homebrew
-        "/usr/local/bin/adb"      // Intel Homebrew
-    ]
+    static let possibleADBPaths: [String] = {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return [
+            "\(home)/Library/Android/sdk/platform-tools/adb",
+            "/opt/homebrew/bin/adb",
+            "/usr/local/bin/adb"
+        ]
+    }()
     static let possibleScrcpyPaths = [
         "/opt/scrcpy/scrcpy",
         "/opt/homebrew/bin/scrcpy",
