@@ -205,8 +205,10 @@ class UdpBroadcastDiscovery: ObservableObject {
                 connection.send(content: message.data(using: .utf8), completion: .contentProcessed({ _ in
                     connection.cancel()
                 }))
-            case .failed(_), .cancelled:
+            case .failed(_):
                 connection.cancel()
+            case .cancelled:
+                break
             default:
                 break
             }
@@ -227,8 +229,10 @@ class UdpBroadcastDiscovery: ObservableObject {
                 connection.send(content: message.data(using: .utf8), completion: .contentProcessed({ _ in
                     connection.cancel()
                 }))
-            case .failed(_), .cancelled:
+            case .failed(_):
                 connection.cancel()
+            case .cancelled:
+                break
             default:
                 break
             }

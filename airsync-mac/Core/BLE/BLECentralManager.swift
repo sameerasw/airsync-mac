@@ -10,7 +10,8 @@ class BLECentralManager: NSObject, ObservableObject {
     
     private var characteristics: [CBUUID: CBCharacteristic] = [:]
     private var chunkBuffers: [CBUUID: [Int: Data]] = [:]
-    private var discoveredServiceCount = 0
+    private var discoveredServices: Set<CBUUID> = []
+    private var hasAttemptedAuth = false
     private let expectedServiceCount = 4
     
     @Published var connectionStatus: BLEConnectionStatus = .disconnected
@@ -178,7 +179,8 @@ class BLECentralManager: NSObject, ObservableObject {
             self.connectingDeviceUUID = nil
             self.connectionStatus = .disconnected
             self.characteristics.removeAll()
-            self.discoveredServiceCount = 0
+            self.discoveredServices.removeAll()
+            self.hasAttemptedAuth = false
         }
     }
     
@@ -253,7 +255,8 @@ extension BLECentralManager: CBCentralManagerDelegate {
                 self.discoveredPeripheral = nil
                 self.connectionStatus = .disconnected
                 self.characteristics.removeAll()
-                self.discoveredServiceCount = 0
+                self.discoveredServices.removeAll()
+                self.hasAttemptedAuth = false
                 
                 if AppState.shared.isBLEAutoConnectEnabled && !self.isManuallyDisconnected {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
@@ -268,6 +271,8 @@ extension BLECentralManager: CBCentralManagerDelegate {
         connectionTimer?.invalidate()
         connectionTimer = nil
         connectingDeviceUUID = nil
+        discoveredServices.removeAll()
+        hasAttemptedAuth = false
         let name = peripheral.name ?? "Unknown Device"
         let maxWrite = peripheral.maximumWriteValueLength(for: .withoutResponse)
         print("[BLE] Connected to \(name), Max Write Length: \(maxWrite)")
@@ -286,7 +291,8 @@ extension BLECentralManager: CBCentralManagerDelegate {
         connectionStatus = .disconnected
         discoveredPeripheral = nil
         characteristics.removeAll()
-        discoveredServiceCount = 0
+        discoveredServices.removeAll()
+        hasAttemptedAuth = false
         
         // Retry scanning after a delay
         if AppState.shared.isBLEAutoConnectEnabled && !isManuallyDisconnected {
@@ -309,7 +315,8 @@ extension BLECentralManager: CBCentralManagerDelegate {
         connectedDeviceName = nil
         characteristics.removeAll()
         chunkBuffers.removeAll()
-        discoveredServiceCount = 0
+        discoveredServices.removeAll()
+        hasAttemptedAuth = false
         
         if AppState.shared.isBLEAutoConnectEnabled && !isManuallyDisconnected {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
@@ -339,15 +346,16 @@ extension BLECentralManager: CBPeripheralDelegate {
             }
         }
         
-        discoveredServiceCount += 1
-        print("[BLE] Services discovered: \(discoveredServiceCount)/\(expectedServiceCount)")
+        discoveredServices.insert(service.uuid)
+        print("[BLE] Services discovered: \(discoveredServices.count)/\(expectedServiceCount)")
         
-        // Only attempt auth after ALL services are discovered
-        if discoveredServiceCount >= expectedServiceCount {
+        // Only attempt auth once after ALL services are discovered
+        if discoveredServices.count >= expectedServiceCount && !hasAttemptedAuth {
             if characteristics[BLEConstants.charAuthToken] != nil {
+                hasAttemptedAuth = true
                 print("[BLE] All services discovered, attempting authentication...")
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    self.attemptAuthentication()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.attemptAuthentication()
                 }
             }
         }
