@@ -21,18 +21,30 @@ class DiscoveryManager: ObservableObject {
         setupBonjourBrowser()
         setupUdpDiscoveryObserver()
         setupNetworkMonitor()
-        setupDeviceConnectionObserver()
+        DispatchQueue.main.async { [weak self] in
+            self?.setupDeviceConnectionObserver()
+        }
     }
     
+    @Published var availableWifiDeviceForCurrentBLE: DiscoveredDevice? = nil
+
     private func setupDeviceConnectionObserver() {
         AppState.shared.$device
             .receive(on: DispatchQueue.main)
             .sink { [weak self] device in
                 guard let self = self else { return }
-                if device != nil {
-                    if self.isRunning {
-                        print("[DiscoveryManager] Device connected. Stopping discovery and advertising.")
-                        self.stop()
+                if let device = device {
+                    let isBLE = device.isBLE
+                    if !isBLE {
+                        if self.isRunning {
+                            print("[DiscoveryManager] Wi-Fi device connected. Stopping discovery and advertising.")
+                            self.stop()
+                        }
+                    } else {
+                        if !self.isRunning {
+                            print("[DiscoveryManager] BLE device connected. Keeping discovery active for Wi-Fi switch.")
+                            self.start()
+                        }
                     }
                 } else {
                     if !self.isRunning {
@@ -40,8 +52,54 @@ class DiscoveryManager: ObservableObject {
                         self.start()
                     }
                 }
+                self.updateAvailableWifiDevice()
             }
             .store(in: &cancellables)
+    }
+    
+    func updateAvailableWifiDevice() {
+        self.availableWifiDeviceForCurrentBLE = evaluateAvailableWifiDeviceForCurrentBLE()
+    }
+    
+    private func evaluateAvailableWifiDeviceForCurrentBLE() -> DiscoveredDevice? {
+        let isBLEConnected = BLECentralManager.shared.isAuthenticated ||
+            (AppState.shared.device?.isBLE == true)
+            
+        guard isBLEConnected else { return nil }
+        
+        let currentName = AppState.shared.device?.name ?? BLECentralManager.shared.connectedDeviceName ?? ""
+        let currentId = AppState.shared.device?.deviceId ?? ""
+        
+        return discoveredDevices.first { discovered in
+            let wifiIps = discovered.ips.filter { $0 != "Bluetooth LE" && $0 != "Nearby" && !$0.isEmpty }
+            guard !wifiIps.isEmpty else { return false }
+            
+            if !currentId.isEmpty && currentId == discovered.deviceId {
+                return true
+            }
+            
+            if !currentName.isEmpty {
+                let clean1 = cleanName(currentName)
+                let clean2 = cleanName(discovered.name)
+                if clean1 == clean2 || clean1.contains(clean2) || clean2.contains(clean1) {
+                    return true
+                }
+            }
+            
+            if discoveredDevices.count == 1 {
+                return true
+            }
+            
+            return false
+        }
+    }
+    
+    private func cleanName(_ name: String) -> String {
+        return name
+            .replacingOccurrences(of: "AirSync-", with: "")
+            .replacingOccurrences(of: "’", with: "'")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
     }
     
     func start() {
@@ -137,6 +195,7 @@ class DiscoveryManager: ObservableObject {
         }
         
         self.discoveredDevices = Array(merged.values)
+        self.updateAvailableWifiDevice()
     }
     
     func isIPOnLocalNetwork(_ targetIP: String) -> Bool {

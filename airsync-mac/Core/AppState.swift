@@ -202,7 +202,7 @@ class AppState: ObservableObject {
                 loadRecentApps()
 
                 // Mount WebDAV volume
-                if newDevice.ipAddress != "BLE" && isPlus && isFileAccessEnabled {
+                if newDevice.isRegularConnection && isPlus && isFileAccessEnabled {
                     WebDAVManager.shared.mount(ipAddress: newDevice.ipAddress, port: 9081, volumeName: newDevice.name)
                 }
             } else {
@@ -219,8 +219,8 @@ class AppState: ObservableObject {
             }
 
             // BLE connection management: Wi-Fi priority over BLE
-            let isRegularConnection = device?.ipAddress != nil && device?.ipAddress != "BLE"
-            let wasRegularConnection = oldValue?.ipAddress != nil && oldValue?.ipAddress != "BLE"
+            let isRegularConnection = device?.isRegularConnection ?? false
+            let wasRegularConnection = oldValue?.isRegularConnection ?? false
 
             if isRegularConnection {
                 // Regular connection established — immediately put BLE to idle (stop scan) and reset manual disconnect flag
@@ -240,7 +240,7 @@ class AppState: ObservableObject {
                 self.bleWakeUpWorkItem?.cancel()
                 let workItem = DispatchWorkItem { [weak self] in
                     guard let self = self else { return }
-                    let stillDisconnected = self.device?.ipAddress == nil || self.device?.ipAddress == "BLE"
+                    let stillDisconnected = self.device == nil || self.device?.isBLE == true
                     if stillDisconnected && self.isBLEEnabled && !BLECentralManager.shared.isAuthenticated {
                         print("[state] Regular connection stayed lost for 5s — resuming BLE scan")
                         BLECentralManager.shared.isManuallyDisconnected = false
@@ -393,9 +393,9 @@ class AppState: ObservableObject {
     private var mediaTickTimer: AnyCancellable?
     
     var isConnectedOverLocalNetwork: Bool {
-        guard let ip = device?.ipAddress, ip != "BLE" else { return false }
+        guard let device = device, device.isRegularConnection else { return false }
         // Tailscale IPs usually start with 100.
-        return !ip.hasPrefix("100.")
+        return !device.ipAddress.hasPrefix("100.")
     }
 
     // Audio player for ringtone
@@ -744,7 +744,7 @@ class AppState: ObservableObject {
             } else {
                 UserDefaults.standard.set(isFileAccessEnabled, forKey: "isFileAccessEnabled")
                 if isFileAccessEnabled {
-                    if let newDevice = device, newDevice.ipAddress != "BLE" {
+                    if let newDevice = device, newDevice.isRegularConnection {
                         WebDAVManager.shared.mount(ipAddress: newDevice.ipAddress, port: 9081, volumeName: newDevice.name)
                     }
                 } else {
@@ -1721,10 +1721,10 @@ class AppState: ObservableObject {
                 self.notifications = []
             }
             // Resume scanning after BLE disconnect (unless a regular connection is already active)
-            let hasRegularConnection = self.device?.ipAddress != nil && self.device?.ipAddress != "BLE"
+            let hasRegularConnection = self.device?.isRegularConnection ?? false
             if isBLEEnabled && !hasRegularConnection && !BLECentralManager.shared.isManuallyDisconnected {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-                    if self.isBLEEnabled && self.device?.ipAddress != "BLE" && !BLECentralManager.shared.isAuthenticated {
+                    if self.isBLEEnabled && !(self.device?.isRegularConnection ?? false) && !BLECentralManager.shared.isAuthenticated {
                         BLECentralManager.shared.startScanning()
                     }
                 }

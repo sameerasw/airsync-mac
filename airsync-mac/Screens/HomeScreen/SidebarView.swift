@@ -9,21 +9,31 @@ import SwiftUI
 
 struct SidebarView: View {
     @ObservedObject var appState = AppState.shared
+    @ObservedObject var discoveryManager = DiscoveryManager.shared
     @State private var isExpandedAllSeas: Bool = false
     @State private var showingPlusDesktopPopover = false
 
     var body: some View {
         VStack {
-            HStack(alignment: .center) {
+            HStack(alignment: .center, spacing: 8) {
                 let name = appState.device?.name ?? "AirSync"
-                let truncated = name.count > 20
-                ? String(name.prefix(20)) + "..."
+                let truncated = name.count > 16
+                ? String(name.prefix(16)) + "..."
                 : name
 
                 Text(truncated)
                     .font(.title3)
+
+                if let wifiDevice = discoveryManager.availableWifiDeviceForCurrentBLE {
+                    GlassButtonView(
+                        label: "WiFi",
+                        systemImage: "wifi",
+                        action: {
+                            QuickConnectManager.shared.connect(to: wifiDevice)
+                        }
+                    )
+                }
             }
-            .padding(.bottom, 6)
 
             if let deviceVersion = appState.device?.version,
                appState.device?.ipAddress != "BLE",

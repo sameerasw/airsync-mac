@@ -22,6 +22,16 @@ struct Device: Codable, Hashable, Identifiable {
     }
 }
 
+extension Device {
+    var isBLE: Bool {
+        return ipAddress == "BLE" || ipAddress == "Bluetooth LE"
+    }
+    
+    var isRegularConnection: Bool {
+        return !ipAddress.isEmpty && !isBLE
+    }
+}
+
 struct MockData{
     static let sampleDevice = Device(
         name: "Test Device",
