@@ -75,29 +75,61 @@ class DiscoveryManager: ObservableObject {
     }
     
     func updateAvailableWifiDevice() {
-        let detected = evaluateAvailableWifiDeviceForCurrentBLE()
-        self.availableWifiDeviceForCurrentBLE = detected
-        
-        if AppState.shared.isAutoSwitchWithBLEEnabled, let wifiDevice = detected {
-            if wifiAutoSwitchTimer == nil {
-                print("[DiscoveryManager] Auto-switch enabled: Wi-Fi endpoint detected (\(wifiDevice.name)). Starting 5s stability timer...")
-                wifiAutoSwitchTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
-                    guard let self = self else { return }
-                    self.wifiAutoSwitchTimer = nil
-                    
-                    guard let targetDevice = self.evaluateAvailableWifiDeviceForCurrentBLE() else {
-                        print("[DiscoveryManager] Wi-Fi device lost before 5s auto-switch. Cancelling switch.")
-                        return
-                    }
-                    
-                    print("[DiscoveryManager] Wi-Fi device stayed available for 5s! Triggering auto-switch to Wi-Fi...")
-                    QuickConnectManager.shared.connect(to: targetDevice)
-                }
-            }
-        } else {
+        guard let detected = evaluateAvailableWifiDeviceForCurrentBLE(),
+              let bestIP = detected.ips.first(where: { $0 != "Bluetooth LE" && $0 != "Nearby" && !$0.isEmpty }) else {
+            self.availableWifiDeviceForCurrentBLE = nil
             if wifiAutoSwitchTimer != nil {
                 wifiAutoSwitchTimer?.invalidate()
                 wifiAutoSwitchTimer = nil
+            }
+            return
+        }
+
+        // Verify TCP reachability over Wi-Fi socket before exposing to UI or auto-switching
+        verifyIPReachability(ip: bestIP, port: detected.port) { [weak self] isReachable in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                guard isReachable else {
+                    print("[DiscoveryManager] Discovered Wi-Fi device (\(detected.name)) is NOT reachable over TCP at \(bestIP):\(detected.port). Ignoring stale mDNS record.")
+                    self.availableWifiDeviceForCurrentBLE = nil
+                    if self.wifiAutoSwitchTimer != nil {
+                        self.wifiAutoSwitchTimer?.invalidate()
+                        self.wifiAutoSwitchTimer = nil
+                    }
+                    return
+                }
+
+                self.availableWifiDeviceForCurrentBLE = detected
+
+                if AppState.shared.isAutoSwitchWithBLEEnabled {
+                    if self.wifiAutoSwitchTimer == nil {
+                        print("[DiscoveryManager] Auto-switch enabled: Verified Wi-Fi endpoint (\(detected.name) at \(bestIP)). Starting 5s stability timer...")
+                        self.wifiAutoSwitchTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
+                            guard let self = self else { return }
+                            self.wifiAutoSwitchTimer = nil
+                            
+                            guard let targetDevice = self.evaluateAvailableWifiDeviceForCurrentBLE(),
+                                  let targetIP = targetDevice.ips.first(where: { $0 != "Bluetooth LE" && $0 != "Nearby" && !$0.isEmpty }) else {
+                                print("[DiscoveryManager] Wi-Fi device lost before 5s auto-switch. Cancelling switch.")
+                                return
+                            }
+
+                            self.verifyIPReachability(ip: targetIP, port: targetDevice.port) { isStillReachable in
+                                guard isStillReachable else {
+                                    print("[DiscoveryManager] Wi-Fi device socket closed before auto-switch. Cancelling switch.")
+                                    return
+                                }
+                                print("[DiscoveryManager] Wi-Fi device verified reachable for 5s! Triggering auto-switch to Wi-Fi...")
+                                QuickConnectManager.shared.connect(to: targetDevice)
+                            }
+                        }
+                    }
+                } else {
+                    if self.wifiAutoSwitchTimer != nil {
+                        self.wifiAutoSwitchTimer?.invalidate()
+                        self.wifiAutoSwitchTimer = nil
+                    }
+                }
             }
         }
     }
@@ -115,20 +147,16 @@ class DiscoveryManager: ObservableObject {
             let wifiIps = discovered.ips.filter { $0 != "Bluetooth LE" && $0 != "Nearby" && !$0.isEmpty }
             guard !wifiIps.isEmpty else { return false }
             
-            if !currentId.isEmpty && currentId == discovered.deviceId {
+            if !currentId.isEmpty && !discovered.deviceId.isEmpty && currentId == discovered.deviceId {
                 return true
             }
             
             if !currentName.isEmpty {
                 let clean1 = cleanName(currentName)
                 let clean2 = cleanName(discovered.name)
-                if clean1 == clean2 || clean1.contains(clean2) || clean2.contains(clean1) {
+                if !clean1.isEmpty && !clean2.isEmpty && (clean1 == clean2 || clean1.contains(clean2) || clean2.contains(clean1)) {
                     return true
                 }
-            }
-            
-            if discoveredDevices.count == 1 {
-                return true
             }
             
             return false
