@@ -22,6 +22,7 @@ class AppState: ObservableObject {
 
     private var clipboardCancellable: AnyCancellable?
     private var lastClipboardValue: String? = nil
+    private var lastClipboardChangeCount: Int = -1
     private var shouldSkipSave = false
     private var cancellables = Set<AnyCancellable>()
     private var bleWakeUpWorkItem: DispatchWorkItem?
@@ -1392,12 +1393,17 @@ class AppState: ObservableObject {
 
     private func startClipboardMonitoring() {
         guard isClipboardSyncEnabled else { return }
+        lastClipboardChangeCount = NSPasteboard.general.changeCount
         clipboardCancellable = Timer
             .publish(every: 1.0, on: .main, in: .default)
             .autoconnect()
             .sink { [weak self] _ in
                 guard let self = self, self.device != nil else { return }
                 let pasteboard = NSPasteboard.general
+                let currentChangeCount = pasteboard.changeCount
+                guard currentChangeCount != self.lastClipboardChangeCount else { return }
+                self.lastClipboardChangeCount = currentChangeCount
+
                 if let copiedString = pasteboard.string(forType: .string),
                    copiedString != self.lastClipboardValue {
                     self.lastClipboardValue = copiedString
@@ -1427,6 +1433,7 @@ class AppState: ObservableObject {
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
         self.lastClipboardValue = text
+        self.lastClipboardChangeCount = pasteboard.changeCount
 
         // Only handle URLs specially if the whole text is a valid http/https URL.
         if let url = exactURL(from: text) {
