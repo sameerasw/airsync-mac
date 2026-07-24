@@ -15,7 +15,10 @@ func generateSymmetricKey() -> String {
 }
 
 func encryptMessage(_ message: String, using key: SymmetricKey) -> String? {
-    let data = Data(message.utf8)
+    return encryptData(Data(message.utf8), using: key)
+}
+
+func encryptData(_ data: Data, using key: SymmetricKey) -> String? {
     do {
         let sealed = try AES.GCM.seal(data, using: key)
         let combined = sealed.combined! // nonce + ciphertext + tag
