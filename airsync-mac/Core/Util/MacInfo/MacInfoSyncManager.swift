@@ -205,9 +205,8 @@ class MacInfoSyncManager: ObservableObject {
         let currentArtwork = artworkBase64
         var currentHash: String? = nil
         
-        if !currentArtwork.isEmpty {
-            let inputData = Data(currentArtwork.utf8)
-            let hashed = SHA256.hash(data: inputData)
+        if let rawData = info.artworkData {
+            let hashed = SHA256.hash(data: rawData)
             currentHash = hashed.compactMap { String(format: "%02x", $0) }.joined()
         }
 
