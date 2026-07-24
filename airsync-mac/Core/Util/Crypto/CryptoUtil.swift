@@ -27,11 +27,15 @@ func encryptMessage(_ message: String, using key: SymmetricKey) -> String? {
 }
 
 func decryptMessage(_ base64: String, using key: SymmetricKey) -> String? {
+    guard let data = decryptMessageToData(base64, using: key) else { return nil }
+    return String(data: data, encoding: .utf8)
+}
+
+func decryptMessageToData(_ base64: String, using key: SymmetricKey) -> Data? {
     guard let combinedData = Data(base64Encoded: base64) else { return nil }
     do {
         let sealedBox = try AES.GCM.SealedBox(combined: combinedData)
-        let decrypted = try AES.GCM.open(sealedBox, using: key)
-        return String(data: decrypted, encoding: .utf8)
+        return try AES.GCM.open(sealedBox, using: key)
     } catch {
         print("[crypto-util] Decryption failed: \(error)")
         return nil
