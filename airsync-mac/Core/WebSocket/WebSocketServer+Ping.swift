@@ -60,7 +60,7 @@ extension WebSocketServer {
             
             let isPrimary = (sessionId == primary)
             if isPrimary && !isStale {
-                let isWeak = timeSinceLastActivity > 15.0
+                let isWeak = timeSinceLastActivity > 10
                 DispatchQueue.main.async {
                     if AppState.shared.isConnectionWeak != isWeak {
                         AppState.shared.isConnectionWeak = isWeak
@@ -84,13 +84,13 @@ extension WebSocketServer {
                         return
                     }
                     
-                    print("[websocket] Primary session \(sessionId) is stale (>\(Int(timeout))s). Scheduling restart in 10s.")
+                    print("[websocket] Primary session \(sessionId) is stale (>\(Int(timeout))s). Disconnecting now.")
                     
                     self.lock.lock()
                     self.isRestarting = true
                     self.lock.unlock()
                     
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) { [weak self] in
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.0) { [weak self] in
                         guard let self = self else { return }
                         
                         self.lock.lock()

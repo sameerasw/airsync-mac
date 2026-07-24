@@ -10,7 +10,8 @@ class BLECentralManager: NSObject, ObservableObject {
     
     private var characteristics: [CBUUID: CBCharacteristic] = [:]
     private var chunkBuffers: [CBUUID: [Int: Data]] = [:]
-    private var discoveredServiceCount = 0
+    private var discoveredServices: Set<CBUUID> = []
+    private var hasAttemptedAuth = false
     private let expectedServiceCount = 4
     
     @Published var connectionStatus: BLEConnectionStatus = .disconnected
@@ -40,19 +41,59 @@ class BLECentralManager: NSObject, ObservableObject {
         case authenticated
     }
     
-    override init() {
-        super.init()
-        centralManager = CBCentralManager(delegate: self, queue: nil)
-    }
-    
+    private var cancellables = Set<AnyCancellable>()
     private var scanTimer: Timer?
     private var connectionTimer: Timer?
     private var watchdogTimer: Timer?
+    private var wifiStabilityTimer: Timer?
+    
+    override init() {
+        super.init()
+        centralManager = CBCentralManager(delegate: self, queue: nil)
+        DispatchQueue.main.async { [weak self] in
+            self?.setupWifiStabilityObserver()
+        }
+    }
+    
+    private func setupWifiStabilityObserver() {
+        AppState.shared.$device
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] device in
+                guard let self = self else { return }
+                let isWifiConnected = device != nil && device?.ipAddress != "BLE" && device?.ipAddress != "Bluetooth LE"
+                
+                if isWifiConnected {
+                    if self.isConnected && self.wifiStabilityTimer == nil {
+                        print("[BLE] Wi-Fi device connected (\(device?.name ?? "")). Starting 5s stability timer before disconnecting BLE...")
+                        self.wifiStabilityTimer?.invalidate()
+                        self.wifiStabilityTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
+                            guard let self = self else { return }
+                            self.wifiStabilityTimer = nil
+                            let currentDevice = AppState.shared.device
+                            let isStillWifiConnected = currentDevice != nil && currentDevice?.ipAddress != "BLE" && currentDevice?.ipAddress != "Bluetooth LE"
+                            if isStillWifiConnected && self.isConnected {
+                                print("[BLE] Wi-Fi connection is stable after 5s. Disconnecting redundant BLE connection.")
+                                self.disconnect()
+                            } else {
+                                print("[BLE] Wi-Fi connection was lost before 5s stability check. Keeping BLE active.")
+                            }
+                        }
+                    }
+                } else {
+                    if self.wifiStabilityTimer != nil {
+                        print("[BLE] Wi-Fi disconnected during stability timer. Cancelling BLE disconnect.")
+                        self.wifiStabilityTimer?.invalidate()
+                        self.wifiStabilityTimer = nil
+                    }
+                }
+            }
+            .store(in: &cancellables)
+    }
     
     func startScanning() {
         guard centralManager.state == .poweredOn else { return }
         
-        let isRegularConnection = AppState.shared.device?.ipAddress != nil && AppState.shared.device?.ipAddress != "BLE"
+        let isRegularConnection = AppState.shared.device?.ipAddress != nil && AppState.shared.device?.ipAddress != "BLE" && AppState.shared.device?.ipAddress != "Bluetooth LE"
         guard !isRegularConnection else {
             print("[BLE] Skip scan: Regular connection is active.")
             return
@@ -106,6 +147,12 @@ class BLECentralManager: NSObject, ObservableObject {
         connectingDeviceUUID = nil
         discoveredPeripherals.removeAll()
         
+        DispatchQueue.main.async {
+            if AppState.shared.device?.ipAddress == "Bluetooth LE" || AppState.shared.device?.ipAddress == "BLE" {
+                AppState.shared.device = nil
+            }
+        }
+        
         // Resume scanning to immediately show nearby devices in the unpaired list
         if AppState.shared.isBLEEnabled {
             startScanning()
@@ -132,10 +179,11 @@ class BLECentralManager: NSObject, ObservableObject {
             return []
         }
         
+        let preferredName = AppState.getPreferredDeviceName(fallback: nil)
         return discoveredPeripherals.values.map { record in
             DiscoveredDevice(
                 deviceId: record.peripheral.identifier.uuidString,
-                name: record.peripheral.name ?? "Android Device",
+                name: preferredName.isEmpty ? (record.peripheral.name ?? "Android Device") : preferredName,
                 ips: ["Bluetooth LE"],
                 port: 0,
                 type: "ble",
@@ -178,7 +226,8 @@ class BLECentralManager: NSObject, ObservableObject {
             self.connectingDeviceUUID = nil
             self.connectionStatus = .disconnected
             self.characteristics.removeAll()
-            self.discoveredServiceCount = 0
+            self.discoveredServices.removeAll()
+            self.hasAttemptedAuth = false
         }
     }
     
@@ -253,7 +302,8 @@ extension BLECentralManager: CBCentralManagerDelegate {
                 self.discoveredPeripheral = nil
                 self.connectionStatus = .disconnected
                 self.characteristics.removeAll()
-                self.discoveredServiceCount = 0
+                self.discoveredServices.removeAll()
+                self.hasAttemptedAuth = false
                 
                 if AppState.shared.isBLEAutoConnectEnabled && !self.isManuallyDisconnected {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
@@ -268,6 +318,8 @@ extension BLECentralManager: CBCentralManagerDelegate {
         connectionTimer?.invalidate()
         connectionTimer = nil
         connectingDeviceUUID = nil
+        discoveredServices.removeAll()
+        hasAttemptedAuth = false
         let name = peripheral.name ?? "Unknown Device"
         let maxWrite = peripheral.maximumWriteValueLength(for: .withoutResponse)
         print("[BLE] Connected to \(name), Max Write Length: \(maxWrite)")
@@ -286,7 +338,8 @@ extension BLECentralManager: CBCentralManagerDelegate {
         connectionStatus = .disconnected
         discoveredPeripheral = nil
         characteristics.removeAll()
-        discoveredServiceCount = 0
+        discoveredServices.removeAll()
+        hasAttemptedAuth = false
         
         // Retry scanning after a delay
         if AppState.shared.isBLEAutoConnectEnabled && !isManuallyDisconnected {
@@ -309,7 +362,14 @@ extension BLECentralManager: CBCentralManagerDelegate {
         connectedDeviceName = nil
         characteristics.removeAll()
         chunkBuffers.removeAll()
-        discoveredServiceCount = 0
+        discoveredServices.removeAll()
+        hasAttemptedAuth = false
+        
+        DispatchQueue.main.async {
+            if AppState.shared.device?.ipAddress == "Bluetooth LE" || AppState.shared.device?.ipAddress == "BLE" {
+                AppState.shared.device = nil
+            }
+        }
         
         if AppState.shared.isBLEAutoConnectEnabled && !isManuallyDisconnected {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
@@ -339,15 +399,16 @@ extension BLECentralManager: CBPeripheralDelegate {
             }
         }
         
-        discoveredServiceCount += 1
-        print("[BLE] Services discovered: \(discoveredServiceCount)/\(expectedServiceCount)")
+        discoveredServices.insert(service.uuid)
+        print("[BLE] Services discovered: \(discoveredServices.count)/\(expectedServiceCount)")
         
-        // Only attempt auth after ALL services are discovered
-        if discoveredServiceCount >= expectedServiceCount {
+        // Only attempt auth once after ALL services are discovered
+        if discoveredServices.count >= expectedServiceCount && !hasAttemptedAuth {
             if characteristics[BLEConstants.charAuthToken] != nil {
+                hasAttemptedAuth = true
                 print("[BLE] All services discovered, attempting authentication...")
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    self.attemptAuthentication()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.attemptAuthentication()
                 }
             }
         }
@@ -374,7 +435,23 @@ extension BLECentralManager: CBPeripheralDelegate {
             if data.first == BLEConstants.authSuccess {
                 print("[BLE] Auth Success!")
                 connectionStatus = .authenticated
-                connectedDeviceName = discoveredPeripheral?.name ?? "Android Device"
+                let rawName = discoveredPeripheral?.name
+                let devName = AppState.getPreferredDeviceName(fallback: rawName)
+                connectedDeviceName = devName
+                
+                let bleDeviceId = discoveredPeripheral?.identifier.uuidString ?? ""
+                DispatchQueue.main.async {
+                    if AppState.shared.device == nil || AppState.shared.device?.isBLE == true {
+                        AppState.shared.device = Device(
+                            name: devName,
+                            ipAddress: "BLE",
+                            port: 0,
+                            version: "1.0",
+                            adbPorts: [],
+                            deviceId: bleDeviceId
+                        )
+                    }
+                }
                 
                 // Immediately notify Android of Mac status
                 WebSocketServer.shared.sendMacStatusOverBLE()

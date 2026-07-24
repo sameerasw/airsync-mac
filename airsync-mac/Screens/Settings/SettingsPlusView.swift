@@ -103,7 +103,7 @@ struct SettingsPlusView: View {
                     .disabled(licenseKey.isEmpty || isCheckingLicense)
 
                     if isCheckingLicense {
-                        ProgressView().scaleEffect(0.6)
+                        ProgressView().controlSize(.small)
                     } else if let valid = licenseValid {
                         Image(systemName: valid ? "checkmark.circle.fill" : "xmark.octagon.fill")
                             .foregroundColor(valid ? .green : .red)

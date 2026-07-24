@@ -74,6 +74,7 @@ struct MyMacSettingsView: View {
                 .padding()
                 .glassBoxIfAvailable(radius: 18)
 
+
                 HStack {
                     Spacer()
                     SaveAndRestartButton(
@@ -86,6 +87,72 @@ struct MyMacSettingsView: View {
                         onRestart: nil
                     )
                 }
+
+                // 3. Connection settings
+                SettingsHeaderView(title: "Nearby", icon: "antenna.radiowaves.left.and.right")
+                VStack(spacing: 12) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "dot.radiowaves.left.and.right")
+                            .font(.title3)
+                            .foregroundColor(.accentColor)
+                            .frame(width: 24)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Nearby (Bluetooth LE)")
+                                .font(.body)
+                            Text("Allow nearby connection over Bluetooth LE when Wi-Fi is unavailable")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: $appState.isBLEEnabled)
+                            .toggleStyle(.switch)
+                            .controlSize(.small)
+                    }
+
+                    HStack(spacing: 12) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.title3)
+                            .foregroundColor(.accentColor)
+                            .frame(width: 24)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Auto-connect Bluetooth")
+                                .font(.body)
+                            Text("Automatically connect to known nearby devices over Bluetooth")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: $appState.isBLEAutoConnectEnabled)
+                            .toggleStyle(.switch)
+                            .controlSize(.small)
+                            .disabled(!appState.isBLEEnabled)
+                    }
+
+                    HStack(spacing: 12) {
+                        Image(systemName: "arrow.triangle.swap")
+                            .font(.title3)
+                            .foregroundColor(.accentColor)
+                            .frame(width: 24)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Auto switch with nearby")
+                                .font(.body)
+                            Text("Automatically switch between Wi-Fi and Bluetooth LE when detected and stable")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: $appState.isAutoSwitchWithBLEEnabled)
+                            .toggleStyle(.switch)
+                            .controlSize(.small)
+                            .disabled(!appState.isBLEEnabled)
+                    }
+                }
+                .padding()
+                .glassBoxIfAvailable(radius: 18)
+
             }
             .padding()
         }

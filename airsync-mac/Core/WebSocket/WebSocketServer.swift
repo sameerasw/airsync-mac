@@ -19,9 +19,9 @@ class WebSocketServer: ObservableObject {
     internal var activeSessions: [WebSocketSession] = []
     internal var primarySessionID: ObjectIdentifier?
     internal var pingTimer: Timer?
-    internal let pingInterval: TimeInterval = 12.5
+    internal let pingInterval: TimeInterval = 4.5
     internal var lastActivity: [ObjectIdentifier: Date] = [:]
-    internal let activityTimeout: TimeInterval = 45.0
+    internal let activityTimeout: TimeInterval = 20.0
     
     @Published var symmetricKey: SymmetricKey?
     @Published var localPort: UInt16?
@@ -165,14 +165,33 @@ class WebSocketServer: ObservableObject {
         server["/socket"] = websocket(
             text: { [weak self] session, text in
                 guard let self = self else { return }
-                let decryptedText: String
+                let decryptedData: Data?
                 if let key = self.symmetricKey {
-                    decryptedText = decryptMessage(text, using: key) ?? ""
+                    decryptedData = decryptMessageToData(text, using: key)
                 } else {
-                    decryptedText = text
+                    decryptedData = text.data(using: .utf8)
                 }
 
-                if decryptedText.contains("\"type\":\"pong\"") {
+                guard let data = decryptedData, !data.isEmpty else { return }
+
+                do {
+                    let message = try self.jsonDecoder.decode(Message.self, from: data)
+                    if message.type == .status {
+                        // Pong / keepalive check
+                        if let dict = message.data.value as? [String: Any],
+                           (dict["type"] as? String) == "pong" {
+                            self.lock.lock()
+                            self.lastActivity[ObjectIdentifier(session)] = Date()
+                            self.lock.unlock()
+                            DispatchQueue.main.async {
+                                if AppState.shared.isConnectionWeak {
+                                    AppState.shared.isConnectionWeak = false
+                                }
+                            }
+                            return
+                        }
+                    }
+
                     self.lock.lock()
                     self.lastActivity[ObjectIdentifier(session)] = Date()
                     self.lock.unlock()
@@ -181,29 +200,14 @@ class WebSocketServer: ObservableObject {
                             AppState.shared.isConnectionWeak = false
                         }
                     }
-                    return
-                }
 
-                if let data = decryptedText.data(using: .utf8) {
-                    do {
-                        let message = try self.jsonDecoder.decode(Message.self, from: data)
-                        self.lock.lock()
-                        self.lastActivity[ObjectIdentifier(session)] = Date()
-                        self.lock.unlock()
-                        DispatchQueue.main.async {
-                            if AppState.shared.isConnectionWeak {
-                                AppState.shared.isConnectionWeak = false
-                            }
-                        }
-                        
-                        if message.type == .fileChunk || message.type == .fileChunkAck || message.type == .fileTransferComplete || message.type == .fileTransferInit {
-                             self.handleMessage(message, session: session)
-                        } else {
-                            DispatchQueue.main.async { self.handleMessage(message, session: session) }
-                        }
-                    } catch {
-                        print("[websocket] JSON decode failed: \(error)")
+                    if message.type == .fileChunk || message.type == .fileChunkAck || message.type == .fileTransferComplete || message.type == .fileTransferInit {
+                         self.handleMessage(message, session: session)
+                    } else {
+                        DispatchQueue.main.async { self.handleMessage(message, session: session) }
                     }
+                } catch {
+                    print("[websocket] JSON decode failed: \(error)")
                 }
             },
             binary: { [weak self] session, _ in

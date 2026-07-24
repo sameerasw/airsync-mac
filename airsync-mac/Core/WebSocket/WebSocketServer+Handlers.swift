@@ -122,6 +122,7 @@ extension WebSocketServer {
 
             if let base64 = dict["wallpaper"] as? String {
                 AppState.shared.currentDeviceWallpaperBase64 = base64
+                UserDefaults.standard.set(base64, forKey: "lastCachedWallpaperBase64")
                 
                 // Save wallpaper to disk for DeviceCard
                 if let id = dict["id"] as? String,
@@ -135,7 +136,9 @@ extension WebSocketServer {
                                     try fileManager.createDirectory(at: wallpaperDir, withIntermediateDirectories: true)
                                 }
                                 let fileURL = wallpaperDir.appendingPathComponent("\(id).jpg")
+                                let fallbackURL = wallpaperDir.appendingPathComponent("last_wallpaper.jpg")
                                 try data.write(to: fileURL)
+                                try? data.write(to: fallbackURL)
                                 print("[websocket] Saved wallpaper for device \(id)")
                             }
                         } catch {
