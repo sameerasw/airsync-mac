@@ -30,43 +30,23 @@ class NowPlayingCLI {
         return nil
     }
 
-    // MARK: - Local binary finder (modeled after ADBConnector)
+    // MARK: - Local binary finder
     private func findExecutable(named name: String, fallbackPaths: [String]) -> String? {
-        if isExecutableAvailable(name) {
-            let path = getExecutablePath(name)
-            if !path.isEmpty { return path }
-        }
         for path in fallbackPaths {
             if FileManager.default.isExecutableFile(atPath: path) {
                 return path
             }
         }
-        return nil
-    }
 
-    private func getExecutablePath(_ name: String) -> String {
-        let process = Process()
-        process.launchPath = "/usr/bin/which"
-        process.arguments = [name]
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            return ""
+        let envPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin"
+        let dirs = envPath.components(separatedBy: ":")
+        for dir in dirs {
+            let fullPath = (dir as NSString).appendingPathComponent(name)
+            if FileManager.default.isExecutableFile(atPath: fullPath) {
+                return fullPath
+            }
         }
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return output
-    }
-
-    private func isExecutableAvailable(_ name: String) -> Bool {
-        let path = getExecutablePath(name)
-        return !path.isEmpty
+        return nil
     }
 
     func fetchNowPlaying(completion: @escaping (NowPlayingInfo?) -> Void) {
