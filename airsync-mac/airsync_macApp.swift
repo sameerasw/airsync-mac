@@ -59,7 +59,7 @@ struct airsync_macApp: App {
         }
         WebSocketServer.shared.start(port: UInt16(chosenPort))
 
-        Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in
+        Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { _ in
             guard AppState.shared.device != nil else { return }
             AppState.shared.syncWithSystemNotifications()
         }
