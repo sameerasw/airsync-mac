@@ -1395,7 +1395,7 @@ class AppState: ObservableObject {
         guard isClipboardSyncEnabled else { return }
         lastClipboardChangeCount = NSPasteboard.general.changeCount
         clipboardCancellable = Timer
-            .publish(every: 1.0, on: .main, in: .default)
+            .publish(every: 2.5, on: .main, in: .default)
             .autoconnect()
             .sink { [weak self] _ in
                 guard let self = self, self.device != nil else { return }
