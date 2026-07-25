@@ -1,10 +1,10 @@
  # AirSync macOS
 
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/68b1b5d1-90a8-44aa-94b4-b239c879ba91" />
-</p>
+ ### [Visit the website!](https://sameerasw.com/AirSync)
 
-[![AirSync demo](https://img.youtube.com/vi/HDv0Hu9z294?si=dgycryP1T8QvPJYa/0.jpg)](https://www.youtube.com/watch?v=HDv0Hu9z294?si=dgycryP1T8QvPJYa) | [Read Documentation and How-To](https://airsync.notion.site/) | [Help translating AirSync to your language on crowdin!](https://crwd.in/airsync/612ea64319db322fa1ed070574109c242534446)
+<video src="https://github.com/user-attachments/assets/4f9a5937-d9a7-435a-911d-4c726d977607" autoplay loop muted></video>
+
+[AirSync demo](https://www.youtube.com/watch?v=HDv0Hu9z294?si=dgycryP1T8QvPJYa) | [Read Documentation and How-To](https://airsync.notion.site/) | [Help translating AirSync to your language on crowdin!](https://crwd.in/airsync/612ea64319db322fa1ed070574109c242534446)
 
 <p align="center">
 <!--   <img src="https://github.com/user-attachments/assets/8abdd977-6f8b-4037-b277-9457e65a6255" width="80%" /> -->
