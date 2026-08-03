@@ -132,6 +132,8 @@
   "settings.mirroring.swapCmdCtrl": "Inverti ⌘ e ⌃ (stile macOS)",
   "settings.mirroring.showMirrorControls": "Mostra pulsanti di navigazione (⌘B)",
   "quickshare.copy": "Copia negli appunti",
+  "settings.menubar.showInMenubar": "Show in menubar",
+  "settings.menubar.showInMenubar.disabledInfo": "Menu bar item cannot be hidden when Dock icon is hidden to keep AirSync accessible.",
   "settings.menubar.showIcon": "Mostra icona nella barra dei menu",
   "settings.menubar.showText": "Mostra testo nella barra dei menu",
   "settings.menubar.enableMarquee": "Effetto testo scorrevole",
