@@ -6,6 +6,7 @@ struct MenubarSettingsView: View {
     @State private var showingPlusPopover = false
     @State private var plusPopoverMessage = ""
     @State private var showMarqueeInfo = false
+    @State private var showShowInMenubarInfo = false
     @State private var isDraggingFontSize = false
     @State private var isDraggingTextLength = false
 
@@ -14,6 +15,26 @@ struct MenubarSettingsView: View {
             VStack(alignment: .leading, spacing: 20) {
                 SettingsHeaderView(title: L("settings.menubar"), icon: "menubar.arrow.up.rectangle")
                 VStack(spacing: 12) {
+                    HStack {
+                        Label(L("settings.menubar.showInMenubar"), systemImage: "menubar.arrow.up.rectangle")
+                        if appState.hideDockIcon {
+                            Button(action: { showShowInMenubarInfo = true }) {
+                                Image(systemName: "info.circle")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .alert(L("settings.menubar.showInMenubar"), isPresented: $showShowInMenubarInfo) {
+                                Button("OK", role: .cancel) {}
+                            } message: {
+                                Text(L("settings.menubar.showInMenubar.disabledInfo"))
+                            }
+                        }
+                        Spacer()
+                        Toggle("", isOn: $appState.showInMenubar)
+                            .toggleStyle(.switch)
+                            .disabled(appState.hideDockIcon)
+                    }
+
                     HStack {
                         Label(L("settings.menubar.fontSize"), systemImage: "textformat.size")
                         Spacer()
@@ -260,6 +281,7 @@ struct MenubarSettingsView: View {
                     }
             }
             .padding()
+            .animation(.spring(), value: appState.showInMenubar)
             .animation(.spring(), value: appState.showMenubarText)
             .animation(.spring(), value: appState.enableMarquee)
             .animation(.spring(), value: appState.showMenubarIcon)
