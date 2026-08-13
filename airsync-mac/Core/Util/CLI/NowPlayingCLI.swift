@@ -49,74 +49,163 @@ class NowPlayingCLI {
         return nil
     }
 
-    func fetchNowPlaying(completion: @escaping (NowPlayingInfo?) -> Void) {
+    private var streamProcess: Process?
+    private var streamPipe: Pipe?
+    private var onUpdateHandler: ((NowPlayingInfo?) -> Void)?
+    private var isStreamingActive = false
+    private var retryCount = 0
+    private let maxRetries = 10
+    private var lineBuffer = Data()
+
+    func startStreaming(onUpdate: @escaping (NowPlayingInfo?) -> Void) {
+        self.onUpdateHandler = onUpdate
+        self.isStreamingActive = true
+        self.retryCount = 0
+        launchStreamProcess()
+    }
+
+    func stopStreaming() {
+        self.isStreamingActive = false
+        self.retryCount = 0
+        self.onUpdateHandler = nil
+        terminateStreamProcess()
+    }
+
+    func resetRetryCount() {
+        self.retryCount = 0
+    }
+
+    private func terminateStreamProcess() {
+        if let process = streamProcess {
+            process.terminationHandler = nil
+            if process.isRunning {
+                process.terminate()
+            }
+        }
+        streamPipe?.fileHandleForReading.readabilityHandler = nil
+        streamProcess = nil
+        streamPipe = nil
+        lineBuffer.removeAll()
+    }
+
+    private func launchStreamProcess() {
+        guard isStreamingActive else { return }
+
         guard let binPath = resolveBinaryPath() else {
-            // media-control not available; gracefully return nil
-            print("[now-playing] media-control binary not found. Install with: brew install media-control")
-            completion(Optional<NowPlayingInfo>.none)
+            print("[now-playing] media-control binary not found. Cannot stream updates.")
+            DispatchQueue.main.async { [weak self] in
+                self?.onUpdateHandler?(nil)
+            }
             return
         }
 
+        terminateStreamProcess()
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binPath)
-        process.arguments = ["get"]
+        process.arguments = ["stream", "--no-diff"]
 
         let pipe = Pipe()
         process.standardOutput = pipe
-        process.standardError = pipe
+        process.standardError = FileHandle.nullDevice
 
-        let handle = pipe.fileHandleForReading
+        let readHandle = pipe.fileHandleForReading
 
-        var buffer = Data()
-
-        handle.readabilityHandler = { fileHandle in
-            let data = fileHandle.availableData
+        readHandle.readabilityHandler = { [weak self] handle in
+            let data = handle.availableData
             guard !data.isEmpty else { return }
-            buffer.append(data)
+            self?.handleStreamData(data)
         }
 
-        process.terminationHandler = { _ in
-            handle.readabilityHandler = nil
-            guard !buffer.isEmpty else {
-                DispatchQueue.main.async { completion(Optional<NowPlayingInfo>.none) }
-                return
-            }
+        process.terminationHandler = { [weak self] proc in
+            guard let self = self else { return }
+            readHandle.readabilityHandler = nil
 
-            // Try decoding the full JSON at once
-            if let rawString = String(data: buffer, encoding: .utf8) {
-                let trimmed = rawString.trimmingCharacters(in: .whitespacesAndNewlines)
-//                print("[now-playing] Full media-control output:", trimmed) // debug
+            DispatchQueue.main.async {
+                guard self.isStreamingActive else { return }
 
-                // If media-control returns literal "null", treat as no media
-                if trimmed.isEmpty || trimmed.lowercased() == "null" {
-                    DispatchQueue.main.async { completion(nil) }
-                    return
-                }
-
-                do {
-                    let obj = try JSONSerialization.jsonObject(with: Data(trimmed.utf8))
-                    if let dict = obj as? [String: Any] {
-                        var info = NowPlayingInfo()
-                        info.updateFromPayload(dict)
-                        DispatchQueue.main.async { completion(info) }
-                    } else {
-                        // Not a dictionary (could be null/array) -> no media info
-                        DispatchQueue.main.async { completion(nil) }
+                if self.retryCount < self.maxRetries {
+                    self.retryCount += 1
+                    print("[now-playing] media-control stream terminated unexpectedly. Retry \(self.retryCount)/\(self.maxRetries)")
+                    let delay = min(Double(self.retryCount) * 0.5, 3.0)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        self.launchStreamProcess()
                     }
-                } catch {
-                    print("[now-playing] JSON parse error:", error)
-                    DispatchQueue.main.async { completion(nil) }
+                } else {
+                    print("[now-playing] media-control stream reached max retries (\(self.maxRetries)). Stopping retry attempts until reset.")
+                    self.onUpdateHandler?(nil)
                 }
-            } else {
-                DispatchQueue.main.async { completion(nil) }
             }
         }
+
+        self.streamProcess = process
+        self.streamPipe = pipe
 
         do {
             try process.run()
+            print("[now-playing] Successfully launched media-control stream --no-diff")
         } catch {
-            print("[now-playing] Failed to run media-control get:", error)
-            completion(Optional<NowPlayingInfo>.none)
+            print("[now-playing] Failed to launch media-control stream:", error)
+            process.terminationHandler = nil
+            if retryCount < maxRetries {
+                retryCount += 1
+                let delay = min(Double(retryCount) * 0.5, 3.0)
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                    self?.launchStreamProcess()
+                }
+            }
+        }
+    }
+
+    private func handleStreamData(_ data: Data) {
+        lineBuffer.append(data)
+
+        while let newlineIndex = lineBuffer.firstIndex(of: UInt8(ascii: "\n")) {
+            let lineData = lineBuffer.subdata(in: 0..<newlineIndex)
+            lineBuffer.removeSubrange(0...newlineIndex)
+
+            guard !lineData.isEmpty else { continue }
+            parseStreamLine(lineData)
+        }
+    }
+
+    private func parseStreamLine(_ lineData: Data) {
+        guard let obj = try? JSONSerialization.jsonObject(with: lineData) else {
+            if let lineStr = String(data: lineData, encoding: .utf8) {
+                print("[now-playing] Raw line (non-JSON): \(lineStr)")
+            }
+            return
+        }
+
+        let dict: [String: Any]? = {
+            if let root = obj as? [String: Any] {
+                if let payload = root["payload"] as? [String: Any] {
+                    return payload.isEmpty ? nil : payload
+                }
+                if root.keys.contains("type") && root.keys.contains("payload") {
+                    return nil
+                }
+                return root.isEmpty ? nil : root
+            }
+            return nil
+        }()
+
+        let info: NowPlayingInfo? = {
+            guard let payload = dict, !payload.isEmpty else { return nil }
+            var item = NowPlayingInfo()
+            item.updateFromPayload(payload)
+            return item
+        }()
+
+        if let info = info {
+            print("[now-playing] Parsed update: '\(info.title ?? "")' by '\(info.artist ?? "")' (playing: \(info.isPlaying ?? false))")
+        } else {
+            print("[now-playing] Parsed update: no media payload")
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, self.isStreamingActive else { return }
+            self.onUpdateHandler?(info)
         }
     }
 

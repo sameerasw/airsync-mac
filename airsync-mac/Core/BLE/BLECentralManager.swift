@@ -456,9 +456,9 @@ extension BLECentralManager: CBPeripheralDelegate {
                 // Immediately notify Android of Mac status
                 WebSocketServer.shared.sendMacStatusOverBLE()
                 
-                // Also trigger a full fetch (which includes media info)
+                // Also trigger a status update (which includes current media info)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    MacInfoSyncManager.shared.fetch()
+                    MacInfoSyncManager.shared.forceRefresh()
                 }
             } else {
                 print("[BLE] Auth Failed!")
