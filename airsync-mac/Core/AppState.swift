@@ -48,6 +48,9 @@ class AppState: ObservableObject {
         let savedFallbackToMdns = UserDefaults.standard.object(forKey: "fallbackToMdns")
         self.fallbackToMdns = savedFallbackToMdns == nil ? true : UserDefaults.standard.bool(forKey: "fallbackToMdns")
 
+        let savedShowInMenubar = UserDefaults.standard.object(forKey: "showInMenubar")
+        self.showInMenubar = savedShowInMenubar == nil ? true : UserDefaults.standard.bool(forKey: "showInMenubar")
+
         self.showMenubarText = UserDefaults.standard.bool(forKey: "showMenubarText")
         self.showMenubarDeviceName = UserDefaults.standard.object(forKey: "showMenubarDeviceName") == nil ? true : UserDefaults.standard.bool(forKey: "showMenubarDeviceName")
 
@@ -541,6 +544,8 @@ class AppState: ObservableObject {
         }
     }
 
+    @Published var lastLicenseCheckFailureReason: String? = nil
+
     @Published var adbPort: UInt16 {
         didSet {
             UserDefaults.standard.set(adbPort, forKey: "adbPort")
@@ -590,9 +595,18 @@ class AppState: ObservableObject {
         }
     }
 
+    @Published var showInMenubar: Bool {
+        didSet {
+            UserDefaults.standard.set(showInMenubar, forKey: "showInMenubar")
+        }
+    }
+
     @Published var hideDockIcon: Bool {
         didSet {
             UserDefaults.standard.set(hideDockIcon, forKey: "hideDockIcon")
+            if hideDockIcon {
+                showInMenubar = true
+            }
             updateDockIconVisibility()
         }
     }

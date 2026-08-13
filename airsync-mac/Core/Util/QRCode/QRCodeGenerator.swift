@@ -28,9 +28,7 @@ class QRCodeGenerator {
             // Colors
             doc.design.backgroundColor(.clear)
 
-            // Accent color for eye + pupil
-            let accentCG = NSColor.controlAccentColor.cgColor
-            doc.design.style.eye = QRCode.FillStyle.Solid(accentCG)
+            doc.design.style.eye = QRCode.FillStyle.Solid(.white)
             doc.design.style.pupil = QRCode.FillStyle.Solid(.white)
             doc.design.style.onPixels = QRCode.FillStyle.Solid(.white)
 

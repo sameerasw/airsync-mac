@@ -162,7 +162,8 @@ class BLECentralManager: NSObject, ObservableObject {
     func write(characteristicUUID: CBUUID, data: Data) {
         resetWatchdog()
         guard let peripheral = discoveredPeripheral, let char = characteristics[characteristicUUID] else { return }
-        peripheral.writeValue(data, for: char, type: .withoutResponse)
+        let writeType: CBCharacteristicWriteType = char.properties.contains(.write) ? .withResponse : .withoutResponse
+        peripheral.writeValue(data, for: char, type: writeType)
     }
     
     func writeChunked(characteristicUUID: CBUUID, payload: String) {
@@ -210,7 +211,6 @@ class BLECentralManager: NSObject, ObservableObject {
         scanTimer = nil
         
         connectingDeviceUUID = uuidStr
-        connectionStatus = .scanning
         centralManager.connect(peripheral, options: [
             CBConnectPeripheralOptionNotifyOnDisconnectionKey: true
         ])
@@ -234,8 +234,8 @@ class BLECentralManager: NSObject, ObservableObject {
     private func resetWatchdog() {
         DispatchQueue.main.async {
             self.watchdogTimer?.invalidate()
-            self.watchdogTimer = Timer.scheduledTimer(withTimeInterval: 25.0, repeats: false) { [weak self] _ in
-                print("[BLE] Heartbeat timeout (25s), disconnecting...")
+            self.watchdogTimer = Timer.scheduledTimer(withTimeInterval: 120.0, repeats: false) { [weak self] _ in
+                print("[BLE] Heartbeat timeout (120s), disconnecting...")
                 self?.disconnect()
             }
         }
@@ -270,6 +270,9 @@ extension BLECentralManager: CBCentralManagerDelegate {
         
         // Auto connect if enabled and not manually disconnected
         if AppState.shared.isBLEAutoConnectEnabled && !isManuallyDisconnected {
+            guard connectionStatus == .disconnected || connectionStatus == .scanning else { return }
+            guard discoveredPeripheral == nil else { return }
+
             let isWifiConnected = AppState.shared.device != nil && AppState.shared.device?.ipAddress != "BLE" && AppState.shared.device?.ipAddress != "Bluetooth LE"
             if isWifiConnected {
                 print("[BLE] Regular Wi-Fi connection is active — skipping auto-connect to BLE")
@@ -456,9 +459,9 @@ extension BLECentralManager: CBPeripheralDelegate {
                 // Immediately notify Android of Mac status
                 WebSocketServer.shared.sendMacStatusOverBLE()
                 
-                // Also trigger a full fetch (which includes media info)
+                // Also trigger a status update (which includes current media info)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    MacInfoSyncManager.shared.fetch()
+                    MacInfoSyncManager.shared.forceRefresh()
                 }
             } else {
                 print("[BLE] Auth Failed!")
