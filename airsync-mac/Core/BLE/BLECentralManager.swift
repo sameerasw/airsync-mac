@@ -162,7 +162,8 @@ class BLECentralManager: NSObject, ObservableObject {
     func write(characteristicUUID: CBUUID, data: Data) {
         resetWatchdog()
         guard let peripheral = discoveredPeripheral, let char = characteristics[characteristicUUID] else { return }
-        peripheral.writeValue(data, for: char, type: .withoutResponse)
+        let writeType: CBCharacteristicWriteType = char.properties.contains(.write) ? .withResponse : .withoutResponse
+        peripheral.writeValue(data, for: char, type: writeType)
     }
     
     func writeChunked(characteristicUUID: CBUUID, payload: String) {
@@ -210,7 +211,6 @@ class BLECentralManager: NSObject, ObservableObject {
         scanTimer = nil
         
         connectingDeviceUUID = uuidStr
-        connectionStatus = .scanning
         centralManager.connect(peripheral, options: [
             CBConnectPeripheralOptionNotifyOnDisconnectionKey: true
         ])
@@ -270,6 +270,9 @@ extension BLECentralManager: CBCentralManagerDelegate {
         
         // Auto connect if enabled and not manually disconnected
         if AppState.shared.isBLEAutoConnectEnabled && !isManuallyDisconnected {
+            guard connectionStatus == .disconnected || connectionStatus == .scanning else { return }
+            guard discoveredPeripheral == nil else { return }
+
             let isWifiConnected = AppState.shared.device != nil && AppState.shared.device?.ipAddress != "BLE" && AppState.shared.device?.ipAddress != "Bluetooth LE"
             if isWifiConnected {
                 print("[BLE] Regular Wi-Fi connection is active — skipping auto-connect to BLE")
