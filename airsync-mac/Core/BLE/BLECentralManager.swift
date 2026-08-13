@@ -234,8 +234,8 @@ class BLECentralManager: NSObject, ObservableObject {
     private func resetWatchdog() {
         DispatchQueue.main.async {
             self.watchdogTimer?.invalidate()
-            self.watchdogTimer = Timer.scheduledTimer(withTimeInterval: 25.0, repeats: false) { [weak self] _ in
-                print("[BLE] Heartbeat timeout (25s), disconnecting...")
+            self.watchdogTimer = Timer.scheduledTimer(withTimeInterval: 120.0, repeats: false) { [weak self] _ in
+                print("[BLE] Heartbeat timeout (120s), disconnecting...")
                 self?.disconnect()
             }
         }
