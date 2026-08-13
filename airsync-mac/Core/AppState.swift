@@ -544,6 +544,8 @@ class AppState: ObservableObject {
         }
     }
 
+    @Published var lastLicenseCheckFailureReason: String? = nil
+
     @Published var adbPort: UInt16 {
         didSet {
             UserDefaults.standard.set(adbPort, forKey: "adbPort")
