@@ -393,8 +393,9 @@ extension BLECentralManager: CBPeripheralDelegate {
             print("[BLE] Error discovering services: \(error.localizedDescription)")
             return
         }
-        guard let services = peripheral.services else { return }
-        for service in services {
+        guard let rawServices = peripheral.services as NSArray? else { return }
+        let validServices = rawServices.compactMap { $0 as? CBService }
+        for service in validServices {
             peripheral.discoverCharacteristics(nil, for: service)
         }
     }
@@ -404,9 +405,10 @@ extension BLECentralManager: CBPeripheralDelegate {
             print("[BLE] Error discovering characteristics for \(service.uuid): \(error.localizedDescription)")
             return
         }
-        guard let chars = service.characteristics else { return }
-        print("[BLE] Discovered \(chars.count) characteristics for service \(service.uuid)")
-        for char in chars {
+        guard let rawChars = service.characteristics as NSArray? else { return }
+        let validChars = rawChars.compactMap { $0 as? CBCharacteristic }
+        print("[BLE] Discovered \(validChars.count) characteristics for service \(service.uuid)")
+        for char in validChars {
             characteristics[char.uuid] = char
             
             if char.properties.contains(.notify) {
