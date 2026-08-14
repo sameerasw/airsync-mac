@@ -141,6 +141,7 @@ class BLECentralManager: NSObject, ObservableObject {
         isManuallyDisconnected = true
         
         if let peripheral = discoveredPeripheral {
+            peripheral.delegate = nil
             centralManager.cancelPeripheralConnection(peripheral)
         }
         connectionStatus = .disconnected
@@ -220,6 +221,7 @@ class BLECentralManager: NSObject, ObservableObject {
             guard let self = self else { return }
             print("[BLE] Manual connection timed out, cancelling...")
             if let p = self.discoveredPeripheral {
+                p.delegate = nil
                 self.centralManager.cancelPeripheralConnection(p)
             }
             self.discoveredPeripheral = nil
@@ -300,6 +302,7 @@ extension BLECentralManager: CBCentralManagerDelegate {
                 guard let self = self else { return }
                 print("[BLE] Connection timed out, cancelling and retrying...")
                 if let p = self.discoveredPeripheral {
+                    p.delegate = nil
                     self.centralManager.cancelPeripheralConnection(p)
                 }
                 self.discoveredPeripheral = nil
@@ -334,6 +337,7 @@ extension BLECentralManager: CBCentralManagerDelegate {
     }
     
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        peripheral.delegate = nil
         connectionTimer?.invalidate()
         connectionTimer = nil
         connectingDeviceUUID = nil
@@ -353,6 +357,7 @@ extension BLECentralManager: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        peripheral.delegate = nil
         connectionTimer?.invalidate()
         connectionTimer = nil
         watchdogTimer?.invalidate()
@@ -384,6 +389,10 @@ extension BLECentralManager: CBCentralManagerDelegate {
 
 extension BLECentralManager: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        if let error = error {
+            print("[BLE] Error discovering services: \(error.localizedDescription)")
+            return
+        }
         guard let services = peripheral.services else { return }
         for service in services {
             peripheral.discoverCharacteristics(nil, for: service)
@@ -391,6 +400,10 @@ extension BLECentralManager: CBPeripheralDelegate {
     }
     
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        if let error = error {
+            print("[BLE] Error discovering characteristics for \(service.uuid): \(error.localizedDescription)")
+            return
+        }
         guard let chars = service.characteristics else { return }
         print("[BLE] Discovered \(chars.count) characteristics for service \(service.uuid)")
         for char in chars {
@@ -430,6 +443,10 @@ extension BLECentralManager: CBPeripheralDelegate {
     }
     
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        if let error = error {
+            print("[BLE] Error updating value for characteristic \(characteristic.uuid): \(error.localizedDescription)")
+            return
+        }
         resetWatchdog()
         guard let data = characteristic.value else { return }
         
@@ -481,6 +498,52 @@ extension BLECentralManager: CBPeripheralDelegate {
             handleChunkedUpdate(uuid: characteristic.uuid, data: data)
         default:
             break
+        }
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+        if let error = error {
+            print("[BLE] Error writing value to characteristic \(characteristic.uuid): \(error.localizedDescription)")
+        }
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
+        if let error = error {
+            print("[BLE] Error updating notification state for characteristic \(characteristic.uuid): \(error.localizedDescription)")
+        } else {
+            print("[BLE] Notification state updated for \(characteristic.uuid): \(characteristic.isNotifying)")
+        }
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverDescriptorsFor characteristic: CBCharacteristic, error: Error?) {
+        if let error = error {
+            print("[BLE] Error discovering descriptors for \(characteristic.uuid): \(error.localizedDescription)")
+        }
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor descriptor: CBDescriptor, error: Error?) {
+        if let error = error {
+            print("[BLE] Error updating value for descriptor \(descriptor.uuid): \(error.localizedDescription)")
+        }
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didWriteValueFor descriptor: CBDescriptor, error: Error?) {
+        if let error = error {
+            print("[BLE] Error writing value for descriptor \(descriptor.uuid): \(error.localizedDescription)")
+        }
+    }
+    
+    func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
+        print("[BLE] Peripheral ready to send write without response")
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didModifyServices invalidatedServices: [CBService]) {
+        print("[BLE] Services invalidated: \(invalidatedServices.map { $0.uuid.uuidString })")
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didReadRSSI RSSI: NSNumber, error: Error?) {
+        if let error = error {
+            print("[BLE] Error reading RSSI: \(error.localizedDescription)")
         }
     }
     
