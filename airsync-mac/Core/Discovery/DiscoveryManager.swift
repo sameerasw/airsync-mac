@@ -173,6 +173,10 @@ class DiscoveryManager: ObservableObject {
     
     func start() {
         guard !isRunning else { return }
+        if AppState.shared.connectionMode == .nearby {
+            print("[Discovery] Connection mode is Nearby only. Skipping DiscoveryManager start.")
+            return
+        }
         isRunning = true
         
         print("[Discovery] Starting DiscoveryManager")
