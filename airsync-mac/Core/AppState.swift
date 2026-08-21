@@ -20,6 +20,22 @@ class AppState: ObservableObject {
         case wired
     }
 
+    enum AppConnectionMode: String, CaseIterable, Identifiable {
+        case network = "network"
+        case dynamic = "dynamic"
+        case nearby = "nearby"
+        
+        var id: String { rawValue }
+        
+        var displayName: String {
+            switch self {
+            case .network: return L("connectionMode.network")
+            case .dynamic: return L("connectionMode.dynamic")
+            case .nearby: return L("connectionMode.nearby")
+            }
+        }
+    }
+
     private var clipboardCancellable: AnyCancellable?
     private var lastClipboardValue: String? = nil
     private var lastClipboardChangeCount: Int = -1
@@ -143,7 +159,19 @@ class AppState: ObservableObject {
         
         self.licenseDetails = AppState.loadLicenseDetailsFromUserDefaults()
 
-        self.isBLEEnabled = UserDefaults.standard.bool(forKey: "isBLEEnabled")
+        let savedConnectionModeStr = UserDefaults.standard.string(forKey: "appConnectionMode")
+        if let savedMode = savedConnectionModeStr.flatMap(AppConnectionMode.init(rawValue:)) {
+            self.connectionMode = savedMode
+            self.isBLEEnabled = (savedMode != .network)
+        } else if UserDefaults.standard.object(forKey: "isBLEEnabled") != nil {
+            let legacyBle = UserDefaults.standard.bool(forKey: "isBLEEnabled")
+            self.connectionMode = legacyBle ? .dynamic : .network
+            self.isBLEEnabled = legacyBle
+        } else {
+            self.connectionMode = .dynamic
+            self.isBLEEnabled = true
+        }
+
         self.isBLEAutoConnectEnabled = UserDefaults.standard.object(forKey: "isBLEAutoConnectEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "isBLEAutoConnectEnabled")
         self.isAutoSwitchWithBLEEnabled = UserDefaults.standard.object(forKey: "isAutoSwitchWithBLEEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "isAutoSwitchWithBLEEnabled")
 
@@ -615,6 +643,23 @@ class AppState: ObservableObject {
         didSet {
             UserDefaults.standard.set(autoStartAtLogin, forKey: "autoStartAtLogin")
             updateAutoStart()
+        }
+    }
+
+    @Published var connectionMode: AppConnectionMode {
+        didSet {
+            UserDefaults.standard.set(connectionMode.rawValue, forKey: "appConnectionMode")
+            let bleShouldBeEnabled = (connectionMode != .network)
+            if self.isBLEEnabled != bleShouldBeEnabled {
+                self.isBLEEnabled = bleShouldBeEnabled
+            }
+            if connectionMode == .nearby {
+                DiscoveryManager.shared.stop()
+            } else {
+                if device == nil || device?.isBLE == true {
+                    DiscoveryManager.shared.start()
+                }
+            }
         }
     }
 
