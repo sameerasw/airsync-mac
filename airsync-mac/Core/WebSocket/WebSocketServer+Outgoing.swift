@@ -340,10 +340,6 @@ extension WebSocketServer {
         if let data = payload.data(using: .utf8) {
             BLECentralManager.shared.write(characteristicUUID: BLEConstants.charMacBattery, data: data)
         }
-        
-        // Also send name if we have it
-        let name = Host.current().localizedName ?? "My Mac"
-        BLECentralManager.shared.writeChunked(characteristicUUID: BLEConstants.charDeviceName, payload: name)
     }
 
     func sendCallAction(eventId: String, action: String) {

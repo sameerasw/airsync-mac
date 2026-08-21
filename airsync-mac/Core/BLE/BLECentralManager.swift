@@ -11,6 +11,7 @@ class BLECentralManager: NSObject, ObservableObject {
     private var characteristics: [CBUUID: CBCharacteristic] = [:]
     private var chunkBuffers: [CBUUID: [Int: Data]] = [:]
     private var discoveredServices: Set<CBUUID> = []
+    private var requestedServices: Set<CBUUID> = []
     private var hasAttemptedAuth = false
     private let expectedServiceCount = 4
     
@@ -201,6 +202,11 @@ class BLECentralManager: NSObject, ObservableObject {
             return
         }
         
+        guard connectionStatus == .disconnected || connectionStatus == .scanning else {
+            print("[BLE] Already connecting or connected (status: \(connectionStatus))")
+            return
+        }
+        
         guard let record = discoveredPeripherals[uuidStr] else { return }
         let peripheral = record.peripheral
         print("[BLE] Manual connection requested for \(peripheral.name ?? "Unknown")")
@@ -325,6 +331,8 @@ extension BLECentralManager: CBCentralManagerDelegate {
         connectionTimer = nil
         connectingDeviceUUID = nil
         discoveredServices.removeAll()
+        requestedServices.removeAll()
+        characteristics.removeAll()
         hasAttemptedAuth = false
         let name = peripheral.name ?? "Unknown Device"
         let maxWrite = peripheral.maximumWriteValueLength(for: .withoutResponse)
@@ -371,6 +379,7 @@ extension BLECentralManager: CBCentralManagerDelegate {
         characteristics.removeAll()
         chunkBuffers.removeAll()
         discoveredServices.removeAll()
+        requestedServices.removeAll()
         hasAttemptedAuth = false
         
         DispatchQueue.main.async {
@@ -396,7 +405,10 @@ extension BLECentralManager: CBPeripheralDelegate {
         guard let rawServices = peripheral.services as NSArray? else { return }
         let validServices = rawServices.compactMap { $0 as? CBService }
         for service in validServices {
-            peripheral.discoverCharacteristics(nil, for: service)
+            if !requestedServices.contains(service.uuid) {
+                requestedServices.insert(service.uuid)
+                peripheral.discoverCharacteristics(nil, for: service)
+            }
         }
     }
     
@@ -411,7 +423,7 @@ extension BLECentralManager: CBPeripheralDelegate {
         for char in validChars {
             characteristics[char.uuid] = char
             
-            if char.properties.contains(.notify) {
+            if char.properties.contains(.notify) && !char.isNotifying {
                 print("[BLE] Subscribing to \(char.uuid)")
                 peripheral.setNotifyValue(true, for: char)
             }
@@ -420,7 +432,7 @@ extension BLECentralManager: CBPeripheralDelegate {
         discoveredServices.insert(service.uuid)
         print("[BLE] Services discovered: \(discoveredServices.count)/\(expectedServiceCount)")
         
-        // Only attempt auth once after ALL services are discovered
+        // Attempt auth once after expected services are discovered and auth characteristic is ready
         if discoveredServices.count >= expectedServiceCount && !hasAttemptedAuth {
             if characteristics[BLEConstants.charAuthToken] != nil {
                 hasAttemptedAuth = true
