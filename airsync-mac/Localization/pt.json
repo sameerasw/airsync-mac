@@ -200,5 +200,12 @@
   "whatsnew.nearby.message": "Clique para conectar",
   "connection.wiredAdb": "ADB com fio",
   "connection.selectDevice": "Selecionar Dispositivo",
-  "connection.wireless": "Sem fio"
+  "connection.wireless": "Sem fio",
+  "settings.connectionMode": "Connection Mode",
+  "connectionMode.network": "Network",
+  "connectionMode.dynamic": "Dynamic",
+  "connectionMode.nearby": "Nearby",
+  "settings.connectionMode.network.info": "Uses local area network only. Bluetooth LE is disabled.",
+  "settings.connectionMode.dynamic.info": "Uses Wi-Fi and Bluetooth LE with automatic fallback and switching.",
+  "settings.connectionMode.nearby.info": "Uses Bluetooth LE only. Local network discovery is disabled."
 }
