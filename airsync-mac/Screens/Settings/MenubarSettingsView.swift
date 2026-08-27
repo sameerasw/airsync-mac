@@ -131,6 +131,13 @@ struct MenubarSettingsView: View {
                             Toggle("", isOn: $appState.showMenubarDeviceName)
                                 .toggleStyle(.switch)
                         }
+
+                        HStack {
+                            Label(L("settings.menubar.showNetworkStatus"), systemImage: "antenna.radiowaves.left.and.right")
+                            Spacer()
+                            Toggle("", isOn: $appState.showMenubarNetworkStatus)
+                                .toggleStyle(.switch)
+                        }
                     }
                     .disabled(!appState.showMenubarText)
                     .opacity(appState.showMenubarText ? 1.0 : 0.6)
@@ -142,6 +149,7 @@ struct MenubarSettingsView: View {
                             Text(L("settings.menubar.batteryStyle.both")).tag("both")
                             Text(L("settings.menubar.batteryStyle.icon")).tag("icon")
                             Text(L("settings.menubar.batteryStyle.percentage")).tag("percentage")
+                            Text(L("settings.menubar.batteryStyle.none")).tag("none")
                         }
                         .pickerStyle(MenuPickerStyle())
                     }
