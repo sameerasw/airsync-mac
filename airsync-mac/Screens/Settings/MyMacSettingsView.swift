@@ -19,7 +19,29 @@ struct MyMacSettingsView: View {
                 .padding()
                 .glassBoxIfAvailable(radius: 18)
 
-                // 2. Server settings
+                // 2. Connection Mode
+                SettingsHeaderView(title: L("settings.connectionMode"), icon: "antenna.radiowaves.left.and.right")
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack{
+                        Picker("", selection: $appState.connectionMode) {
+                            ForEach(AppState.AppConnectionMode.allCases) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+                    .pickerStyle(.segmented)
+                    .controlSize(.large)
+
+                    Spacer()
+                    }
+
+                    Text(connectionModeDescription)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+                .glassBoxIfAvailable(radius: 18)
+
+                // 3. Server settings
                 SettingsHeaderView(title: "Server Configuration", icon: "server.rack")
                 VStack(spacing: 12) {
                     HStack {
@@ -88,28 +110,9 @@ struct MyMacSettingsView: View {
                     )
                 }
 
-                // 3. Connection settings
-                SettingsHeaderView(title: "Nearby", icon: "antenna.radiowaves.left.and.right")
+                // 4. Connection settings
+                SettingsHeaderView(title: "Nearby", icon: "dot.radiowaves.left.and.right")
                 VStack(spacing: 12) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "dot.radiowaves.left.and.right")
-                            .font(.title3)
-                            .foregroundColor(.accentColor)
-                            .frame(width: 24)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Nearby (Bluetooth LE)")
-                                .font(.body)
-                            Text("Allow nearby connection over Bluetooth LE when Wi-Fi is unavailable")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        Toggle("", isOn: $appState.isBLEEnabled)
-                            .toggleStyle(.switch)
-                            .controlSize(.small)
-                    }
-
                     HStack(spacing: 12) {
                         Image(systemName: "arrow.triangle.2.circlepath")
                             .font(.title3)
@@ -166,6 +169,17 @@ struct MyMacSettingsView: View {
                 port = UserDefaults.standard.string(forKey: "devicePort")
                 ?? String(Defaults.serverPort)
             }
+        }
+    }
+
+    private var connectionModeDescription: String {
+        switch appState.connectionMode {
+        case .network:
+            return L("settings.connectionMode.network.info")
+        case .dynamic:
+            return L("settings.connectionMode.dynamic.info")
+        case .nearby:
+            return L("settings.connectionMode.nearby.info")
         }
     }
 }

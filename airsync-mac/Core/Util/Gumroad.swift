@@ -8,16 +8,43 @@
 import Foundation
 import AppKit
 
-// New: error type to distinguish network/server failures from invalid license results
-enum LicenseCheckError: Error {
-    case network(Error)           // Transport / connectivity issues (timeouts, offline, DNS, etc.)
-    case server(String)           // Non-OK HTTP or malformed responses
+// Enhanced error type to distinguish network/server failures from invalid license results with user-friendly descriptions
+enum LicenseCheckError: Error, LocalizedError {
+    case invalidKey(String)            // Invalid key / key not found for product
+    case planMismatch(String)          // Plan tier mismatch (Membership vs One-Time)
+    case subscriptionInactive(String)   // Cancelled, ended, or failed subscription
+    case usesExceeded(String)          // Device activation limit
+    case refunded(String)              // Refunded / disputed / chargebacked
+    case network(Error)                // Transport / connectivity issues
+    case server(String)                // HTTP non-200 / malformed response
+    case unknown(String)               // Unknown errors
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidKey(let msg),
+             .planMismatch(let msg),
+             .subscriptionInactive(let msg),
+             .usesExceeded(let msg),
+             .refunded(let msg),
+             .server(let msg),
+             .unknown(let msg):
+            return msg
+        case .network(let error):
+            return "Network error: \(error.localizedDescription)"
+        }
+    }
 }
 
 class Gumroad {
     let appState = AppState.shared
 
+    @discardableResult
     func checkLicenseKeyValidity(key: String, save: Bool, isNewRegistration: Bool) async throws -> Bool {
+        let trimmedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else {
+            print("[gumroad] License check failed: Empty license key provided")
+            throw LicenseCheckError.invalidKey("License key cannot be empty.")
+        }
 
         // Select product id based on chosen plan
         let selectedPlan = UserDefaults.standard.licensePlanType
@@ -25,12 +52,16 @@ class Gumroad {
         let oneTimeProductID = "3HkBPf4ovp7KiVISJS6N5A=="
         let productID = (selectedPlan == .oneTime) ? oneTimeProductID : membershipProductID
         let url = URL(string: "https://api.gumroad.com/v2/licenses/verify")!
+
+        let maskedKey = trimmedKey.count > 8 ? "\(trimmedKey.prefix(4))....\(trimmedKey.suffix(4))" : "****"
+        print("[gumroad] Verifying license key '\(maskedKey)' | Plan: \(selectedPlan.displayName) | Product ID: \(productID) | Is New Registration: \(isNewRegistration)")
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
 
         let bodyComponents: [String: String] = [
             "product_id": productID,
-            "license_key": key,
+            "license_key": trimmedKey,
             "increment_uses_count": isNewRegistration ? "true" : "false"
         ]
 
@@ -46,44 +77,74 @@ class Gumroad {
         do {
             (data, response) = try await URLSession.shared.data(for: request)
         } catch {
-            // Transport / connectivity error
+            print("[gumroad] Network error during HTTP request: \(error.localizedDescription)")
             throw LicenseCheckError.network(error)
         }
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw LicenseCheckError.server("Invalid HTTP response")
+            print("[gumroad] Server error: Invalid HTTP response object")
+            throw LicenseCheckError.server("Invalid HTTP response from server.")
         }
 
-        // Treat 404 as an invalid license (not a network error)
+        print("[gumroad] Received HTTP \(httpResponse.statusCode) response from Gumroad API")
+
+        // Treat 404 as an invalid license / plan mismatch
         if httpResponse.statusCode == 404 {
+            let errorMsg = "License key not found for \(selectedPlan.displayName) plan. If you purchased a different tier, try changing the plan picker."
+            print("[gumroad] License check failed (HTTP 404): Key '\(maskedKey)' not found for product ID '\(productID)'. \(errorMsg)")
             if save {
                 AppState.shared.isPlus = false
                 AppState.shared.licenseDetails = nil
+                AppState.shared.lastLicenseCheckFailureReason = errorMsg
             }
-            return false
+            throw LicenseCheckError.planMismatch(errorMsg)
         }
 
         // Accept only 2xx here; other codes are server-ish problems
         guard (200...299).contains(httpResponse.statusCode) else {
-            throw LicenseCheckError.server("HTTP \(httpResponse.statusCode)")
+            let errorMsg = "Gumroad server error (HTTP \(httpResponse.statusCode)). Please try again later."
+            print("[gumroad] License check failed: Server status code \(httpResponse.statusCode)")
+            throw LicenseCheckError.server(errorMsg)
         }
 
         // Parse JSON
         guard
-            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let success = json["success"] as? Bool,
-            let purchase = json["purchase"] as? [String: Any]
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
-            throw LicenseCheckError.server("Malformed JSON")
+            print("[gumroad] License check failed: Failed to parse JSON response")
+            throw LicenseCheckError.server("Malformed JSON response from Gumroad.")
         }
 
+        let success = json["success"] as? Bool ?? false
+        let apiMessage = json["message"] as? String
+
         // If Gumroad says not success => invalid license
-        guard success else {
+        guard success, let purchase = json["purchase"] as? [String: Any] else {
+            let detailMessage = apiMessage ?? "Invalid license key or unverified purchase."
+            let errorMsg = "Gumroad: \(detailMessage)"
+            print("[gumroad] License check failed (success=false): \(detailMessage)")
             if save {
                 AppState.shared.isPlus = false
                 AppState.shared.licenseDetails = nil
+                AppState.shared.lastLicenseCheckFailureReason = errorMsg
             }
-            return false
+            throw LicenseCheckError.invalidKey(errorMsg)
+        }
+
+        // Refunded, disputed, or chargebacked check
+        let refunded = purchase["refunded"] as? Bool ?? false
+        let disputed = purchase["disputed"] as? Bool ?? false
+        let chargebacked = purchase["chargebacked"] as? Bool ?? false
+        if refunded || disputed || chargebacked {
+            let statusStr = refunded ? "refunded" : (disputed ? "disputed" : "chargebacked")
+            let errorMsg = "This license key has been \(statusStr)."
+            print("[gumroad] License check failed: Key '\(maskedKey)' was \(statusStr)")
+            if save {
+                AppState.shared.isPlus = false
+                AppState.shared.licenseDetails = nil
+                AppState.shared.lastLicenseCheckFailureReason = errorMsg
+            }
+            throw LicenseCheckError.refunded(errorMsg)
         }
 
         // Subscription-only fields — for one-time purchase these may be nil/empty.
@@ -93,15 +154,23 @@ class Gumroad {
 
         // Membership plan must be active; otherwise invalid
         if selectedPlan == .membership {
-            if [cancelledAt, endedAt, failedAt].contains(where: { dateStr in
-                if let s = dateStr, !s.isEmpty { return true }
-                return false
-            }) {
+            let isCancelled = cancelledAt != nil && !cancelledAt!.isEmpty
+            let isEnded = endedAt != nil && !endedAt!.isEmpty
+            let isFailed = failedAt != nil && !failedAt!.isEmpty
+
+            if isCancelled || isEnded || isFailed {
+                var reason = "Subscription inactive."
+                if isEnded { reason = "Subscription ended on \(endedAt!)." }
+                else if isFailed { reason = "Subscription payment failed on \(failedAt!)." }
+                else if isCancelled { reason = "Subscription was cancelled on \(cancelledAt!)." }
+
+                print("[gumroad] License check failed: Membership inactive — \(reason)")
                 if save {
                     AppState.shared.isPlus = false
                     AppState.shared.licenseDetails = nil
+                    AppState.shared.lastLicenseCheckFailureReason = reason
                 }
-                return false
+                throw LicenseCheckError.subscriptionInactive(reason)
             }
         }
 
@@ -109,32 +178,41 @@ class Gumroad {
         let currentUsesCount = json["uses"] as? Int ?? 0
         let previousUsesCount = AppState.shared.licenseDetails?.usesCount ?? currentUsesCount
         if (currentUsesCount - previousUsesCount) > 3 {
+            let errorMsg = "License usage limit reached (\(currentUsesCount) total activations)."
+            print("[gumroad] License check failed: Usage limit exceeded (current uses: \(currentUsesCount), previous: \(previousUsesCount))")
             if save {
                 AppState.shared.isPlus = false
                 AppState.shared.licenseDetails = nil
+                AppState.shared.lastLicenseCheckFailureReason = errorMsg
             }
-            return false
+            throw LicenseCheckError.usesExceeded(errorMsg)
         }
 
         // Valid license
+        let email = purchase["email"] as? String ?? "unknown"
+        let productName = purchase["product_name"] as? String ?? "unknown"
+        let orderNumber = purchase["order_number"] as? Int ?? 0
+        print("[gumroad] License verified successfully! Email: \(email), Product: \(productName), Order #: \(orderNumber), Uses: \(currentUsesCount)")
+
         if save {
             AppState.shared.isPlus = true
+            AppState.shared.lastLicenseCheckFailureReason = nil
             let details = LicenseDetails(
-                key: key,
-                email: purchase["email"] as? String ?? "unknown",
-                productName: purchase["product_name"] as? String ?? "unknown",
-                orderNumber: purchase["order_number"] as? Int ?? 0,
+                key: trimmedKey,
+                email: email,
+                productName: productName,
+                orderNumber: orderNumber,
                 purchaserID: purchase["purchaser_id"] as? String ?? "",
-                usesCount: json["uses"] as? Int ?? 0,
+                usesCount: currentUsesCount,
                 price: purchase["price"] as? Int ?? 0,
                 currency: purchase["currency"] as? String ?? "usd",
                 saleTimestamp: purchase["sale_timestamp"] as? String ?? "",
                 subscriptionCancelledAt: cancelledAt,
                 subscriptionEndedAt: endedAt,
                 subscriptionFailedAt: failedAt,
-                refunded: purchase["refunded"] as? Bool ?? false,
-                disputed: purchase["disputed"] as? Bool ?? false,
-                chargebacked: purchase["chargebacked"] as? Bool ?? false
+                refunded: refunded,
+                disputed: disputed,
+                chargebacked: chargebacked
             )
             AppState.shared.licenseDetails = details
         }
@@ -143,7 +221,9 @@ class Gumroad {
     }
 
     func clearLicenseDetails() {
+        print("[gumroad] Clearing saved license details")
         AppState.shared.licenseDetails = nil
+        AppState.shared.lastLicenseCheckFailureReason = nil
         UserDefaults.standard.removeObject(forKey: "licenseDetailsKey")
         UserDefaults.standard.consecutiveLicenseFailCount = 0
         UserDefaults.standard.lastLicenseSuccessfulCheckDate = nil
@@ -153,6 +233,7 @@ class Gumroad {
         let failCount = UserDefaults.standard.consecutiveLicenseFailCount + 1
         UserDefaults.standard.consecutiveLicenseFailCount = failCount
 
+        print("[gumroad] License check fail count incremented to \(failCount)/3")
         if failCount >= 3 {
             Gumroad().clearLicenseDetails()
             print("[gumroad] License check failed \(failCount) times — license removed")
@@ -160,8 +241,10 @@ class Gumroad {
     }
 
     func performUnregisterWithAlert(reason: String) {
+        print("[gumroad] Unregistering license with alert: \(reason)")
         // Clear local license and disable Plus
         appState.isPlus = false
+        AppState.shared.lastLicenseCheckFailureReason = reason
         Gumroad().clearLicenseDetails()
         UserDefaults.standard.consecutiveNetworkFailureDays = 0
         UserDefaults.standard.set(nil, forKey: "lastNetworkFailureDay")
@@ -185,20 +268,20 @@ class Gumroad {
 
     @MainActor
     func checkLicense() async {
-        // Always record that we attempted today (used to prevent double-counting network failures in one day)
         let now = Date()
         let calendar = Calendar.current
 
-        // If no stored key, behave as before
         guard let key = appState.licenseDetails?.key, !key.isEmpty else {
+            print("[gumroad] No saved license key found for scheduled check.")
             if !TrialManager.shared.isTrialActive {
                 appState.isPlus = false
             }
-            Gumroad().incrementInvalidLicenseFailCount() // treat as invalid (no key)
+            Gumroad().incrementInvalidLicenseFailCount()
             UserDefaults.standard.lastLicenseCheckDate = now
             return
         }
 
+        print("[gumroad] Running routine license check...")
         do {
             let valid = try await Gumroad().checkLicenseKeyValidity(
                 key: key,
@@ -209,64 +292,56 @@ class Gumroad {
             UserDefaults.standard.lastLicenseCheckDate = now
 
             if valid {
-                // Successful validation today
                 UserDefaults.standard.consecutiveNetworkFailureDays = 0
                 UserDefaults.standard.consecutiveLicenseFailCount = 0
                 UserDefaults.standard.lastLicenseSuccessfulCheckDate = now
                 appState.isPlus = true
-                print("[gumroad] License valid — daily success recorded.")
+                appState.lastLicenseCheckFailureReason = nil
+                print("[gumroad] Routine license check passed — daily success recorded.")
             } else {
-                // Invalid/expired/cancelled/license-limit — disable immediately
                 if !TrialManager.shared.isTrialActive {
                     appState.isPlus = false
                 }
                 Gumroad().incrementInvalidLicenseFailCount()
-                // Reset network failure streak because this is not a network failure
                 UserDefaults.standard.consecutiveNetworkFailureDays = 0
-                print("[gumroad] License invalid or expired — disabled Plus (unless trial active).")
+                print("[gumroad] Routine license check failed: Key invalid or expired — disabled Plus.")
             }
         } catch let error as LicenseCheckError {
-            // Network/server failure: do not disable Plus today
             UserDefaults.standard.lastLicenseCheckDate = now
 
-            // Only increment once per calendar day
-            var consecutiveDays = UserDefaults.standard.consecutiveNetworkFailureDays
-            if UserDefaults.standard.lastLicenseSuccessfulCheckDate != nil {
-                // last successful check date exists; if it's today we already validated; but we are here only if not successful today
-                // we still want to count by day against previous attempt date
-            }
-            // Compare with the last attempt day (not last success) to avoid double-counting same day
-            if UserDefaults.standard.lastLicenseCheckDate != nil {
-                // We just set it to 'now'; we need the previous value to compare. To avoid this race,
-                // check by reading previous date first before setting in future refactors.
-                // For current code path, guard by storing previous date before the call if needed.
-            }
-            // Simpler: increment if last success date is not today OR there was no success date recently
-            // Also ensure we don't increment more than once a day by comparing with a stored "last network failure day" if needed.
-            // For simplicity, we’ll increment if not already incremented today:
-            let lastNetworkDay = UserDefaults.standard.object(forKey: "lastNetworkFailureDay") as? Date
-            if lastNetworkDay == nil || !calendar.isDate(lastNetworkDay!, inSameDayAs: now) {
-                consecutiveDays += 1
-                UserDefaults.standard.set(now, forKey: "lastNetworkFailureDay")
-            }
-            UserDefaults.standard.consecutiveNetworkFailureDays = consecutiveDays
+            switch error {
+            case .network(let sysErr):
+                print("[gumroad] Network error during routine check: \(sysErr.localizedDescription)")
+                let lastNetworkDay = UserDefaults.standard.object(forKey: "lastNetworkFailureDay") as? Date
+                var consecutiveDays = UserDefaults.standard.consecutiveNetworkFailureDays
+                if lastNetworkDay == nil || !calendar.isDate(lastNetworkDay!, inSameDayAs: now) {
+                    consecutiveDays += 1
+                    UserDefaults.standard.set(now, forKey: "lastNetworkFailureDay")
+                }
+                UserDefaults.standard.consecutiveNetworkFailureDays = consecutiveDays
 
-            // User messaging
-            appState.postNativeNotification(
-                id: "license_network_issue",
-                appName: "AirSync+",
-                title: "License check skipped",
-                body: "Network issue while validating your license. \(consecutiveDays)/3 consecutive days."
-            )
+                appState.postNativeNotification(
+                    id: "license_network_issue",
+                    appName: "AirSync+",
+                    title: "License check skipped",
+                    body: "Network issue while validating your license. \(consecutiveDays)/3 consecutive days."
+                )
 
-            if consecutiveDays >= 3 {
-                // Unregister on 3rd consecutive day
-                Gumroad().performUnregisterWithAlert(reason: "Could not validate your license for 3 consecutive days due to network issues. Please re-enter your key when you’re online.")
-            } else {
-                print("[gumroad] Network/server error during license check: \(error)")
+                if consecutiveDays >= 3 {
+                    Gumroad().performUnregisterWithAlert(reason: "Could not validate your license for 3 consecutive days due to network issues. Please re-enter your key when you’re online.")
+                }
+            default:
+                // Non-network errors (invalid key, plan mismatch, subscription ended, etc.)
+                let reason = error.localizedDescription
+                print("[gumroad] License error during routine check: \(reason)")
+                appState.lastLicenseCheckFailureReason = reason
+                if !TrialManager.shared.isTrialActive {
+                    appState.isPlus = false
+                }
+                Gumroad().incrementInvalidLicenseFailCount()
+                UserDefaults.standard.consecutiveNetworkFailureDays = 0
             }
         } catch {
-            // Any other unexpected error — treat as server error category
             UserDefaults.standard.lastLicenseCheckDate = now
 
             let lastNetworkDay = UserDefaults.standard.object(forKey: "lastNetworkFailureDay") as? Date
@@ -286,23 +361,20 @@ class Gumroad {
             if UserDefaults.standard.consecutiveNetworkFailureDays >= 3 {
                 Gumroad().performUnregisterWithAlert(reason: "Could not validate your license for 3 consecutive days due to server issues. Please re-enter your key when you’re online.")
             } else {
-                print("[gumroad] Unexpected error during license check: \(error)")
+                print("[gumroad] Unexpected error during license check: \(error.localizedDescription)")
             }
         }
     }
 
-
     func checkLicenseIfNeeded() async {
-        // If we already had a successful check today, skip to enforce "max one successful check per day"
         if appState.licenseDetails != nil,
            let lastSuccess = UserDefaults.standard.lastLicenseSuccessfulCheckDate,
            Calendar.current.isDateInToday(lastSuccess) {
-            print("[gumroad] License already successfully validated today — skipping network call.")
+            print("[gumroad] License already successfully validated today (\(lastSuccess.formatted())) — skipping network call.")
             appState.isPlus = true
             return
         }
 
         await Gumroad().checkLicense()
     }
-
 }

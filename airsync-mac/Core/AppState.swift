@@ -26,6 +26,25 @@ class AppState: ObservableObject {
         case relay
     }
 
+    enum AppConnectionMode: String, CaseIterable, Identifiable {
+        case network = "network"
+        case dynamic = "dynamic"
+        case nearby = "nearby"
+        
+        var id: String { rawValue }
+        
+        var displayName: String {
+            switch self {
+            case .network: return L("connectionMode.network")
+            case .dynamic: return L("connectionMode.dynamic")
+            case .nearby: return L("connectionMode.nearby")
+            }
+        }
+    }
+
+    /// AirBridge relay is permitted only in Dynamic mode (full adaptive transport).
+    var isRelayAllowedByMode: Bool { connectionMode == .dynamic }
+
     private var clipboardCancellable: AnyCancellable?
     private var lastClipboardValue: String? = nil
     private var lastClipboardChangeCount: Int = -1
@@ -56,6 +75,9 @@ class AppState: ObservableObject {
         
         let savedFallbackToMdns = UserDefaults.standard.object(forKey: "fallbackToMdns")
         self.fallbackToMdns = savedFallbackToMdns == nil ? true : UserDefaults.standard.bool(forKey: "fallbackToMdns")
+
+        let savedShowInMenubar = UserDefaults.standard.object(forKey: "showInMenubar")
+        self.showInMenubar = savedShowInMenubar == nil ? true : UserDefaults.standard.bool(forKey: "showInMenubar")
 
         self.showMenubarText = UserDefaults.standard.bool(forKey: "showMenubarText")
         self.showMenubarDeviceName = UserDefaults.standard.object(forKey: "showMenubarDeviceName") == nil ? true : UserDefaults.standard.bool(forKey: "showMenubarDeviceName")
@@ -151,7 +173,19 @@ class AppState: ObservableObject {
         
         self.licenseDetails = AppState.loadLicenseDetailsFromUserDefaults()
 
-        self.isBLEEnabled = UserDefaults.standard.bool(forKey: "isBLEEnabled")
+        let savedConnectionModeStr = UserDefaults.standard.string(forKey: "appConnectionMode")
+        if let savedMode = savedConnectionModeStr.flatMap(AppConnectionMode.init(rawValue:)) {
+            self.connectionMode = savedMode
+            self.isBLEEnabled = (savedMode != .network)
+        } else if UserDefaults.standard.object(forKey: "isBLEEnabled") != nil {
+            let legacyBle = UserDefaults.standard.bool(forKey: "isBLEEnabled")
+            self.connectionMode = legacyBle ? .dynamic : .network
+            self.isBLEEnabled = legacyBle
+        } else {
+            self.connectionMode = .dynamic
+            self.isBLEEnabled = true
+        }
+
         self.isBLEAutoConnectEnabled = UserDefaults.standard.object(forKey: "isBLEAutoConnectEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "isBLEAutoConnectEnabled")
         self.isAutoSwitchWithBLEEnabled = UserDefaults.standard.object(forKey: "isAutoSwitchWithBLEEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "isAutoSwitchWithBLEEnabled")
 
@@ -589,6 +623,8 @@ class AppState: ObservableObject {
         }
     }
 
+    @Published var lastLicenseCheckFailureReason: String? = nil
+
     @Published var adbPort: UInt16 {
         didSet {
             UserDefaults.standard.set(adbPort, forKey: "adbPort")
@@ -638,9 +674,18 @@ class AppState: ObservableObject {
         }
     }
 
+    @Published var showInMenubar: Bool {
+        didSet {
+            UserDefaults.standard.set(showInMenubar, forKey: "showInMenubar")
+        }
+    }
+
     @Published var hideDockIcon: Bool {
         didSet {
             UserDefaults.standard.set(hideDockIcon, forKey: "hideDockIcon")
+            if hideDockIcon {
+                showInMenubar = true
+            }
             updateDockIconVisibility()
         }
     }
@@ -649,6 +694,31 @@ class AppState: ObservableObject {
         didSet {
             UserDefaults.standard.set(autoStartAtLogin, forKey: "autoStartAtLogin")
             updateAutoStart()
+        }
+    }
+
+    @Published var connectionMode: AppConnectionMode {
+        didSet {
+            UserDefaults.standard.set(connectionMode.rawValue, forKey: "appConnectionMode")
+            let bleShouldBeEnabled = (connectionMode != .network)
+            if self.isBLEEnabled != bleShouldBeEnabled {
+                self.isBLEEnabled = bleShouldBeEnabled
+            }
+            if connectionMode == .nearby {
+                DiscoveryManager.shared.stop()
+            } else {
+                if device == nil || device?.isBLE == true {
+                    DiscoveryManager.shared.start()
+                }
+            }
+            // AirBridge relay rides only in Dynamic mode.
+            if self.airBridgeEnabled {
+                if connectionMode == .dynamic {
+                    AirBridgeClient.shared.connect()
+                } else {
+                    AirBridgeClient.shared.disconnect()
+                }
+            }
         }
     }
 

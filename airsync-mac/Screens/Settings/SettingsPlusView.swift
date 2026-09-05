@@ -14,6 +14,7 @@ struct SettingsPlusView: View {
     @State private var licenseKey: String = ""
     @State private var isCheckingLicense = false
     @State private var licenseValid: Bool? = nil
+    @State private var licenseErrorMessage: String? = nil
     @State private var isCheckingValidity = false
 
     @State private var isExpanded: Bool = false
@@ -84,17 +85,23 @@ struct SettingsPlusView: View {
                             Task {
                                 isCheckingLicense = true
                                 licenseValid = nil
+                                licenseErrorMessage = nil
                                 UserDefaults.standard.licensePlanType = selectedPlan
-                                let result = try? await Gumroad().checkLicenseKeyValidity(
-                                    key: licenseKey,
-                                    save: true,
-                                    isNewRegistration: true
-                                )
-                                licenseValid = result ?? false
-                                isCheckingLicense = false
-                                if result == true {
-                                    // Show Plus unlocked sheet
-                                    showPlusUnlockedSheet = true
+                                do {
+                                    let result = try await Gumroad().checkLicenseKeyValidity(
+                                        key: licenseKey,
+                                        save: true,
+                                        isNewRegistration: true
+                                    )
+                                    licenseValid = result
+                                    isCheckingLicense = false
+                                    if result {
+                                        showPlusUnlockedSheet = true
+                                    }
+                                } catch {
+                                    licenseValid = false
+                                    isCheckingLicense = false
+                                    licenseErrorMessage = error.localizedDescription
                                 }
                             }
                             #endif
@@ -131,6 +138,18 @@ struct SettingsPlusView: View {
                         }
                     )
                     .disabled(trialManager.isPerformingRequest || !trialManager.hasSecretConfigured)
+                }
+
+                if let errorMsg = licenseErrorMessage, !errorMsg.isEmpty {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.red)
+                        Text(errorMsg)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .padding(.top, 2)
                 }
             }
 
@@ -244,8 +263,14 @@ struct SettingsPlusView: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
 
                 if details.key != "" && !appState.isPlus {
-                    Label("License invalid, expired or network error", systemImage: "xmark.circle")
-                        .foregroundColor(.red)
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.red)
+                        Text(appState.lastLicenseCheckFailureReason ?? "License invalid, expired or network error")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .multilineTextAlignment(.leading)
+                    }
                 }
             }
             #endif

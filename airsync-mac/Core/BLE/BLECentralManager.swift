@@ -11,6 +11,7 @@ class BLECentralManager: NSObject, ObservableObject {
     private var characteristics: [CBUUID: CBCharacteristic] = [:]
     private var chunkBuffers: [CBUUID: [Int: Data]] = [:]
     private var discoveredServices: Set<CBUUID> = []
+    private var requestedServices: Set<CBUUID> = []
     private var hasAttemptedAuth = false
     private let expectedServiceCount = 4
     
@@ -141,6 +142,7 @@ class BLECentralManager: NSObject, ObservableObject {
         isManuallyDisconnected = true
         
         if let peripheral = discoveredPeripheral {
+            peripheral.delegate = nil
             centralManager.cancelPeripheralConnection(peripheral)
         }
         connectionStatus = .disconnected
@@ -162,7 +164,8 @@ class BLECentralManager: NSObject, ObservableObject {
     func write(characteristicUUID: CBUUID, data: Data) {
         resetWatchdog()
         guard let peripheral = discoveredPeripheral, let char = characteristics[characteristicUUID] else { return }
-        peripheral.writeValue(data, for: char, type: .withoutResponse)
+        let writeType: CBCharacteristicWriteType = char.properties.contains(.write) ? .withResponse : .withoutResponse
+        peripheral.writeValue(data, for: char, type: writeType)
     }
     
     func writeChunked(characteristicUUID: CBUUID, payload: String) {
@@ -199,6 +202,11 @@ class BLECentralManager: NSObject, ObservableObject {
             return
         }
         
+        guard connectionStatus == .disconnected || connectionStatus == .scanning else {
+            print("[BLE] Already connecting or connected (status: \(connectionStatus))")
+            return
+        }
+        
         guard let record = discoveredPeripherals[uuidStr] else { return }
         let peripheral = record.peripheral
         print("[BLE] Manual connection requested for \(peripheral.name ?? "Unknown")")
@@ -210,7 +218,6 @@ class BLECentralManager: NSObject, ObservableObject {
         scanTimer = nil
         
         connectingDeviceUUID = uuidStr
-        connectionStatus = .scanning
         centralManager.connect(peripheral, options: [
             CBConnectPeripheralOptionNotifyOnDisconnectionKey: true
         ])
@@ -220,6 +227,7 @@ class BLECentralManager: NSObject, ObservableObject {
             guard let self = self else { return }
             print("[BLE] Manual connection timed out, cancelling...")
             if let p = self.discoveredPeripheral {
+                p.delegate = nil
                 self.centralManager.cancelPeripheralConnection(p)
             }
             self.discoveredPeripheral = nil
@@ -234,8 +242,8 @@ class BLECentralManager: NSObject, ObservableObject {
     private func resetWatchdog() {
         DispatchQueue.main.async {
             self.watchdogTimer?.invalidate()
-            self.watchdogTimer = Timer.scheduledTimer(withTimeInterval: 25.0, repeats: false) { [weak self] _ in
-                print("[BLE] Heartbeat timeout (25s), disconnecting...")
+            self.watchdogTimer = Timer.scheduledTimer(withTimeInterval: 120.0, repeats: false) { [weak self] _ in
+                print("[BLE] Heartbeat timeout (120s), disconnecting...")
                 self?.disconnect()
             }
         }
@@ -270,6 +278,9 @@ extension BLECentralManager: CBCentralManagerDelegate {
         
         // Auto connect if enabled and not manually disconnected
         if AppState.shared.isBLEAutoConnectEnabled && !isManuallyDisconnected {
+            guard connectionStatus == .disconnected || connectionStatus == .scanning else { return }
+            guard discoveredPeripheral == nil else { return }
+
             let isWifiConnected = AppState.shared.device != nil && AppState.shared.device?.ipAddress != "BLE" && AppState.shared.device?.ipAddress != "Bluetooth LE"
             if isWifiConnected {
                 print("[BLE] Regular Wi-Fi connection is active — skipping auto-connect to BLE")
@@ -297,6 +308,7 @@ extension BLECentralManager: CBCentralManagerDelegate {
                 guard let self = self else { return }
                 print("[BLE] Connection timed out, cancelling and retrying...")
                 if let p = self.discoveredPeripheral {
+                    p.delegate = nil
                     self.centralManager.cancelPeripheralConnection(p)
                 }
                 self.discoveredPeripheral = nil
@@ -319,6 +331,8 @@ extension BLECentralManager: CBCentralManagerDelegate {
         connectionTimer = nil
         connectingDeviceUUID = nil
         discoveredServices.removeAll()
+        requestedServices.removeAll()
+        characteristics.removeAll()
         hasAttemptedAuth = false
         let name = peripheral.name ?? "Unknown Device"
         let maxWrite = peripheral.maximumWriteValueLength(for: .withoutResponse)
@@ -331,6 +345,7 @@ extension BLECentralManager: CBCentralManagerDelegate {
     }
     
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        peripheral.delegate = nil
         connectionTimer?.invalidate()
         connectionTimer = nil
         connectingDeviceUUID = nil
@@ -350,6 +365,7 @@ extension BLECentralManager: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        peripheral.delegate = nil
         connectionTimer?.invalidate()
         connectionTimer = nil
         watchdogTimer?.invalidate()
@@ -363,6 +379,7 @@ extension BLECentralManager: CBCentralManagerDelegate {
         characteristics.removeAll()
         chunkBuffers.removeAll()
         discoveredServices.removeAll()
+        requestedServices.removeAll()
         hasAttemptedAuth = false
         
         DispatchQueue.main.async {
@@ -381,19 +398,32 @@ extension BLECentralManager: CBCentralManagerDelegate {
 
 extension BLECentralManager: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-        guard let services = peripheral.services else { return }
-        for service in services {
-            peripheral.discoverCharacteristics(nil, for: service)
+        if let error = error {
+            print("[BLE] Error discovering services: \(error.localizedDescription)")
+            return
+        }
+        guard let rawServices = peripheral.services as NSArray? else { return }
+        let validServices = rawServices.compactMap { $0 as? CBService }
+        for service in validServices {
+            if !requestedServices.contains(service.uuid) {
+                requestedServices.insert(service.uuid)
+                peripheral.discoverCharacteristics(nil, for: service)
+            }
         }
     }
     
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-        guard let chars = service.characteristics else { return }
-        print("[BLE] Discovered \(chars.count) characteristics for service \(service.uuid)")
-        for char in chars {
+        if let error = error {
+            print("[BLE] Error discovering characteristics for \(service.uuid): \(error.localizedDescription)")
+            return
+        }
+        guard let rawChars = service.characteristics as NSArray? else { return }
+        let validChars = rawChars.compactMap { $0 as? CBCharacteristic }
+        print("[BLE] Discovered \(validChars.count) characteristics for service \(service.uuid)")
+        for char in validChars {
             characteristics[char.uuid] = char
             
-            if char.properties.contains(.notify) {
+            if char.properties.contains(.notify) && !char.isNotifying {
                 print("[BLE] Subscribing to \(char.uuid)")
                 peripheral.setNotifyValue(true, for: char)
             }
@@ -402,7 +432,7 @@ extension BLECentralManager: CBPeripheralDelegate {
         discoveredServices.insert(service.uuid)
         print("[BLE] Services discovered: \(discoveredServices.count)/\(expectedServiceCount)")
         
-        // Only attempt auth once after ALL services are discovered
+        // Attempt auth once after expected services are discovered and auth characteristic is ready
         if discoveredServices.count >= expectedServiceCount && !hasAttemptedAuth {
             if characteristics[BLEConstants.charAuthToken] != nil {
                 hasAttemptedAuth = true
@@ -427,6 +457,10 @@ extension BLECentralManager: CBPeripheralDelegate {
     }
     
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        if let error = error {
+            print("[BLE] Error updating value for characteristic \(characteristic.uuid): \(error.localizedDescription)")
+            return
+        }
         resetWatchdog()
         guard let data = characteristic.value else { return }
         
@@ -456,9 +490,9 @@ extension BLECentralManager: CBPeripheralDelegate {
                 // Immediately notify Android of Mac status
                 WebSocketServer.shared.sendMacStatusOverBLE()
                 
-                // Also trigger a full fetch (which includes media info)
+                // Also trigger a status update (which includes current media info)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    MacInfoSyncManager.shared.fetch()
+                    MacInfoSyncManager.shared.forceRefresh()
                 }
             } else {
                 print("[BLE] Auth Failed!")
@@ -478,6 +512,52 @@ extension BLECentralManager: CBPeripheralDelegate {
             handleChunkedUpdate(uuid: characteristic.uuid, data: data)
         default:
             break
+        }
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+        if let error = error {
+            print("[BLE] Error writing value to characteristic \(characteristic.uuid): \(error.localizedDescription)")
+        }
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
+        if let error = error {
+            print("[BLE] Error updating notification state for characteristic \(characteristic.uuid): \(error.localizedDescription)")
+        } else {
+            print("[BLE] Notification state updated for \(characteristic.uuid): \(characteristic.isNotifying)")
+        }
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverDescriptorsFor characteristic: CBCharacteristic, error: Error?) {
+        if let error = error {
+            print("[BLE] Error discovering descriptors for \(characteristic.uuid): \(error.localizedDescription)")
+        }
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor descriptor: CBDescriptor, error: Error?) {
+        if let error = error {
+            print("[BLE] Error updating value for descriptor \(descriptor.uuid): \(error.localizedDescription)")
+        }
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didWriteValueFor descriptor: CBDescriptor, error: Error?) {
+        if let error = error {
+            print("[BLE] Error writing value for descriptor \(descriptor.uuid): \(error.localizedDescription)")
+        }
+    }
+    
+    func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
+        print("[BLE] Peripheral ready to send write without response")
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didModifyServices invalidatedServices: [CBService]) {
+        print("[BLE] Services invalidated: \(invalidatedServices.map { $0.uuid.uuidString })")
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didReadRSSI RSSI: NSNumber, error: Error?) {
+        if let error = error {
+            print("[BLE] Error reading RSSI: \(error.localizedDescription)")
         }
     }
     

@@ -332,30 +332,22 @@ class WebSocketServer: ObservableObject {
 
                 guard let data = decryptedData, !data.isEmpty else { return }
 
+                self.lock.lock()
+                self.lastActivity[ObjectIdentifier(session)] = Date()
+                self.lock.unlock()
+                DispatchQueue.main.async {
+                    if AppState.shared.isConnectionWeak {
+                        AppState.shared.isConnectionWeak = false
+                    }
+                }
+
                 do {
                     let message = try self.jsonDecoder.decode(Message.self, from: data)
                     if message.type == .status {
                         // Pong / keepalive check
                         if let dict = message.data.value as? [String: Any],
                            (dict["type"] as? String) == "pong" {
-                            self.lock.lock()
-                            self.lastActivity[ObjectIdentifier(session)] = Date()
-                            self.lock.unlock()
-                            DispatchQueue.main.async {
-                                if AppState.shared.isConnectionWeak {
-                                    AppState.shared.isConnectionWeak = false
-                                }
-                            }
                             return
-                        }
-                    }
-
-                    self.lock.lock()
-                    self.lastActivity[ObjectIdentifier(session)] = Date()
-                    self.lock.unlock()
-                    DispatchQueue.main.async {
-                        if AppState.shared.isConnectionWeak {
-                            AppState.shared.isConnectionWeak = false
                         }
                     }
 

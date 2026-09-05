@@ -199,7 +199,7 @@ func generateQRText(ip: String?, port: UInt16?, name: String?, key: String) -> S
     let encodedName = name?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "My Mac"
     var qrText = "airsync://\(ip):\(port)?name=\(encodedName)&plus=\(AppState.shared.isPlus)&key=\(key)"
 
-    if AppState.shared.airBridgeEnabled {
+    if AppState.shared.airBridgeEnabled && AppState.shared.isRelayAllowedByMode {
         let client = AirBridgeClient.shared
         let relay = client.relayServerURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let pairingId = client.pairingId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""

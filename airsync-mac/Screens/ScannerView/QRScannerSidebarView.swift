@@ -87,7 +87,7 @@ struct QRScannerSidebarView: View {
                                 .accessibilityLabel("QR Code")
                                 .shadow(radius: 20)
                                 .padding()
-                                .background(.black.opacity(0.6), in: .rect(cornerRadius: 30))
+                                .background(Color.black, in: .rect(cornerRadius: 30))
                             
                             if let key = WebSocketServer.shared.getSymmetricKeyBase64(), !key.isEmpty {
                                 VStack(spacing: 8) {

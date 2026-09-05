@@ -10,6 +10,13 @@
 <!--   <img src="https://github.com/user-attachments/assets/8abdd977-6f8b-4037-b277-9457e65a6255" width="80%" /> -->
 </p>
 
+## Installation
+- You can install AirSync mac app from either [GitHub releases](https://github.com/sameerasw/airsync-mac/releases/latest) or from [homebrew](https://brew.sh/) from the following command.
+  
+  ```
+  brew install airsync
+  ```
+
 ## Requirements
 - Min : macOS 14.5
 - Opt: scrcpy, adb & media-control installed from brew

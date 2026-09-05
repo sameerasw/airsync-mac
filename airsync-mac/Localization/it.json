@@ -132,6 +132,8 @@
   "settings.mirroring.swapCmdCtrl": "Inverti ⌘ e ⌃ (stile macOS)",
   "settings.mirroring.showMirrorControls": "Mostra pulsanti di navigazione (⌘B)",
   "quickshare.copy": "Copia negli appunti",
+  "settings.menubar.showInMenubar": "Mostra nella barra dei menu",
+  "settings.menubar.showInMenubar.disabledInfo": "Per mantenere AirSync accessibile, la barra dei menu non può essere nascosta quando l'icona del Dock è nascosta.",
   "settings.menubar.showIcon": "Mostra icona nella barra dei menu",
   "settings.menubar.showText": "Mostra testo nella barra dei menu",
   "settings.menubar.enableMarquee": "Effetto testo scorrevole",
@@ -198,5 +200,13 @@
   "whatsnew.nearby.message": "Clicca per connettere",
   "connection.wiredAdb": "ADB cablato",
   "connection.selectDevice": "Seleziona dispositivo",
-  "connection.wireless": "Wireless"
+  "connection.wireless": "Wireless",
+  "settings.connectionMode": "Connection Mode",
+  "connectionMode.network": "Network",
+  "connectionMode.dynamic": "Dynamic",
+  "connectionMode.nearby": "Nearby",
+  "settings.connectionMode.network.info": "Uses local area network only. Bluetooth LE is disabled.",
+  "settings.connectionMode.dynamic.info": "Usa Wi-Fi e Bluetooth LE con fallback e cambio automatici. Con AirBridge attivo, il relay server viene usato come ultima risorsa via internet.",
+  "settings.connectionMode.nearby.info": "Uses Bluetooth LE only. Local network discovery is disabled.",
+  "settings.airbridge.blockedByMode": "Il relay AirBridge è inattivo in questa modalità di connessione. Passa a Dynamic per usarlo."
 }

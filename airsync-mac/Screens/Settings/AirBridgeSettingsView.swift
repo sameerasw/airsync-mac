@@ -26,6 +26,12 @@ struct AirBridgeSettingsView: View {
                     .toggleStyle(.switch)
             }
 
+            if appState.airBridgeEnabled && !appState.isRelayAllowedByMode {
+                Label(L("settings.airbridge.blockedByMode"), systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+
             if appState.airBridgeEnabled {
                 Divider()
 

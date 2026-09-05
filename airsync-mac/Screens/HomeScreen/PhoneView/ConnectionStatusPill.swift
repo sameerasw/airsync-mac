@@ -270,17 +270,21 @@ struct ConnectionPillPopover: View {
                     Spacer()
                 }
             } else {
-            VStack(alignment: .leading, spacing: 8) {
-                
-                HStack {
-                    Label("Bluetooth LE Discovery", image: "logo.bluetooth")
-                        .font(.system(size: 12))
-                    Spacer()
-                    Toggle("", isOn: $appState.isBLEEnabled)
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(loc: "settings.connectionMode")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+
+                    Picker("", selection: $appState.connectionMode) {
+                        ForEach(AppState.AppConnectionMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .controlSize(.large)
                 }
-                
+
                 HStack {
                     Label("Auto-connect", systemImage: "arrow.triangle.2.circlepath")
                         .font(.system(size: 12))

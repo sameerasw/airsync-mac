@@ -115,8 +115,14 @@ class AirBridgeClient: ObservableObject {
 
     // MARK: - Public Interface
 
-    /// Connects to the relay server. Does nothing if already connected or URL is empty.
+    /// Connects to the relay server. Does nothing if already connected, the URL is empty,
+    /// or the current connection mode does not permit the relay (Dynamic only).
     func connect() {
+        guard AppState.shared.isRelayAllowedByMode else {
+            print("[airbridge] connect skipped: relay disabled in \(AppState.shared.connectionMode.rawValue) mode")
+            DispatchQueue.main.async { self.connectionState = .disconnected }
+            return
+        }
         queue.async { [weak self] in
             guard let self = self else { return }
             self.isManuallyDisconnected = false
@@ -322,6 +328,13 @@ class AirBridgeClient: ObservableObject {
     // MARK: - Connection Logic
 
     private func connectInternal() {
+        // Backstop: internal reconnect paths (wake, scheduleReconnect) must not bypass the mode gate.
+        guard AppState.shared.isRelayAllowedByMode else {
+            print("[airbridge] reconnect skipped: relay disabled in \(AppState.shared.connectionMode.rawValue) mode")
+            DispatchQueue.main.async { self.connectionState = .disconnected }
+            return
+        }
+
         guard !relayServerURL.isEmpty else {
             DispatchQueue.main.async { self.connectionState = .disconnected }
             return
