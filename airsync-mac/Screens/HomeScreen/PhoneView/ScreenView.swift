@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 struct ScreenView: View {
     @ObservedObject var appState = AppState.shared
@@ -15,6 +16,7 @@ struct ScreenView: View {
         VStack {
             ConnectionStatusPill()
                 .padding(.top, 4)
+                .whatsNewPopover(item: .connectionPill, arrowEdge: .top)
             
             ConnectionStateView()
                 .padding(.top, 4)
@@ -35,12 +37,12 @@ struct ScreenView: View {
 
 
             if appState.device != nil {
-
                 HStack(spacing: 10){
                     GlassButtonView(
                         label: "Send",
-                        systemImage: "paperplane.fill",
-                        iconOnly: appState.adbConnected,
+                        systemImage: "square.and.arrow.up",
+                        iconOnly: true,
+                        fixedIconSize: 16,
                         action: {
                             let panel = NSOpenPanel()
                             panel.allowsMultipleSelection = true
@@ -54,81 +56,62 @@ struct ScreenView: View {
                             }
                         }
                     )
-                    .disabled(
-                        !appState.isEffectivelyLocalTransport &&
-                        AirBridgeClient.shared.connectionState == .relayActive
-                    )
-                    .help(
-                        (!appState.isEffectivelyLocalTransport &&
-                         AirBridgeClient.shared.connectionState == .relayActive)
-                        ? "Quick Share is unavailable over relay connection"
-                        : "Send files with Quick Share"
-                    )
+                    .help("Send Files")
                     .transition(.identity)
                     .keyboardShortcut(
                         "f",
                         modifiers: .command
-                    )
+                     )
 
-                    GlassButtonView(
-                        label: "Browse",
-                        systemImage: "folder",
-                        iconOnly: true,
-                        action: {
-                            if appState.isPlus && appState.licenseCheck {
-                                appState.openFileBrowser()
-                            } else {
-                                showingPlusPopover = true
-                            }
-                        }
-                    )
-                    .transition(.identity)
-                    .keyboardShortcut(
-                        "b",
-                        modifiers: .command
-                    )
-                    .popover(isPresented: $showingPlusPopover, arrowEdge: .bottom) {
-                        PlusFeaturePopover(message: "Browse files with AirSync+")
-                    }
-
-
-                    if appState.adbConnected{
+                    if appState.device?.ipAddress != "BLE" {
                         GlassButtonView(
-                            label: "Mirror",
-                            systemImage: "apps.iphone",
+                            label: "Browse",
+                            systemImage: "folder",
+                            iconOnly: true,
+                            fixedIconSize: 16,
                             action: {
-                                ADBConnector
-                                    .startScrcpy(
-                                        ip: appState.device?.ipAddress ?? "",
-                                        port: appState.adbPort,
-                                        deviceName: appState.device?.name ?? "My Phone"
-                                    )
+                                if appState.isPlus && appState.licenseCheck {
+                                    appState.openFileBrowser()
+                                } else {
+                                    showingPlusPopover = true
+                                }
                             }
                         )
+                        .help("Browse Files")
                         .transition(.identity)
                         .keyboardShortcut(
-                            "p",
+                            "b",
                             modifiers: .command
                         )
-                        .contextMenu {
-                            Button("Android Mirror") {
-                                appState.isNativeMirroring = true
-                            }
-                            
-                            Button("Desktop Mode") {
-                                ADBConnector.startScrcpy(
-                                    ip: appState.device?.ipAddress ?? "",
-                                    port: appState.adbPort,
-                                    deviceName: appState.device?.name ?? "My Phone",
-                                    desktop: true
-                                )
-                            }
+                        .popover(isPresented: $showingPlusPopover, arrowEdge: .bottom) {
+                            PlusFeaturePopover(message: "Browse files with AirSync+")
                         }
-                        .keyboardShortcut(
-                            "p",
-                            modifiers: [.command, .shift]
-                        )
                     }
+
+                    GlassButtonView(
+                        label: "Mute",
+                        systemImage: appState.silenceAllNotifications ? "bell.slash.fill" : "bell.badge",
+                        iconOnly: true,
+                        fixedIconSize: 16,
+                        action: {
+                            appState.silenceAllNotifications.toggle()
+                        }
+                    )
+                    .help(appState.silenceAllNotifications ? "Unmute Notifications" : "Mute Notifications")
+                    .transition(.identity)
+
+                    GlassButtonView(
+                        label: "Clipboard",
+                        systemImage: "clipboard",
+                        iconOnly: true,
+                        fixedIconSize: 16,
+                        action: {
+                            sendClipboard()
+                        }
+                    )
+                    .help("Send Clipboard")
+                    .transition(.identity)
+
                 }
             }
             if (appState.status != nil){
@@ -139,6 +122,15 @@ struct ScreenView: View {
 
         }
         .padding(8)
+        .onAppear {
+            WhatsNewTourManager.shared.evaluateActiveItem()
+        }
+        .onChange(of: appState.device) { _, _ in
+            WhatsNewTourManager.shared.evaluateActiveItem()
+        }
+        .onChange(of: appState.selectedTab) { _, _ in
+            WhatsNewTourManager.shared.evaluateActiveItem()
+        }
         .animation(
             .easeInOut(duration: 0.35),
             value: AppState.shared.adbConnected
@@ -147,6 +139,40 @@ struct ScreenView: View {
             .easeInOut(duration: 0.28),
             value: appState.isMusicCardHidden
         )
+    }
+
+    private func sendClipboard() {
+        let pasteboard = NSPasteboard.general
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], let firstUrl = urls.first {
+            if appState.device?.ipAddress != "BLE" {
+                DispatchQueue.global(qos: .userInitiated).async {
+                    WebSocketServer.shared.sendFile(url: firstUrl, isClipboard: true)
+                }
+            } else {
+                print("[ScreenView] Cannot send files over BLE")
+            }
+        } else if let image = NSImage(pasteboard: pasteboard) {
+            if appState.device?.ipAddress != "BLE" {
+                let tempDir = FileManager.default.temporaryDirectory
+                let tempUrl = tempDir.appendingPathComponent("clipboard_image_\(Int(Date().timeIntervalSince1970)).png")
+                if let tiffData = image.tiffRepresentation,
+                   let bitmap = NSBitmapImageRep(data: tiffData),
+                   let pngData = bitmap.representation(using: .png, properties: [:]) {
+                    do {
+                        try pngData.write(to: tempUrl)
+                        DispatchQueue.global(qos: .userInitiated).async {
+                            WebSocketServer.shared.sendFile(url: tempUrl, isClipboard: true)
+                        }
+                    } catch {
+                        print("[ScreenView] Failed to save clipboard image: \(error)")
+                    }
+                }
+            } else {
+                print("[ScreenView] Cannot send images over BLE")
+            }
+        } else if let text = pasteboard.string(forType: .string) {
+            appState.sendClipboardToAndroid(text: text)
+        }
     }
 }
 

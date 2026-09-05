@@ -11,7 +11,6 @@ import Foundation
 
 struct SettingsFeaturesView: View {
     @ObservedObject var appState = AppState.shared
-    @AppStorage("scrcpyShareRes") private var scrcpyShareRes = false
     @AppStorage("scrcpyOnTop") private var scrcpyOnTop = false
     @AppStorage("stayAwake") private var stayAwake = false
     @AppStorage("turnScreenOff") private var turnScreenOff = false
@@ -19,9 +18,11 @@ struct SettingsFeaturesView: View {
     @AppStorage("manualPosition") private var manualPosition = false
     @AppStorage("continueApp") private var continueApp = false
     @AppStorage("directKeyInput") private var directKeyInput = true
+    @AppStorage("showInControlCenter") private var showInControlCenter = false
     @AppStorage("scrcpyDesktopDpi") private var scrcpyDesktopDpi = ""
 
     @State private var showingPlusPopover = false
+    @State private var showControlCenterInfo = false
     @State private var tempBitrate: Double = 4.00
     @State private var tempResolution: Double = 1200.00
     @State private var isDragging = false
@@ -59,7 +60,11 @@ struct SettingsFeaturesView: View {
                                 systemImage: appState.adbConnecting ? "hourglass" : "play.circle",
                                 action: {
                                     if !appState.adbConnecting {
-                                        ADBConnector.requestConnectionFromCurrentTransport()
+                                        appState.adbConnectionResult = "" // Clear console
+                                        appState.manualAdbConnectionPending = true
+                                        appState.userInitiatedAdbConnect = true
+                                        WebSocketServer.shared.sendRefreshAdbPortsRequest()
+                                        appState.adbConnectionResult = "Refreshing latest ADB ports from device..."
                                     }
                                 }
                             )
@@ -228,30 +233,13 @@ struct SettingsFeaturesView: View {
 
                                 SettingsToggleView(name: "Direct keyboard input", icon: "keyboard.chevron.compact.down", isOn: $directKeyInput)
 
-                                SettingsToggleView(name: "Apps & Desktop mode shared resolution", icon: "ipad.sizes", isOn: $scrcpyShareRes)
-
-                                HStack {
-                                    Text(UserDefaults.standard.scrcpyShareRes ? "Desktop and App mirroring" :"Desktop mode")
-                                    Spacer()
-
-                                    Picker("", selection: Binding(
-                                        get: { UserDefaults.standard.scrcpyDesktopMode },
-                                        set: { UserDefaults.standard.scrcpyDesktopMode = $0 }
-                                    )) {
-                                        Text("2560x1440").tag("2560x1440")
-                                        Text("2560x1600").tag("2560x1600")
-                                        Text("2000x1800").tag("2000x1800")
-                                    }
-                                    .pickerStyle(MenuPickerStyle())
-                                }
-
                                 HStack {
                                     Text("dpi")
                                     Spacer()
                                     TextField("dpi", text: Binding(
-                                        get: { UserDefaults.standard.string(forKey: "scrcpyDesktopDpi") ?? "" },
+                                        get: { UserDefaults.standard.scrcpyDesktopDpi },
                                         set: { newValue in
-                                            UserDefaults.standard.set(newValue.filter { "0123456789".contains($0) }, forKey: "scrcpyDesktopDpi")
+                                            UserDefaults.standard.scrcpyDesktopDpi = newValue.filter { "0123456789".contains($0) }
                                         }
                                     ))
                                     .textFieldStyle(.roundedBorder)
@@ -310,11 +298,11 @@ struct SettingsFeaturesView: View {
 
             }
             .padding()
-            .background(.background.opacity(0.3))
-            .cornerRadius(12.0)
+            .glassBoxIfAvailable(radius: 18)
             .onAppear{
-                xCoords = UserDefaults.standard.manualPositionCoords[0]
-                yCoords = UserDefaults.standard.manualPositionCoords[1]
+                let coords = UserDefaults.standard.manualPositionCoords
+                xCoords = coords.indices.contains(0) ? coords[0] : "0"
+                yCoords = coords.indices.contains(1) ? coords[1] : "0"
             }
 
             // Clipboard Sync
@@ -331,8 +319,7 @@ struct SettingsFeaturesView: View {
                 .opacity(appState.isClipboardSyncEnabled ? 1.0 : 0.5)
             }
             .padding()
-            .background(.background.opacity(0.3))
-            .cornerRadius(12.0)
+            .glassBoxIfAvailable(radius: 18)
 
             // Notifications
             VStack{
@@ -375,10 +362,33 @@ struct SettingsFeaturesView: View {
                 }
 
                 SettingsToggleView(name: "Send now playing status", icon: "play.circle", isOn: $appState.sendNowPlayingStatus)
+
+                HStack {
+                    Label("Show in control center", systemImage: "slider.horizontal.below.rectangle")
+                    Button(action: { showControlCenterInfo = true }) {
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .alert("Show in control center", isPresented: $showControlCenterInfo) {
+                        Button("OK", role: .cancel) {}
+                    } message: {
+                        Text("This feature plays a silent audio track in background in order to show up in macOS media. This may prevent your multi-device bluetooth audio devices to not switch correctly.")
+                    }
+                    Spacer()
+                    Toggle("", isOn: $showInControlCenter)
+                        .toggleStyle(.switch)
+                        .onChange(of: showInControlCenter) { _, enabled in
+                            if enabled {
+                                NowPlayingPublisher.shared.enableSilentAudio()
+                            } else {
+                                NowPlayingPublisher.shared.disableSilentAudio()
+                            }
+                        }
+                }
             }
             .padding()
-            .background(.background.opacity(0.3))
-            .cornerRadius(12.0)
+            .glassBoxIfAvailable(radius: 18)
             .onAppear{
                 checkNotificationPermissions()
             }
@@ -389,7 +399,7 @@ struct SettingsFeaturesView: View {
             // Call Alerts
             VStack{
                 HStack {
-                    Label("Call Alert", systemImage: "phone")
+                    Label("Call alert", systemImage: "phone")
                     Spacer()
 
                     Picker("", selection: $appState.callNotificationMode) {
@@ -404,8 +414,7 @@ struct SettingsFeaturesView: View {
                 SettingsToggleView(name: "Ring for calls", icon: "speaker.wave.3", isOn: $appState.ringForCalls)
             }
             .padding()
-            .background(.background.opacity(0.3))
-            .cornerRadius(12.0)
+            .glassBoxIfAvailable(radius: 18)
         }
     }
 

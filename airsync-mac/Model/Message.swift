@@ -21,6 +21,7 @@ enum MessageType: String, Codable {
     case appIcons
     case clipboardUpdate
     case callEvent = "call_event"
+    case callProgress = "call_progress"
     case callControl
     case callControlResponse
     // file transfer

@@ -70,7 +70,7 @@ class ScrcpyControlClient {
         send(data: data)
     }
     
-    func sendKeyEvent(action: UInt8, keycode: UInt32) {
+    func sendKeyEvent(action: UInt8, keycode: UInt32, metaState: UInt32 = 0) {
         var data = Data()
         data.append(0) // Type 0: Inject key event
         data.append(action) // 0: down, 1: up
@@ -83,9 +83,55 @@ class ScrcpyControlClient {
         withUnsafeBytes(of: repeatCount.bigEndian) { data.append(contentsOf: $0) }
         
         // Meta state (4 bytes)
-        let metaState: UInt32 = 0
         withUnsafeBytes(of: metaState.bigEndian) { data.append(contentsOf: $0) }
         
+        send(data: data)
+    }
+    
+    func sendScrollEvent(x: Int32, y: Int32, width: UInt16, height: UInt16, scrollX: Float, scrollY: Float) {
+        var data = Data()
+        data.append(3) // Type 3: Inject scroll event
+        
+        // Position X, Y (4 bytes each)
+        withUnsafeBytes(of: x.bigEndian) { data.append(contentsOf: $0) }
+        withUnsafeBytes(of: y.bigEndian) { data.append(contentsOf: $0) }
+        
+        // Width, Height (2 bytes each)
+        withUnsafeBytes(of: width.bigEndian) { data.append(contentsOf: $0) }
+        withUnsafeBytes(of: height.bigEndian) { data.append(contentsOf: $0) }
+        
+        // Convert to 16-bit fixed point with separate sensitivity multipliers (horizontal is inverted)
+        let hSensitivity: Float = 0.05
+        let vSensitivity: Float = 0.05
+        let hscroll = floatToI16fp((-scrollX * hSensitivity) / 16.0)
+        let vscroll = floatToI16fp((scrollY * vSensitivity) / 16.0)
+        
+        withUnsafeBytes(of: hscroll.bigEndian) { data.append(contentsOf: $0) }
+        withUnsafeBytes(of: vscroll.bigEndian) { data.append(contentsOf: $0) }
+        
+        // Buttons (4 bytes)
+        let buttons: UInt32 = 0
+        withUnsafeBytes(of: buttons.bigEndian) { data.append(contentsOf: $0) }
+        
+        send(data: data)
+    }
+    
+    private func floatToI16fp(_ f: Float) -> Int16 {
+        let clamped = max(-1.0, min(1.0, f))
+        var i = Int32(clamped * 32768.0)
+        if i >= 32767 {
+            i = 32767
+        } else if i <= -32768 {
+            i = -32768
+        }
+        return Int16(i)
+    }
+    
+    func sendResizeDisplay(width: UInt16, height: UInt16) {
+        var data = Data()
+        data.append(21) // Type 21: Resize display
+        withUnsafeBytes(of: width.bigEndian) { data.append(contentsOf: $0) }
+        withUnsafeBytes(of: height.bigEndian) { data.append(contentsOf: $0) }
         send(data: data)
     }
     

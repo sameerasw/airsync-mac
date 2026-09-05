@@ -10,14 +10,25 @@ import Foundation
 struct Device: Codable, Hashable, Identifiable {
     let id = UUID()
     
-    let name: String
+    var name: String
     let ipAddress: String
     let port: Int
     let version: String
     let adbPorts: [String]
+    let deviceId: String
 
     private enum CodingKeys: String, CodingKey {
-        case name, ipAddress, port, version, adbPorts
+        case name, ipAddress, port, version, adbPorts, deviceId
+    }
+}
+
+extension Device {
+    var isBLE: Bool {
+        return ipAddress == "BLE" || ipAddress == "Bluetooth LE"
+    }
+    
+    var isRegularConnection: Bool {
+        return !ipAddress.isEmpty && !isBLE
     }
 }
 
@@ -27,7 +38,8 @@ struct MockData{
         ipAddress: "192.168.1.100",
         port: 8080,
         version: "2.0.0",
-        adbPorts: ["5555"]
+        adbPorts: ["5555"],
+        deviceId: "test_device_id"
     )
 
     static let sampleNotificaiton = Notification(
@@ -47,12 +59,15 @@ struct MockData{
         volume: 50,
         isMuted: false,
         albumArt: "",
-        likeStatus: "none"
+        likeStatus: "none",
+        duration: 214,
+        position: 42,
+        isBuffering: false
     )
 
     static let sampleDevices = [
-        Device(name: "Test Device 1", ipAddress: "192.168.1.101", port: 8080, version: "2.0.0", adbPorts: ["5555"]),
-        Device(name: "Test Device 2", ipAddress: "192.168.1.102", port: 8080, version: "2.0.0", adbPorts: ["5555"]),
-        Device(name: "Test Device 3", ipAddress: "192.168.1.103", port: 8080, version: "2.0.0", adbPorts: ["5555"])
+        Device(name: "Test Device 1", ipAddress: "192.168.1.101", port: 8080, version: "2.0.0", adbPorts: ["5555"], deviceId: "device_id_1"),
+        Device(name: "Test Device 2", ipAddress: "192.168.1.102", port: 8080, version: "2.0.0", adbPorts: ["5555"], deviceId: "device_id_2"),
+        Device(name: "Test Device 3", ipAddress: "192.168.1.103", port: 8080, version: "2.0.0", adbPorts: ["5555"], deviceId: "device_id_3")
     ]
 }

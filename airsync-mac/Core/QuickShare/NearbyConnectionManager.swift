@@ -174,7 +174,7 @@ public protocol MainAppDelegate{
 	func obtainUserConsent(for transfer:TransferMetadata, from device:RemoteDeviceInfo)
 	func incomingTransfer(id:String, didFinishWith error:Error?)
 	func incomingTransferProgress(id:String, progress:Double)
-	func transferDidComplete(id:String)
+	func transferDidComplete(id:String, urls:[URL])
 }
 
 public protocol ShareExtensionDelegate:AnyObject{
@@ -257,7 +257,8 @@ public class NearbyConnectionManager : NSObject, NetServiceDelegate, InboundNear
 			0, 0
 		]
 		let name=Data(nameBytes).urlSafeBase64EncodedString()
-		let endpointInfo=EndpointInfo(name: Host.current().localizedName!, deviceType: .computer)
+		let macName = AppState.shared.myDevice?.name ?? Host.current().localizedName ?? "Mac"
+		let endpointInfo=EndpointInfo(name: macName, deviceType: .computer)
 		
 		let port:Int32=Int32(tcpListener.port!.rawValue)
 		mdnsService=NetService(domain: "", type: "_FC9F5ED42C8A._tcp.", name: name, port: port)
@@ -286,7 +287,7 @@ public class NearbyConnectionManager : NSObject, NetServiceDelegate, InboundNear
 	
 	public func transferDidComplete(connection: InboundNearbyConnection) {
 		guard let delegate=mainAppDelegate else {return}
-		delegate.transferDidComplete(id: connection.id)
+		delegate.transferDidComplete(id: connection.id, urls: connection.completedURLs)
 	}
 	
 	public func submitUserConsent(transferID:String, accept:Bool){
@@ -333,6 +334,7 @@ public class NearbyConnectionManager : NSObject, NetServiceDelegate, InboundNear
 		if discoveryRefCount==0{
 			browser?.cancel()
 			browser=nil
+			foundServices.removeAll()
 		}
 	}
 	

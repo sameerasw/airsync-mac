@@ -11,16 +11,6 @@ import UserNotifications
 @MainActor
 class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                didRemoveDeliveredNotifications identifiers: [String]) {
-        for nid in identifiers {
-            print("[notification-delegate] User dismissed system notification with nid: \(nid)")
-            DispatchQueue.main.async {
-                AppState.shared.removeNotificationById(nid)
-            }
-        }
-    }
-
-    func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         completionHandler([.banner, .sound])
@@ -78,6 +68,16 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                 )
             } else {
                 print("[notification-delegate] Missing device details or package for scrcpy.")
+            }
+        }
+        // Handle body tap (user clicked the notification itself, not an action button)
+        else if response.actionIdentifier == UNNotificationDefaultActionIdentifier {
+            if AppState.shared.openAppOnNotificationClick,
+               let package = userInfo["package"] as? String {
+                let opened = MacAppLaunchManager.open(package: package)
+                if !opened {
+                    print("[notification-delegate] No launch preference configured for package: \(package)")
+                }
             }
         }
         // Handle custom actions

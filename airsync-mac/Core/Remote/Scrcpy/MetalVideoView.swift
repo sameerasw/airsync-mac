@@ -29,73 +29,203 @@ struct MetalVideoView: NSViewRepresentable {
     class ScrcpyMTKView: MTKView {
         var streamClient: ScrcpyStreamClient?
         
-        override func mouseDown(with event: NSEvent) { sendTouchEvent(action: 0, event: event) }
+        override func mouseDown(with event: NSEvent) {
+            window?.makeFirstResponder(self)
+            sendTouchEvent(action: 0, event: event)
+        }
         override func mouseUp(with event: NSEvent) { sendTouchEvent(action: 1, event: event) }
         override func mouseDragged(with event: NSEvent) { sendTouchEvent(action: 2, event: event) }
         
-        // Secondary click as "Back" button (AKEYCODE_BACK = 4)
-        override func rightMouseDown(with event: NSEvent) { ScrcpyControlClient.shared.sendKeyEvent(action: 0, keycode: 4) }
-        override func rightMouseUp(with event: NSEvent) { ScrcpyControlClient.shared.sendKeyEvent(action: 1, keycode: 4) }
+        // Keyboard event handling
+        override func keyDown(with event: NSEvent) {
+            if let keycode = androidKeycode(for: event.keyCode) {
+                var metaState: UInt32 = 0
+                let flags = event.modifierFlags
+                let swap = UserDefaults.standard.swapCmdAndCtrl
+                
+                if flags.contains(.shift) { metaState |= 0x01 }
+                if flags.contains(.option) { metaState |= 0x02 }
+                if flags.contains(.capsLock) { metaState |= 0x100000 }
+                
+                if swap {
+                    if flags.contains(.control) { metaState |= 0x10000 } // Control -> Meta
+                    if flags.contains(.command) { metaState |= 0x1000 }  // Command -> Control
+                } else {
+                    if flags.contains(.control) { metaState |= 0x1000 }
+                    if flags.contains(.command) { metaState |= 0x10000 }
+                }
+                
+                ScrcpyControlClient.shared.sendKeyEvent(action: 0, keycode: keycode, metaState: metaState)
+            } else {
+                super.keyDown(with: event)
+            }
+        }
         
-        private var scrollDragY: Double = 0
-        private var isVirtualScrolling: Bool = false
-        private var scrollTimer: Timer?
+        override func keyUp(with event: NSEvent) {
+            if let keycode = androidKeycode(for: event.keyCode) {
+                var metaState: UInt32 = 0
+                let flags = event.modifierFlags
+                let swap = UserDefaults.standard.swapCmdAndCtrl
+                
+                if flags.contains(.shift) { metaState |= 0x01 }
+                if flags.contains(.option) { metaState |= 0x02 }
+                if flags.contains(.capsLock) { metaState |= 0x100000 }
+                
+                if swap {
+                    if flags.contains(.control) { metaState |= 0x10000 } // Control -> Meta
+                    if flags.contains(.command) { metaState |= 0x1000 }  // Command -> Control
+                } else {
+                    if flags.contains(.control) { metaState |= 0x1000 }
+                    if flags.contains(.command) { metaState |= 0x10000 }
+                }
+                
+                ScrcpyControlClient.shared.sendKeyEvent(action: 1, keycode: keycode, metaState: metaState)
+            } else {
+                super.keyUp(with: event)
+            }
+        }
+        
+        private func androidKeycode(for macKeycode: UInt16) -> UInt32? {
+            let swap = UserDefaults.standard.swapCmdAndCtrl
+            switch macKeycode {
+            // Modifiers
+            case 59: return swap ? 117 : 113 // Left Control
+            case 55: return swap ? 113 : 117 // Left Command/Meta
+            case 58: return 57               // Left Option/Alt
+            case 56: return 59               // Left Shift
+            case 62: return swap ? 118 : 114 // Right Control
+            case 54: return swap ? 114 : 118 // Right Command/Meta
+            case 61: return 58               // Right Option/Alt
+            case 60: return 60               // Right Shift
+            
+            // Letters
+            case 0: return 29  // A
+            case 11: return 30 // B
+            case 8: return 31  // C
+            case 2: return 32  // D
+            case 14: return 33 // E
+            case 3: return 34  // F
+            case 5: return 35  // G
+            case 4: return 36  // H
+            case 34: return 37 // I
+            case 38: return 38 // J
+            case 40: return 39 // K
+            case 37: return 40 // L
+            case 46: return 41 // M
+            case 45: return 42 // N
+            case 31: return 43 // O
+            case 35: return 44 // P
+            case 12: return 45 // Q
+            case 15: return 46 // R
+            case 1: return 47  // S
+            case 17: return 48 // T
+            case 32: return 49 // U
+            case 9: return 50  // V
+            case 13: return 51 // W
+            case 7: return 52  // X
+            case 16: return 53 // Y
+            case 6: return 54  // Z
+            
+            // Numbers
+            case 29: return 7  // 0
+            case 18: return 8  // 1
+            case 19: return 9  // 2
+            case 20: return 10 // 3
+            case 21: return 11 // 4
+            case 23: return 12 // 5
+            case 22: return 13 // 6
+            case 26: return 14 // 7
+            case 28: return 15 // 8
+            case 25: return 16 // 9
+            
+            // Special / Navigation
+            case 36: return 66  // Enter
+            case 51: return 67  // Delete (Backspace)
+            case 53: return 111 // Escape
+            case 48: return 61  // Tab
+            case 49: return 62  // Space
+            case 123: return 21 // Left
+            case 124: return 22 // Right
+            case 126: return 19 // Up
+            case 125: return 20 // Down
+            
+            // Additional symbols
+            case 24: return 81  // Plus/Equal
+            case 27: return 69  // Minus
+            case 33: return 71  // Left Bracket
+            case 30: return 72  // Right Bracket
+            case 42: return 73  // Backslash
+            case 41: return 74  // Semicolon
+            case 39: return 75  // Apostrophe
+            case 43: return 55  // Comma
+            case 47: return 56  // Period
+            case 44: return 76  // Slash
+            case 50: return 68  // Grave (Backtick)
+            
+            default: return nil
+            }
+        }
+        
+        private var rightClickTimer: Timer?
+        private var rightClickDidTriggerHome = false
+        
+        private func sendHomeButton() {
+            ScrcpyControlClient.shared.sendKeyEvent(action: 0, keycode: 3)
+            ScrcpyControlClient.shared.sendKeyEvent(action: 1, keycode: 3)
+        }
+        
+        // Secondary click: long press sends Home (3), short press sends Back (4)
+        override func rightMouseDown(with event: NSEvent) {
+            rightClickDidTriggerHome = false
+            rightClickTimer?.invalidate()
+            rightClickTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+                self?.rightClickDidTriggerHome = true
+                self?.sendHomeButton()
+            }
+        }
+        
+        override func rightMouseUp(with event: NSEvent) {
+            rightClickTimer?.invalidate()
+            rightClickTimer = nil
+            if !rightClickDidTriggerHome {
+                ScrcpyControlClient.shared.sendKeyEvent(action: 0, keycode: 4)
+                ScrcpyControlClient.shared.sendKeyEvent(action: 1, keycode: 4)
+            }
+        }
+        
+        // Middle click sends Home (3)
+        override func otherMouseDown(with event: NSEvent) {
+            if event.buttonNumber == 2 {
+                sendHomeButton()
+            } else {
+                super.otherMouseDown(with: event)
+            }
+        }
         
         override func scrollWheel(with event: NSEvent) {
             guard let client = streamClient, client.videoWidth > 0, client.videoHeight > 0 else { return }
             
-            let centerX = UInt32(Double(client.videoWidth) / 2.0)
-            let centerY = UInt32(Double(client.videoHeight) / 2.0)
+            let point = convert(event.locationInWindow, from: nil)
             
-            // NSEvent phases provide much more accurate lifecycle for trackpad gestures
-            let phase = event.phase
-            let momentumPhase = event.momentumPhase
+            // Coordinate mapping: NSView (flipped Y) to Android (0,0 is top-left)
+            let x = Int32(max(0, min(1.0, point.x / frame.width)) * Double(client.videoWidth))
+            let y = Int32(max(0, min(1.0, 1.0 - (point.y / frame.height))) * Double(client.videoHeight))
             
-            if phase == .began {
-                isVirtualScrolling = true
-                scrollDragY = Double(centerY)
-                sendVirtualTouch(action: 0, x: centerX, y: UInt32(scrollDragY), client: client)
-            } else if phase == .changed || (phase == [] && momentumPhase == []) {
-                // Handle actual scrolling movement
-                if !isVirtualScrolling {
-                    isVirtualScrolling = true
-                    scrollDragY = Double(centerY)
-                    sendVirtualTouch(action: 0, x: centerX, y: UInt32(scrollDragY), client: client)
-                }
-                
-                // Increase sensitivity and invert for "Natural" feel
-                let sensitivity: Double = event.hasPreciseScrollingDeltas ? 1.5 : 10.0
-                scrollDragY += Double(event.scrollingDeltaY) * sensitivity
-                scrollDragY = max(0, min(Double(client.videoHeight), scrollDragY))
-                
-                sendVirtualTouch(action: 2, x: centerX, y: UInt32(scrollDragY), client: client)
-            }
+            // For scrcpy scroll events, positive scrolls left/up, negative scrolls right/down.
+            // On macOS:
+            // - scrollingDeltaY is positive when scrolling up (moving page down)
+            // - scrollingDeltaX is positive when scrolling left (moving page right)
+            // We pass the delta values directly so Android handles continuous/precise scrolling smoothly.
+            let scrollX = Float(event.scrollingDeltaX)
+            let scrollY = Float(event.scrollingDeltaY)
             
-            // End virtual touch session
-            if phase == .ended || phase == .cancelled || momentumPhase == .ended || momentumPhase == .cancelled {
-                if isVirtualScrolling {
-                    sendVirtualTouch(action: 1, x: centerX, y: UInt32(scrollDragY), client: client)
-                    isVirtualScrolling = false
-                }
-                scrollTimer?.invalidate()
-                scrollTimer = nil
-            } else if phase == [] && momentumPhase == [] {
-                // Fallback for traditional mice wheel (timer based)
-                scrollTimer?.invalidate()
-                scrollTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { [weak self] _ in
-                    guard let self = self, let client = self.streamClient, self.isVirtualScrolling else { return }
-                    self.sendVirtualTouch(action: 1, x: centerX, y: UInt32(self.scrollDragY), client: client)
-                    self.isVirtualScrolling = false
-                }
-            }
-        }
-        
-        private func sendVirtualTouch(action: UInt8, x: UInt32, y: UInt32, client: ScrcpyStreamClient) {
-            ScrcpyControlClient.shared.sendTouchEvent(
-                action: action,
-                x: x, y: y,
+            ScrcpyControlClient.shared.sendScrollEvent(
+                x: x,
+                y: y,
                 width: UInt16(client.videoWidth),
-                height: UInt16(client.videoHeight)
+                height: UInt16(client.videoHeight),
+                scrollX: scrollX,
+                scrollY: scrollY
             )
         }
         

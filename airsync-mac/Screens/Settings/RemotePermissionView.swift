@@ -11,8 +11,8 @@ import Combine
 struct RemotePermissionView: View {
     @Environment(\.dismiss) var dismiss
     @State private var isTrusted: Bool = false
-    let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-    
+    @State private var timer: AnyCancellable?
+
     var body: some View {
         VStack(spacing: 20) {
             Image(systemName: "keyboard.badge.eye")
@@ -20,7 +20,7 @@ struct RemotePermissionView: View {
                 .foregroundColor(.accentColor)
                 .padding(.bottom, 10)
             
-            Text("Remote Control Permission")
+            Text("Remote control permission")
                 .font(.title2)
                 .fontWeight(.bold)
             
@@ -46,9 +46,13 @@ struct RemotePermissionView: View {
         .frame(width: 450)
         .onAppear {
             checkPermission()
+            timer = Timer.publish(every: 2, on: .main, in: .default)
+                .autoconnect()
+                .sink { _ in checkPermission() }
         }
-        .onReceive(timer) { _ in
-            checkPermission()
+        .onDisappear {
+            timer?.cancel()
+            timer = nil
         }
     }
     

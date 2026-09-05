@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>AndroidVersion</key>
-	<string>3.1.0</string>
+	<string>4.0.0</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -40,7 +40,7 @@
 		</dict>
 	</dict>
 	<key>ForceUpdateKey</key>
-	<string>005</string>
+	<string>007</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
@@ -83,6 +83,10 @@
 	<string>sHwLY7+V1LUTP7lmY9FYK8FAZgn2zlUhYCEiDazyaMQ=</string>
 	<key>TrialSecret</key>
 	<string>$(TRIAL_SECRET)</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>AirSync uses Bluetooth to sync notifications and media controls with your Android phone when Wi-Fi is unavailable.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>AirSync uses Bluetooth to sync notifications and media controls with your Android phone when Wi-Fi is unavailable.</string>
 	<key>UpdateFeedURL</key>
 	<string>https://sameerasw.github.io/airsync-mac/releases/latest</string>
 </dict>

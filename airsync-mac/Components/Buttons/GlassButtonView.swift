@@ -28,11 +28,19 @@ struct GlassButtonView: View {
     @ViewBuilder
     private var labelContent: some View {
         if isLoading {
-            ProgressView()
-                .controlSize(.small)
-                .frame(minWidth: 20)
-        } else if customIconSizingActive, iconOnly, let (imgView, altText) = iconImageView() {
-            imgView.accessibilityLabel(Text(altText))
+            GlassButtonSpinnerView()
+        } else if iconOnly {
+            if customIconSizingActive, let (imgView, altText) = iconImageView() {
+                imgView.accessibilityLabel(Text(altText))
+            } else {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                } else if let image {
+                    Image(image)
+                } else {
+                    Text(label)
+                }
+            }
         } else {
             if let systemImage { Label(label, systemImage: systemImage) }
             else if let image { Label(label, image: image) }
@@ -142,4 +150,22 @@ extension View {
         GlassButtonView(label: "Primary", systemImage: "checkmark", primary: true)
     }
     .padding()
+}
+
+struct GlassButtonSpinnerView: View {
+    @State private var isAnimating = false
+    
+    var body: some View {
+        Circle()
+            .trim(from: 0, to: 0.75)
+            .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+            .frame(width: 12, height: 12)
+            .rotationEffect(Angle(degrees: isAnimating ? 360 : 0))
+            .onAppear {
+                withAnimation(Animation.linear(duration: 0.8).repeatForever(autoreverses: false)) {
+                    isAnimating = true
+                }
+            }
+            .frame(width: 20, height: 20)
+    }
 }

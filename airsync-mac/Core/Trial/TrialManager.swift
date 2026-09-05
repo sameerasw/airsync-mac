@@ -195,7 +195,11 @@ final class TrialManager: ObservableObject {
             return
         }
 
-        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        // Use 60s interval when lots of time remains; 1s only in the final 2 minutes
+        let remaining = expiry.timeIntervalSinceNow
+        let interval: TimeInterval = remaining > 120 ? 60 : 1
+
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             guard let self else { return }
             Task { @MainActor in
                 self.tickCountdown()

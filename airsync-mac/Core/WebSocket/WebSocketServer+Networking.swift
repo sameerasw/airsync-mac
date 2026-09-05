@@ -5,6 +5,7 @@
 
 import Foundation
 import UniformTypeIdentifiers
+import Network
 #if canImport(MobileCoreServices)
 import MobileCoreServices
 #endif
@@ -105,20 +106,19 @@ extension WebSocketServer {
     // MARK: - Network Monitoring
 
     func startNetworkMonitoring() {
-        DispatchQueue.main.async {
-            self.lock.lock()
-            self.networkMonitorTimer?.invalidate()
-            let interval = self.networkCheckInterval
-            self.lock.unlock()
-            
-            self.networkMonitorTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-                self?.checkNetworkChange()
-            }
-            self.networkMonitorTimer?.tolerance = 1.0
+        networkPathMonitor?.cancel()
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            guard path.status == .satisfied else { return }
+            self?.checkNetworkChange()
         }
+        monitor.start(queue: networkMonitorQueue)
+        networkPathMonitor = monitor
     }
 
     func stopNetworkMonitoring() {
+        networkPathMonitor?.cancel()
+        networkPathMonitor = nil
         DispatchQueue.main.async {
             self.lock.lock()
             self.networkMonitorTimer?.invalidate()

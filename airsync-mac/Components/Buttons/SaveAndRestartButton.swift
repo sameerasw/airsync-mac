@@ -32,7 +32,8 @@ struct SaveAndRestartButton: View {
                     ipAddress: ipAddress,
                     port: Int(portNumber),
                     version: version,
-                    adbPorts: []
+                    adbPorts: [],
+                    deviceId: UserDefaults.standard.string(forKey: "trialDeviceIdentifier") ?? "mac_device"
                 )
 
                 // Save

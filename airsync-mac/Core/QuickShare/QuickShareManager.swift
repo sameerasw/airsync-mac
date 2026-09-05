@@ -7,6 +7,7 @@ import Foundation
 import SwiftUI
 import UserNotifications
 @preconcurrency import Combine
+import UniformTypeIdentifiers
 
 struct QuickShareTransferInfo {
     let device: RemoteDeviceInfo
@@ -244,15 +245,31 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
         activeIncomingTransfers.removeValue(forKey: id)
     }
  
-    public func transferDidComplete(id: String) {
-        print("[quickshare] Transfer \(id) completed on disk")
+    public func transferDidComplete(id: String, urls: [URL]) {
+        print("[quickshare] Transfer \(id) completed on disk with urls: \(urls)")
         self.transferState = .finished
         self.transferProgress = 1.0
+        
+        // Pop up overlay if enabled and exactly one file transferred
+        if AppState.shared.popupSharedImages, urls.count == 1, let firstURL = urls.first {
+            DispatchQueue.main.async {
+                SharedImagePopupManager.shared.show(fileURL: firstURL)
+            }
+        }
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             AppState.shared.showingQuickShareTransfer = false
             self.transferState = .idle
         }
+    }
+    
+    private func isImage(url: URL) -> Bool {
+        if let type = UTType(filenameExtension: url.pathExtension) {
+            return type.conforms(to: .image)
+        }
+        let imageExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "heic", "webp"]
+        let ext = url.pathExtension.lowercased()
+        return imageExtensions.contains(ext)
     }
     
     public func handleUserConsent(transferID: String, accepted: Bool) {

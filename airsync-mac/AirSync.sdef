@@ -31,8 +31,9 @@
             <result type="text" description="Returns media information as JSON or status message"/>
         </command>
         
-        <command name="launch mirroring" code="AirSlaun" description="Launch full device mirroring via scrcpy">
+        <command name="launch mirroring" code="AirSlaun" description="Launch full device mirroring via scrcpy or native">
             <cocoa class="AirSyncLaunchMirroringCommand"/>
+            <parameter name="mode" code="Mode" type="text" optional="yes" description="Mirroring mode: scrcpy or native"/>
             <result type="text" description="Returns launch status or error information as JSON"/>
         </command>
         
@@ -49,6 +50,7 @@
         
         <command name="desktop mode" code="AirSdesk" description="Launch desktop mode mirroring">
             <cocoa class="AirSyncDesktopModeCommand"/>
+            <parameter name="mode" code="Mode" type="text" optional="yes" description="Mirroring mode: scrcpy or native"/>
             <result type="text" description="Returns launch status or error information as JSON"/>
         </command>
         
@@ -73,6 +75,27 @@
             <cocoa class="AirSyncDismissNotificationCommand"/>
             <direct-parameter type="text" description="Notification ID to dismiss"/>
             <result type="text" description="Returns dismissal status as JSON"/>
+        </command>
+
+        <command name="quickshare start discovery" code="AirSqsdi" description="Start QuickShare device discovery">
+            <cocoa class="AirSyncQuickShareStartDiscoveryCommand"/>
+            <result type="text" description="Returns status message"/>
+        </command>
+
+        <command name="quickshare stop discovery" code="AirSqssp" description="Stop QuickShare device discovery and transfers">
+            <cocoa class="AirSyncQuickShareStopDiscoveryCommand"/>
+            <result type="text" description="Returns status message"/>
+        </command>
+
+        <command name="quickshare get status" code="AirSqsst" description="Get current QuickShare status and discovered devices">
+            <cocoa class="AirSyncQuickShareGetStatusCommand"/>
+            <result type="text" description="Returns JSON representation of QuickShare status"/>
+        </command>
+
+        <command name="quickshare send files" code="AirSqssf" description="Send selected files to a device via QuickShare">
+            <cocoa class="AirSyncQuickShareSendFilesCommand"/>
+            <direct-parameter type="text" description="Format: 'device_id|file_path_1|file_path_2|...'"/>
+            <result type="text" description="Returns status message or JSON"/>
         </command>
     </suite>
 </dictionary>

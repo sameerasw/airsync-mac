@@ -20,7 +20,7 @@ struct AppContentView: View {
             if appState.device == nil {
                 ScannerView()
                     .tabItem {
-                        Image(systemName: "qrcode")
+                        Image(systemName: "iphone.motion")
                         //                    Label("Scan", systemImage: "qrcode")
                     }
                     .tag(TabIdentifier.qr)
@@ -120,8 +120,29 @@ struct AppContentView: View {
                     }
                 }
         }
+        .background(
+            Group {
+                Button("") {
+                    if appState.device != nil {
+                        appState.selectedTab = .notifications
+                    }
+                }
+                .keyboardShortcut("n", modifiers: [.command])
+                .opacity(0)
+                .allowsHitTesting(false)
+
+                Button("") {
+                    if appState.device != nil {
+                        appState.selectedTab = .apps
+                    }
+                }
+                .keyboardShortcut("a", modifiers: [.command])
+                .opacity(0)
+                .allowsHitTesting(false)
+            }
+        )
         .tabViewStyle(.automatic)
-        .frame(minWidth: 550)
+        .frame(minWidth: 550, minHeight: 510)
         .onAppear {
             // Ensure the correct tab is selected when the view appears
             if appState.device == nil {
@@ -138,6 +159,9 @@ struct AppContentView: View {
         }
         .sheet(isPresented: $appState.showFileBrowser) {
             FileBrowserView(onClose: { appState.showFileBrowser = false })
+        }
+        .sheet(isPresented: $appState.showADBPairingSheet) {
+            ADBPairingSheetView()
         }
         .alert(isPresented: $showDisconnectAlert) {
             Alert(

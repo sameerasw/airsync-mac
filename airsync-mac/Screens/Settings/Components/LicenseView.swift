@@ -323,7 +323,15 @@ struct ConnectionInfoText: View {
 
     var body: some View {
         HStack{
-            Label(label, systemImage: icon)
+            Label {
+                Text(label)
+            } icon: {
+                if icon == "logo.bluetooth" {
+                    Image("logo.bluetooth")
+                } else {
+                    Image(systemName: icon)
+                }
+            }
             Spacer()
             
             if label == "IP Address" {

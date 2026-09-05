@@ -36,7 +36,8 @@ struct PlusUnlockedSheet: View {
                             featureRow(icon: "music.note", title: "Media Controls", description: "Control music playback and volume directly from your Mac")
                             featureRow(icon: "desktopcomputer", title: "Wireless Desktop Mode", description: "Use the phone in a familiar way, with full desktop controls")
                             featureRow(icon: "phone", title: "Call controls", description: "Accept, decline, or end calls directly from your Mac")
-                            featureRow(icon: "folder", title: "File Browser", description: "Browse and manage files on your Android device from your Mac")
+                            featureRow(icon: "folder", title: "File Browser & Mounting", description: "Browse, manage, and mount your Android storage directly as a local Finder drive")
+                            featureRow(icon: "menubar.rectangle", title: "MenuBar Customizations", description: "Customize menu bar text style, font size, battery style, and album art layout")
                     }
                     .listStyle(.sidebar)
                     .scrollContentBackground(.hidden)
@@ -51,7 +52,7 @@ struct PlusUnlockedSheet: View {
                         systemImage: "xmark.circle",
                         size: .large,
                         action: {
-                            AppState.shared.licenseDetails = nil
+                            Gumroad().clearLicenseDetails()
                             TrialManager.shared.clearTrial()
                             AppState.shared.isPlus = false
                         }

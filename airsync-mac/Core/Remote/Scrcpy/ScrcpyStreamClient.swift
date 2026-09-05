@@ -111,23 +111,15 @@ class ScrcpyStreamClient: ObservableObject {
                     self?.deviceName = deviceName
                 }
                 
-                // Read 12-byte metadata: [4: Codec][4: Width][4: Height]
-                self?.connection?.receive(minimumIncompleteLength: 12, maximumLength: 12) { [weak self] data, context, isComplete, error in
-                    guard let data = data, data.count == 12, error == nil else {
-                        print("[ScrcpyStreamClient] Failed to read codec/width/height")
+                // Read 4-byte metadata: [4: Codec]
+                self?.connection?.receive(minimumIncompleteLength: 4, maximumLength: 4) { [weak self] data, context, isComplete, error in
+                    guard let data = data, data.count == 4, error == nil else {
+                        print("[ScrcpyStreamClient] Failed to read codec")
                         return
                     }
                     
-                    let codec = data.subdata(in: 0..<4).withUnsafeBytes { $0.load(as: UInt32.self).byteSwapped }
-                    let width = data.subdata(in: 4..<8).withUnsafeBytes { $0.load(as: UInt32.self).byteSwapped }
-                    let height = data.subdata(in: 8..<12).withUnsafeBytes { $0.load(as: UInt32.self).byteSwapped }
-                    
-                    print("[ScrcpyStreamClient] Codec: 0x\(String(format: "%08X", codec)), Resolution: \(width)x\(height)")
-                    
-                    DispatchQueue.main.async {
-                        self?.videoWidth = width
-                        self?.videoHeight = height
-                    }
+                    let codec = data.withUnsafeBytes { $0.load(as: UInt32.self).byteSwapped }
+                    print("[ScrcpyStreamClient] Codec: 0x\(String(format: "%08X", codec))")
                     
                     self?.readFrameHeader()
                 }
@@ -136,7 +128,7 @@ class ScrcpyStreamClient: ObservableObject {
     }
     
     private func readFrameHeader() {
-        // Read 12-byte frame header: [8: PTS][4: Size]
+        // Read 12-byte packet header
         connection?.receive(minimumIncompleteLength: 12, maximumLength: 12) { [weak self] data, context, isComplete, error in
             guard let data = data, data.count == 12, error == nil else {
                 if let error = error {
@@ -145,12 +137,36 @@ class ScrcpyStreamClient: ObservableObject {
                 return
             }
             
-            let pts = data.subdata(in: 0..<8).withUnsafeBytes { $0.load(as: UInt64.self).byteSwapped }
-            let packetSize = data.subdata(in: 8..<12).withUnsafeBytes { $0.load(as: UInt32.self).byteSwapped }
-            
-            // Note: Modern scrcpy does not send config/keyframe flags in the header.
-            // We'll let the decoder handle Annex-B parsing for keyframes and SPS/PPS.
-            self?.readPacket(size: Int(packetSize), isConfig: false, isKeyframe: false, pts: pts)
+            // Check if MSB of the first byte is set to 1 (Session Packet)
+            if (data[0] & 0x80) != 0 {
+                // Session Packet: [4: Flags (MSB=1)][4: Width][4: Height]
+                let flags = data.subdata(in: 0..<4).withUnsafeBytes { $0.load(as: UInt32.self).byteSwapped }
+                let width = data.subdata(in: 4..<8).withUnsafeBytes { $0.load(as: UInt32.self).byteSwapped }
+                let height = data.subdata(in: 8..<12).withUnsafeBytes { $0.load(as: UInt32.self).byteSwapped }
+                
+                print("[ScrcpyStreamClient] Session Packet: Flags: 0x\(String(format: "%08X", flags)), Resolution: \(width)x\(height)")
+                
+                DispatchQueue.main.async {
+                    self?.videoWidth = width
+                    self?.videoHeight = height
+                }
+                
+                // Immediately read the next packet header (no packet payload follows a session packet)
+                self?.readFrameHeader()
+            } else {
+                // Media Packet: [8: PTS][4: Size]
+                // Note: The two most significant bits of PTS contain flags:
+                // Bit 62 is SC_PACKET_FLAG_CONFIG, Bit 61 is SC_PACKET_FLAG_KEY_FRAME.
+                // The actual PTS is stored in the remaining 62 bits.
+                let ptsWithFlags = data.subdata(in: 0..<8).withUnsafeBytes { $0.load(as: UInt64.self).byteSwapped }
+                let isConfig = (ptsWithFlags & (1 << 62)) != 0
+                let isKeyframe = (ptsWithFlags & (1 << 61)) != 0
+                let pts = ptsWithFlags & 0x1FFFFFFFFFFFFFFF
+                
+                let packetSize = data.subdata(in: 8..<12).withUnsafeBytes { $0.load(as: UInt32.self).byteSwapped }
+                
+                self?.readPacket(size: Int(packetSize), isConfig: isConfig, isKeyframe: isKeyframe, pts: pts)
+            }
         }
     }
     

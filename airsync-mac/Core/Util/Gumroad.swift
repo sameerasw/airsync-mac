@@ -146,6 +146,7 @@ class Gumroad {
         AppState.shared.licenseDetails = nil
         UserDefaults.standard.removeObject(forKey: "licenseDetailsKey")
         UserDefaults.standard.consecutiveLicenseFailCount = 0
+        UserDefaults.standard.lastLicenseSuccessfulCheckDate = nil
     }
 
     func incrementInvalidLicenseFailCount() {
@@ -293,7 +294,8 @@ class Gumroad {
 
     func checkLicenseIfNeeded() async {
         // If we already had a successful check today, skip to enforce "max one successful check per day"
-        if let lastSuccess = UserDefaults.standard.lastLicenseSuccessfulCheckDate,
+        if appState.licenseDetails != nil,
+           let lastSuccess = UserDefaults.standard.lastLicenseSuccessfulCheckDate,
            Calendar.current.isDateInToday(lastSuccess) {
             print("[gumroad] License already successfully validated today — skipping network call.")
             appState.isPlus = true

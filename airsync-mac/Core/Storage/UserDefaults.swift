@@ -14,8 +14,7 @@ extension UserDefaults {
         static let consecutiveLicenseFailCount = "consecutiveLicenseFailCount"
         static let consecutiveNetworkFailureDays = "consecutiveNetworkFailureDays"
         static let scrcpyOnTop = "scrcpyOnTop"
-        static let scrcpyShareRes = "scrcpyShareRes"
-        static let scrcpyDesktopMode = "scrcpyDesktopMode"
+        static let scrcpyDesktopDpi = "scrcpyDesktopDpi"
         static let lastADBCommand = "lastADBCommand"
         static let stayAwake = "stayAwake"
         static let turnScreenOff = "turnScreenOff"
@@ -26,14 +25,20 @@ extension UserDefaults {
         static let continueApp = "continueApp"
         static let directKeyInput = "directKeyInput"
         static let sendNowPlayingStatus = "sendNowPlayingStatus"
+        static let syncAndroidPlaybackSeekbar = "syncAndroidPlaybackSeekbar"
+        static let showInControlCenter = "showInControlCenter"
         static let isMusicCardHidden = "isMusicCardHidden"
         static let lastOnboarding = "lastOnboarding"
+        static let popupSharedImages = "popupSharedImages"
+        static let sharedImagePopupsLimit = "sharedImagePopupsLimit"
+        static let popupSharedImagesOnLeft = "popupSharedImagesOnLeft"
 
         static let notificationStacks = "notificationStacks"
         static let trialToken = "trialToken"
         static let trialExpiryDate = "trialExpiryDate"
         static let trialDeviceIdentifier = "trialDeviceIdentifier"
         static let trialLastSync = "trialLastSync"
+        static let appSilentNotifications = "appSilentNotifications"
     }
 
     var consecutiveLicenseFailCount: Int {
@@ -61,14 +66,9 @@ extension UserDefaults {
         set { set(newValue, forKey: Keys.scrcpyOnTop)}
     }
 
-    var scrcpyShareRes: Bool {
-        get { bool(forKey: Keys.scrcpyShareRes)}
-        set { set(newValue, forKey: Keys.scrcpyShareRes)}
-    }
-
-    var scrcpyDesktopMode: String? {
-        get { object(forKey: Keys.scrcpyDesktopMode) as? String }
-        set { set(newValue, forKey: Keys.scrcpyDesktopMode) }
+    var scrcpyDesktopDpi: String {
+        get { string(forKey: Keys.scrcpyDesktopDpi) ?? "192" }
+        set { set(newValue, forKey: Keys.scrcpyDesktopDpi) }
     }
 
     var lastADBCommand: String? {
@@ -130,9 +130,43 @@ extension UserDefaults {
         set { set(newValue, forKey: Keys.sendNowPlayingStatus)}
     }
 
+    /// When enabled, AirSync plays a silent audio loop to claim macOS Now Playing focus,
+    /// allowing the Android playback seekbar to be exposed in boringNotch / Control Center.
+    /// Disabled by default because it causes Bluetooth multipoint headphones to route
+    /// audio to the Mac, preventing Android media from playing through the headphones.
+    var syncAndroidPlaybackSeekbar: Bool {
+        get { bool(forKey: Keys.syncAndroidPlaybackSeekbar) }
+        set { set(newValue, forKey: Keys.syncAndroidPlaybackSeekbar) }
+    }
+
+    /// Controls whether Android media info is published to macOS Control Center / boringNotch
+    /// via a silent background audio track. Off by default due to Bluetooth multipoint side-effects.
+    var showInControlCenter: Bool {
+        get { bool(forKey: Keys.showInControlCenter) }
+        set { set(newValue, forKey: Keys.showInControlCenter) }
+    }
+
     var isMusicCardHidden: Bool {
         get { bool(forKey: Keys.isMusicCardHidden) }
         set { set(newValue, forKey: Keys.isMusicCardHidden) }
+    }
+
+    var popupSharedImages: Bool {
+        get { object(forKey: Keys.popupSharedImages) == nil ? true : bool(forKey: Keys.popupSharedImages) }
+        set { set(newValue, forKey: Keys.popupSharedImages) }
+    }
+
+    var sharedImagePopupsLimit: Int {
+        get {
+            let val = integer(forKey: Keys.sharedImagePopupsLimit)
+            return val == 0 ? 3 : val
+        }
+        set { set(newValue, forKey: Keys.sharedImagePopupsLimit) }
+    }
+
+    var popupSharedImagesOnLeft: Bool {
+        get { bool(forKey: Keys.popupSharedImagesOnLeft) }
+        set { set(newValue, forKey: Keys.popupSharedImagesOnLeft) }
     }
 
     var trialToken: String? {
@@ -153,6 +187,16 @@ extension UserDefaults {
     var trialLastSync: Date? {
         get { object(forKey: Keys.trialLastSync) as? Date }
         set { set(newValue, forKey: Keys.trialLastSync) }
+    }
+    
+    var swapCmdAndCtrl: Bool {
+        get { object(forKey: "swapCmdAndCtrl") == nil ? true : bool(forKey: "swapCmdAndCtrl") }
+        set { set(newValue, forKey: "swapCmdAndCtrl") }
+    }
+
+    var showMirrorControls: Bool {
+        get { object(forKey: "showMirrorControls") == nil ? true : bool(forKey: "showMirrorControls") }
+        set { set(newValue, forKey: "showMirrorControls") }
     }
     
     // MARK: - String-based Onboarding Tracking
@@ -183,6 +227,11 @@ extension UserDefaults {
     
     func resetOnboarding() {
         lastOnboarding = "000"
+    }
+
+    var appSilentNotifications: [String: Bool] {
+        get { dictionary(forKey: Keys.appSilentNotifications) as? [String: Bool] ?? [:] }
+        set { set(newValue, forKey: Keys.appSilentNotifications) }
     }
 }
 

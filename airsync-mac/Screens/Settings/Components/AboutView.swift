@@ -111,6 +111,7 @@ struct AboutView: View {
                                 UserDefaults.standard.hasPairedDeviceOnce = false
                                 UserDefaults.standard.resetOnboarding()
                             }
+                            WhatsNewTourManager.shared.resetAll()
                         }
                     )
 

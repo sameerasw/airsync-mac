@@ -119,6 +119,7 @@ class AirBridgeClient: ObservableObject {
     func connect() {
         queue.async { [weak self] in
             guard let self = self else { return }
+            self.isManuallyDisconnected = false
             guard !self.receiveLoopActive || self.webSocketTask == nil else { return }
             self.connectInternal()
         }
@@ -464,6 +465,9 @@ class AirBridgeClient: ObservableObject {
                 }
                 DispatchQueue.main.async {
                     self.connectionState = .relayActive
+                    if !WebSocketServer.shared.hasActiveLocalSession() {
+                        AppState.shared.updatePeerTransportHint("relay")
+                    }
                     self.startPingLoop()
                 }
                 // Relay can be active as a warm fallback while LAN is active; only advertise RELAY as primary when LAN is down.

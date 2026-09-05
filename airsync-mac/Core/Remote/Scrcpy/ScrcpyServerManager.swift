@@ -10,13 +10,13 @@ import Foundation
 class ScrcpyServerManager: NSObject {
     static let shared = ScrcpyServerManager()
     
-    private let serverLocalPath = Bundle.main.path(forResource: "scrcpy-server-v3.3.4", ofType: nil) ?? "/Users/sameerasandakelum/GIT/airsync-mac/scrcpy-server-v3.3.4"
+    private let serverLocalPath = Bundle.main.path(forResource: "scrcpy-server", ofType: nil) ?? "/Users/sameerasandakelum/GIT/airsync-mac/scrcpy-server"
     private let serverRemotePath = "/data/local/tmp/scrcpy-server"
     private let serverPort: Int = 1234
     
     private var adbProcess: Process?
     
-    func startServer(serial: String, completion: @escaping (Bool) -> Void) {
+    func startServer(serial: String, desktopMode: Bool = false, completion: @escaping (Bool) -> Void) {
         let adbPath = ADBConnector.findExecutable(named: "adb", fallbackPaths: ADBConnector.possibleADBPaths) ?? "/opt/homebrew/bin/adb"
         
         // Step 0: Cleanup previous instances and port forwards
@@ -51,7 +51,7 @@ class ScrcpyServerManager: NSObject {
                 }
                 
                 // Step 3: Launch server
-                self.launchServer(serial: serial, completion: completion)
+                self.launchServer(serial: serial, desktopMode: desktopMode, completion: completion)
             }
         }
     }
@@ -93,21 +93,36 @@ class ScrcpyServerManager: NSObject {
     private var launchCompletion: ((Bool) -> Void)?
     private var launchTimer: Timer?
     
-    func launchServer(serial: String, completion: @escaping (Bool) -> Void) {
+    func launchServer(serial: String, desktopMode: Bool = false, completion: @escaping (Bool) -> Void) {
         let adbPath = ADBConnector.findExecutable(named: "adb", fallbackPaths: ADBConnector.possibleADBPaths) ?? "/opt/homebrew/bin/adb"
         
         let process = Process()
         process.executableURL = URL(fileURLWithPath: adbPath)
         
-        // Explicitly include video=true and bit_rate/max_size
+        var serverArgs = [
+            "tunnel_forward=true", "audio=false", "video=true", "control=true",
+            "video_codec=h265", "video_bit_rate=8000000"
+        ]
+        
+        if desktopMode {
+            // Virtual display — new_display requires "WxH" or "WxH/DPI" format
+            let dpi = UserDefaults.standard.scrcpyDesktopDpi
+            if !dpi.isEmpty {
+                serverArgs.append("new_display=1920x1080/\(dpi)")
+            } else {
+                serverArgs.append("new_display=1920x1080")
+            }
+            serverArgs.append("flex_display=true")
+        } else {
+            serverArgs.append("max_size=1440")
+        }
+        
         process.arguments = [
             "-s", serial,
             "shell",
             "CLASSPATH=\(serverRemotePath)",
-            "app_process", "/", "com.genymobile.scrcpy.Server", "3.3.4",
-            "tunnel_forward=true", "audio=false", "video=true", "control=true",
-            "video_codec=h265", "video_bit_rate=8000000", "max_size=1440"
-        ]
+            "app_process", "/", "com.genymobile.scrcpy.Server", "4.1"
+        ] + serverArgs
         
         self.adbProcess = process
         self.launchCompletion = completion
@@ -125,8 +140,8 @@ class ScrcpyServerManager: NSObject {
                     guard !trimmed.isEmpty else { continue }
                     print("[scrcpy-server] \(trimmed)")
                     
-                    // Detect readiness: "[server] INFO: Video size: ..."
-                    if trimmed.contains("INFO: Video size:") {
+                    // Detect readiness: "[server] INFO: Video size: ..." or "[server] INFO: New display: ..."
+                    if trimmed.contains("INFO: Video size:") || trimmed.contains("INFO: New display:") {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                             self?.launchTimer?.invalidate()
                             self?.launchTimer = nil
@@ -170,7 +185,15 @@ class ScrcpyServerManager: NSObject {
     }
     
     func stopServer() {
-        adbProcess?.terminate()
+        if let process = adbProcess {
+            if let pipe = process.standardOutput as? Pipe {
+                pipe.fileHandleForReading.readabilityHandler = nil
+            }
+            if let pipe = process.standardError as? Pipe {
+                pipe.fileHandleForReading.readabilityHandler = nil
+            }
+            process.terminate()
+        }
         adbProcess = nil
         
         // Remove port forward
@@ -186,5 +209,63 @@ class ScrcpyServerManager: NSObject {
         } catch {
             print("[ScrcpyServerManager] Failed to remove port forward: \(error)")
         }
+    }
+    
+    func startMirroringSession(appState: AppState, streamClient: ScrcpyStreamClient, desktopMode: Bool = false, completion: @escaping (Bool, String?) -> Void) {
+        // Stop any current session first to prevent port/process clashes
+        self.stopMirroringSession(streamClient: streamClient)
+        
+        let wiredAdbEnabled = appState.wiredAdbEnabled
+        let wirelessAddress = "\(appState.adbConnectedIP):\(appState.adbPort)"
+        let adbConnected = appState.adbConnected
+        
+        ADBConnector.getWiredDevices { devices in
+            let mappedSerial = appState.selectedWiredSerial ?? (appState.device?.deviceId).flatMap { appState.deviceAdbSerials[$0] }
+            let serialToUse: String?
+            if let mapped = mappedSerial, devices.contains(where: { $0.serial == mapped }) {
+                serialToUse = mapped
+            } else {
+                serialToUse = devices.first?.serial
+            }
+            
+            let finalSerial: String?
+            if wiredAdbEnabled, let serial = serialToUse {
+                finalSerial = serial
+            } else if adbConnected && !appState.adbConnectedIP.isEmpty {
+                finalSerial = wirelessAddress
+            } else {
+                finalSerial = nil
+            }
+            
+            guard let serial = finalSerial else {
+                DispatchQueue.main.async {
+                    completion(false, "No ADB device detected. Please connect your device via USB or Wi-Fi.")
+                }
+                return
+            }
+            
+            self.startServer(serial: serial, desktopMode: desktopMode) { success in
+                guard success else {
+                    DispatchQueue.main.async {
+                        completion(false, "Failed to start scrcpy server on device.")
+                    }
+                    return
+                }
+                DispatchQueue.main.async {
+                    streamClient.onPacketReceived = { data, isConfig, isKeyframe, pts in
+                        ScrcpyVideoDecoder.shared.decodePacket(data: data, isConfig: isConfig, pts: pts)
+                    }
+                    streamClient.connect()
+                    ScrcpyControlClient.shared.connect()
+                    completion(true, nil)
+                }
+            }
+        }
+    }
+    
+    func stopMirroringSession(streamClient: ScrcpyStreamClient) {
+        streamClient.disconnect()
+        ScrcpyControlClient.shared.disconnect()
+        self.stopServer()
     }
 }

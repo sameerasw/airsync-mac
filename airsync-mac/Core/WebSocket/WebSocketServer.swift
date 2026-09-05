@@ -10,6 +10,7 @@ import Swifter
 import CryptoKit
 import UserNotifications
 import Combine
+import Network
 
 class WebSocketServer: ObservableObject {
     static let shared = WebSocketServer()
@@ -18,9 +19,9 @@ class WebSocketServer: ObservableObject {
     internal var activeSessions: [WebSocketSession] = []
     internal var primarySessionID: ObjectIdentifier?
     internal var pingTimer: Timer?
-    internal let pingInterval: TimeInterval = 12.5
+    internal let pingInterval: TimeInterval = 4.5
     internal var lastActivity: [ObjectIdentifier: Date] = [:]
-    internal let activityTimeout: TimeInterval = 45.0
+    internal let activityTimeout: TimeInterval = 20.0
     
     @Published var symmetricKey: SymmetricKey?
     @Published var localPort: UInt16?
@@ -32,9 +33,12 @@ class WebSocketServer: ObservableObject {
     internal var lastKnownIP: String?
     internal var isRestarting: Bool = false
     internal var networkMonitorTimer: Timer?
+    internal var networkPathMonitor: NWPathMonitor?
+    internal let networkMonitorQueue = DispatchQueue(label: "com.airsync.networkmonitor", qos: .utility)
     internal let networkCheckInterval: TimeInterval = 10.0
     internal let lock = NSRecursiveLock()
     internal let fileQueue = DispatchQueue(label: "com.airsync.fileio")
+    private let jsonDecoder = JSONDecoder()
     
     internal var servers: [String: HttpServer] = [:]
     internal var isListeningOnAll = false
@@ -319,41 +323,60 @@ class WebSocketServer: ObservableObject {
         server["/socket"] = websocket(
             text: { [weak self] session, text in
                 guard let self = self else { return }
-                let decryptedText: String
+                let decryptedData: Data?
                 if let key = self.symmetricKey {
-                    decryptedText = decryptMessage(text, using: key) ?? ""
+                    decryptedData = decryptMessageToData(text, using: key)
                 } else {
-                    decryptedText = text
+                    decryptedData = text.data(using: .utf8)
                 }
 
-                if decryptedText.contains("\"type\":\"pong\"") {
+                guard let data = decryptedData, !data.isEmpty else { return }
+
+                do {
+                    let message = try self.jsonDecoder.decode(Message.self, from: data)
+                    if message.type == .status {
+                        // Pong / keepalive check
+                        if let dict = message.data.value as? [String: Any],
+                           (dict["type"] as? String) == "pong" {
+                            self.lock.lock()
+                            self.lastActivity[ObjectIdentifier(session)] = Date()
+                            self.lock.unlock()
+                            DispatchQueue.main.async {
+                                if AppState.shared.isConnectionWeak {
+                                    AppState.shared.isConnectionWeak = false
+                                }
+                            }
+                            return
+                        }
+                    }
+
                     self.lock.lock()
                     self.lastActivity[ObjectIdentifier(session)] = Date()
                     self.lock.unlock()
-                    return
-                }
-
-                if let data = decryptedText.data(using: .utf8) {
-                    do {
-                        let message = try JSONDecoder().decode(Message.self, from: data)
-                        self.lock.lock()
-                        self.lastActivity[ObjectIdentifier(session)] = Date()
-                        self.lock.unlock()
-                        
-                        if message.type == .fileChunk || message.type == .fileChunkAck || message.type == .fileTransferComplete || message.type == .fileTransferInit {
-                             self.handleMessage(message, session: session)
-                        } else {
-                            DispatchQueue.main.async { self.handleMessage(message, session: session) }
+                    DispatchQueue.main.async {
+                        if AppState.shared.isConnectionWeak {
+                            AppState.shared.isConnectionWeak = false
                         }
-                    } catch {
-                        print("[websocket] JSON decode failed: \(error)")
                     }
+
+                    if message.type == .fileChunk || message.type == .fileChunkAck || message.type == .fileTransferComplete || message.type == .fileTransferInit {
+                         self.handleMessage(message, session: session)
+                    } else {
+                        DispatchQueue.main.async { self.handleMessage(message, session: session) }
+                    }
+                } catch {
+                    print("[websocket] JSON decode failed: \(error)")
                 }
             },
             binary: { [weak self] session, _ in
                 self?.lock.lock()
                 self?.lastActivity[ObjectIdentifier(session)] = Date()
                 self?.lock.unlock()
+                DispatchQueue.main.async {
+                    if AppState.shared.isConnectionWeak {
+                        AppState.shared.isConnectionWeak = false
+                    }
+                }
             },
             connected: { [weak self] session in
                 guard let self = self else { return }
@@ -366,7 +389,8 @@ class WebSocketServer: ObservableObject {
                 self.lock.unlock()
                 print("[websocket] Session \(sessionId) connected.")
                 
-                if self.primarySessionID == nil {
+                let oldPrimaryActive = self.activeSessions.contains(where: { ObjectIdentifier($0) == self.primarySessionID })
+                if self.primarySessionID == nil || !oldPrimaryActive {
                     self.primarySessionID = sessionId
                     becamePrimary = true
                 } else {
@@ -378,9 +402,9 @@ class WebSocketServer: ObservableObject {
                     self.startPing()
                 }
 
-                 if becamePrimary {
-                     self.publishLanTransportState(isActive: true, reason: "connected_primary_session")
-                 }
+                if becamePrimary {
+                    self.publishLanTransportState(isActive: true, reason: "connected_primary_session")
+                }
             },
             disconnected: { [weak self] session in
                 guard let self = self else { return }
@@ -482,6 +506,7 @@ class WebSocketServer: ObservableObject {
 
                 let version = dict["version"] as? String ?? "2.0.0"
                 let adbPorts = dict["adbPorts"] as? [String] ?? []
+                let deviceId = dict["deviceId"] as? String ?? ""
 
                 DispatchQueue.main.async {
                     AppState.shared.device = Device(
@@ -489,7 +514,8 @@ class WebSocketServer: ObservableObject {
                         ipAddress: ip,
                         port: port,
                         version: version,
-                        adbPorts: adbPorts
+                        adbPorts: adbPorts,
+                        deviceId: deviceId
                     )
                 }
 
@@ -684,7 +710,7 @@ class WebSocketServer: ObservableObject {
 
             // Re-announce presence immediately after restart so Android can find us
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                UDPDiscoveryManager.shared.broadcastBurst()
+                DiscoveryManager.shared.broadcastBurst()
                 self.lock.lock()
                 self.isRestarting = false
                 self.lock.unlock()

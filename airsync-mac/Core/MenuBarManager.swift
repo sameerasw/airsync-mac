@@ -15,9 +15,11 @@ class MenuBarManager: NSObject {
     private var statusItem: NSStatusItem?
     private var menubarPanel: MenubarPanel?
     private var eventMonitor: Any?
+    private var localEventMonitor: Any?
     private var cancellables = Set<AnyCancellable>()
     private var appState = AppState.shared
     private var temporaryDragLabel: String?
+    private var hostingView: ClickThroughHostingView?
     
     private let statusButton: MenuBarStatusButton = {
         let view = MenuBarStatusButton(frame: NSRect(x: 0, y: 0, width: 22, height: 22))
@@ -49,6 +51,23 @@ class MenuBarManager: NSObject {
                 statusButton.bottomAnchor.constraint(equalTo: button.bottomAnchor)
             ])
             
+            // Set up ClickThroughHostingView for SwiftUI custom status bar rendering
+            let hostedView = MenubarStatusView()
+            let hosting = ClickThroughHostingView(rootView: hostedView)
+            button.addSubview(hosting)
+            hosting.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                hosting.leadingAnchor.constraint(equalTo: button.leadingAnchor),
+                hosting.trailingAnchor.constraint(equalTo: button.trailingAnchor),
+                hosting.topAnchor.constraint(equalTo: button.topAnchor),
+                hosting.bottomAnchor.constraint(equalTo: button.bottomAnchor)
+            ])
+            self.hostingView = hosting
+            
+            // Make sure the native button has no title/image overlay
+            button.image = nil
+            button.title = ""
+            
             updateStatusItem()
         }
     }
@@ -59,83 +78,73 @@ class MenuBarManager: NSObject {
     
     private func setupBindings() {
         // Update menu bar when appState changes
-        Publishers.Merge5(
-            appState.$device.map { _ in () },
-            appState.$notifications.map { _ in () },
-            appState.$status.map { _ in () },
-            appState.$showMenubarText.map { _ in () },
-            appState.$showingQuickShareTransfer.map { _ in () }
-        )
-        .receive(on: RunLoop.main)
-        .sink { [weak self] in
-            self?.updateStatusItem()
-        }
-        .store(in: &cancellables)
+        let group1: [AnyPublisher<Void, Never>] = [
+            appState.$device.map { _ in () }.eraseToAnyPublisher(),
+            appState.$notifications.map { _ in () }.eraseToAnyPublisher(),
+            appState.$status.map { _ in () }.eraseToAnyPublisher(),
+            appState.$showMenubarText.map { _ in () }.eraseToAnyPublisher(),
+            appState.$showingQuickShareTransfer.map { _ in () }.eraseToAnyPublisher(),
+            appState.$showMenubarIcon.map { _ in () }.eraseToAnyPublisher(),
+            appState.$showMenubarCallDetails.map { _ in () }.eraseToAnyPublisher(),
+            appState.$activeCall.map { _ in () }.eraseToAnyPublisher(),
+            appState.$activeCallDurationSec.map { _ in () }.eraseToAnyPublisher()
+        ]
         
+        let group2: [AnyPublisher<Void, Never>] = [
+            appState.$menubarBatteryStyle.map { _ in () }.eraseToAnyPublisher(),
+            appState.$showMenubarMusicIcon.map { _ in () }.eraseToAnyPublisher(),
+            appState.$showMenubarAlbumArt.map { _ in () }.eraseToAnyPublisher(),
+            appState.$menubarUnreadBadgeStyle.map { _ in () }.eraseToAnyPublisher(),
+            appState.$menubarUnreadBadgeColor.map { _ in () }.eraseToAnyPublisher(),
+            appState.$showMenubarDeviceName.map { _ in () }.eraseToAnyPublisher(),
+            appState.$menubarTextMaxLength.map { _ in () }.eraseToAnyPublisher(),
+            appState.$menubarFontSize.map { _ in () }.eraseToAnyPublisher()
+        ]
+        
+        let group3: [AnyPublisher<Void, Never>] = [
+            appState.$temporaryDragLabel.map { _ in () }.eraseToAnyPublisher(),
+            appState.$showMenubarPillStroke.map { _ in () }.eraseToAnyPublisher(),
+            appState.$menubarNotificationStyle.map { _ in () }.eraseToAnyPublisher(),
+            BLECentralManager.shared.$connectionStatus.map { _ in () }.eraseToAnyPublisher(),
+            BLECentralManager.shared.$connectedDeviceName.map { _ in () }.eraseToAnyPublisher()
+        ]
+        
+        Publishers.MergeMany(group1)
+            .merge(with: Publishers.MergeMany(group2))
+            .merge(with: Publishers.MergeMany(group3))
+            .receive(on: RunLoop.main)
+            .debounce(for: .milliseconds(50), scheduler: RunLoop.main)
+            .sink { [weak self] in
+                self?.updateStatusItem()
+            }
+            .store(in: &cancellables)
     }
     
     func updateStatusItem() {
-        guard let button = statusItem?.button else { return }
+        guard let button = statusItem?.button, let hostingView = hostingView else { return }
         
-        // Update icon based on state
-        let iconName = appState.device != nil
-            ? (appState.notifications.isEmpty ? "iphone.gen3" : "iphone.gen3.radiowaves.left.and.right")
-            : "iphone.slash"
+        button.image = nil
+        button.title = ""
         
-        button.image = NSImage(systemSymbolName: iconName, accessibilityDescription: "AirSync")
-        button.imagePosition = .imageLeft
-        
-        // Update text if enabled
-        if let dragLabel = temporaryDragLabel {
-            button.title = dragLabel
-        } else if appState.showMenubarText, let text = getDeviceStatusText() {
-            button.title = text
-        } else {
-            button.title = ""
-        }
+        let fittingSize = hostingView.fittingSize
+        statusItem?.length = max(22, fittingSize.width)
     }
     
     func showDragLabel(_ label: String) {
         temporaryDragLabel = label
+        appState.temporaryDragLabel = label
         updateStatusItem()
     }
     
     func clearDragLabel() {
         temporaryDragLabel = nil
+        appState.temporaryDragLabel = nil
         updateStatusItem()
     }
     
     private func getDeviceStatusText() -> String? {
-        guard let device = appState.device else { return nil }
-        
-        let unreadCount = appState.notifications.count
-        let unreadPrefix = unreadCount > 0 ? "\(unreadCount)* • " : ""
-        
-        if let music = appState.status?.music, music.isPlaying {
-            let title = music.title.isEmpty ? "Unknown Title" : music.title
-            let artist = music.artist.isEmpty ? "Unknown Artist" : music.artist
-            let fullText = unreadPrefix + "\(title) • \(artist)"
-            return truncate(text: fullText)
-        } else {
-            var parts: [String] = []
-            if appState.showMenubarDeviceName {
-                parts.append(device.name)
-            }
-            
-            if let batteryLevel = appState.status?.battery.level {
-                parts.append("\(batteryLevel)%")
-            }
-            let statusText = parts.isEmpty ? nil : parts.joined(separator: " • ")
-            return statusText.map { truncate(text: unreadPrefix + $0) }
-        }
-    }
-    
-    private func truncate(text: String) -> String {
-        let maxLength = appState.menubarTextMaxLength
-        if text.count > maxLength {
-            return String(text.prefix(maxLength - 1)) + "…"
-        }
-        return text
+        // Kept for backward compatibility/reference but handled by SwiftUI view
+        return nil
     }
     
     func togglePopover() {
@@ -178,13 +187,29 @@ class MenuBarManager: NSObject {
 
             appState.isMenubarWindowOpen = true
             
-            // Monitor clicks outside to close
+            // Monitor clicks outside to close (both globally and locally within current app)
             eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
                 if let eventLocation = NSEvent.mouseLocation as NSPoint?,
                    let panelFrame = self?.menubarPanel?.frame,
                    !NSMouseInRect(eventLocation, panelFrame, false) {
+                    if let buttonWindow = button.window,
+                       NSMouseInRect(eventLocation, buttonWindow.frame, false) {
+                        return
+                    }
                     self?.hidePopover()
                 }
+            }
+            localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+                if let eventLocation = NSEvent.mouseLocation as NSPoint?,
+                   let panelFrame = self?.menubarPanel?.frame,
+                   !NSMouseInRect(eventLocation, panelFrame, false) {
+                    if let buttonWindow = button.window,
+                       NSMouseInRect(eventLocation, buttonWindow.frame, false) {
+                        return event
+                    }
+                    self?.hidePopover()
+                }
+                return event
             }
         }
     }
@@ -195,6 +220,10 @@ class MenuBarManager: NSObject {
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
             eventMonitor = nil
+        }
+        if let localMonitor = localEventMonitor {
+            NSEvent.removeMonitor(localMonitor)
+            localEventMonitor = nil
         }
     }
 }
@@ -277,4 +306,265 @@ class MenuBarStatusButton: NSView {
         
         return false
     }
+}
+
+// MARK: - Click-Through Hosting View Subclass
+class ClickThroughHostingView: NSHostingView<MenubarStatusView> {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        return nil
+    }
+}
+
+// MARK: - Menubar Status View
+struct MenubarStatusView: View {
+    @ObservedObject var appState = AppState.shared
+    @ObservedObject var bleManager = BLECentralManager.shared
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            let isConnected = appState.device != nil || bleManager.isAuthenticated
+            
+            // 1. Primary Icon
+            if appState.showMenubarIcon {
+                let iconName = isConnected ? "iphone.gen3" : "iphone.slash"
+                Image(systemName: iconName)
+                    .font(.system(size: appState.menubarFontSize))
+                    .imageScale(.medium)
+            }
+            
+            if isConnected {
+                // 2. Status Text / Details
+                if appState.showMenubarText {
+                    if let dragLabel = appState.temporaryDragLabel {
+                        if appState.enableMarquee {
+                            MarqueeText(text: dragLabel, fontSize: appState.menubarFontSize, fontWeight: .medium, containerWidth: CGFloat(appState.menubarTextMaxLength))
+                        } else {
+                            Text(dragLabel)
+                                .font(.system(size: appState.menubarFontSize, weight: .medium))
+                                .lineLimit(1)
+                                .frame(maxWidth: CGFloat(appState.menubarTextMaxLength), alignment: .leading)
+                        }
+                    } else {
+                        HStack(spacing: 5) {
+                            // Left part: Device Name or Music Info
+                            let showMusic = appState.showMenubarMusicIcon && (appState.status?.music?.isPlaying ?? false)
+                            
+                            if appState.showMenubarCallDetails, let callEvent = appState.activeCall {
+                                HStack(spacing: 4) {
+                                    if let photoString = callEvent.contactPhoto,
+                                       !photoString.isEmpty,
+                                       let data = Data(base64Encoded: photoString, options: .ignoreUnknownCharacters) ?? Data(base64Encoded: photoString),
+                                       let nsImage = NSImage(data: data) {
+                                        let avatarSize = appState.menubarFontSize + 2
+                                        Image(nsImage: nsImage)
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(width: avatarSize, height: avatarSize)
+                                            .clipShape(Circle())
+                                    } else {
+                                        Image(systemName: callEvent.direction == .incoming ? "phone.arrow.down.left.fill" : "phone.arrow.up.right.fill")
+                                            .font(.system(size: appState.menubarFontSize))
+                                            .foregroundColor(.green)
+                                    }
+                                    
+                                    Text(callEvent.contactName)
+                                        .font(.system(size: appState.menubarFontSize, weight: .medium))
+                                        .lineLimit(1)
+                                    
+                                    Text("•")
+                                        .font(.system(size: appState.menubarFontSize))
+                                        .foregroundColor(.secondary)
+                                    
+                                    Text(formatCallDuration(seconds: appState.activeCallDurationSec))
+                                        .font(.system(size: appState.menubarFontSize, design: .monospaced))
+                                        .layoutPriority(1)
+                                }
+                            } else if showMusic, let music = appState.status?.music {
+                                let musicText = "\(music.title) — \(music.artist)"
+                                
+                                HStack(spacing: 3) {
+                                    if appState.showMenubarAlbumArt,
+                                       !music.albumArt.isEmpty,
+                                       let data = Data(base64Encoded: music.albumArt.stripBase64Prefix()) ?? Data(base64Encoded: music.albumArt),
+                                       let nsImage = NSImage(data: data) {
+                                        let albumArtSize = appState.menubarFontSize + 2
+                                        let cornerRadius = albumArtSize * 3 / 14
+                                        Image(nsImage: nsImage)
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(width: albumArtSize, height: albumArtSize)
+                                            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+                                    } else {
+                                        Image(systemName: "music.note")
+                                            .font(.system(size: appState.menubarFontSize))
+                                            .foregroundColor(.accentColor)
+                                    }
+                                    
+                                    if appState.enableMarquee {
+                                        MarqueeText(text: musicText, fontSize: appState.menubarFontSize, containerWidth: CGFloat(appState.menubarTextMaxLength))
+                                    } else {
+                                        Text(musicText)
+                                            .font(.system(size: appState.menubarFontSize))
+                                            .lineLimit(1)
+                                            .frame(maxWidth: CGFloat(appState.menubarTextMaxLength), alignment: .leading)
+                                    }
+                                }
+                            } else if appState.showMenubarDeviceName {
+                                let deviceName = appState.device?.name ?? (bleManager.isAuthenticated ? bleManager.connectedDeviceName : nil) ?? ""
+                                if !deviceName.isEmpty {
+                                    if appState.enableMarquee {
+                                        MarqueeText(text: deviceName, fontSize: appState.menubarFontSize, fontWeight: .medium, containerWidth: CGFloat(appState.menubarTextMaxLength))
+                                    } else {
+                                        Text(deviceName)
+                                            .font(.system(size: appState.menubarFontSize, weight: .medium))
+                                            .lineLimit(1)
+                                            .frame(maxWidth: CGFloat(appState.menubarTextMaxLength), alignment: .leading)
+                                    }
+                                }
+                            }
+                            
+                            // Right part: Battery
+                            if let battery = appState.status?.battery {
+                                let style = appState.menubarBatteryStyle
+                                HStack(spacing: 3) {
+                                    // Show separator if there was a prefix shown
+                                    let hasPrefix = showMusic || (appState.showMenubarDeviceName && !(appState.device?.name ?? bleManager.connectedDeviceName ?? "").isEmpty)
+                                    if hasPrefix {
+                                        Text("•")
+                                            .font(.system(size: appState.menubarFontSize))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    
+                                    if style == "icon" || style == "both" {
+                                        Image(systemName: getBatteryIconName(level: battery.level, isCharging: battery.isCharging))
+                                            .font(.system(size: appState.menubarFontSize))
+                                            .foregroundColor(batteryColor(level: battery.level, isCharging: battery.isCharging))
+                                    }
+                                    
+                                    if style == "percentage" || style == "both" {
+                                        Text("\(battery.level)%")
+                                            .font(.system(size: appState.menubarFontSize - 1, design: .monospaced))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // 3. Unread Badge Count
+                if appState.menubarNotificationStyle == "both" || appState.menubarNotificationStyle == "count" {
+                    let unreadCount = appState.notifications.filter { $0.priority != "silent" }.count
+                    if unreadCount > 0 {
+                        if appState.menubarUnreadBadgeStyle == "badge" {
+                            Text("\(unreadCount)")
+                                .font(.system(size: appState.menubarFontSize - 3, weight: .bold, design: .rounded))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, max(4, appState.menubarFontSize * 5 / 12))
+                                .padding(.vertical, max(1, appState.menubarFontSize * 1 / 12))
+                                .background(badgeColor)
+                                .clipShape(Capsule())
+                        } else if appState.menubarUnreadBadgeStyle == "text" {
+                            Text("\(unreadCount)*")
+                                .font(.system(size: appState.menubarFontSize - 1, weight: .semibold))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                
+                // 4. Recent Notification Icons
+                if appState.menubarNotificationStyle == "both" || appState.menubarNotificationStyle == "icons" {
+                    let recentPackages = appState.recentNotifyingPackages
+                    if !recentPackages.isEmpty {
+                        HStack(spacing: 4) {
+                            ForEach(recentPackages, id: \.self) { package in
+                                let appIconSize = appState.menubarFontSize + 2
+                                let appCornerRadius = appIconSize * 3 / 14
+                                if let path = appState.androidApps[package]?.iconUrl,
+                                   let image = Image(filePath: path) {
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fit)
+                                        .frame(width: appIconSize, height: appIconSize)
+                                        .clipShape(RoundedRectangle(cornerRadius: appCornerRadius))
+                                } else {
+                                    Image(systemName: "app.badge")
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fit)
+                                        .frame(width: appIconSize, height: appIconSize)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, appState.showMenubarPillStroke ? 8 : 4)
+        .frame(height: 22)
+        .background(
+            Group {
+                if appState.showMenubarPillStroke {
+                    let hasCall = appState.activeCall != nil
+                    Capsule()
+                        .stroke(
+                            hasCall ? Color.accentColor : Color.primary.opacity(0.18),
+                            lineWidth: hasCall ? 2.0 : 1.0
+                        )
+                }
+            }
+        )
+    }
+    
+    
+    
+    private var badgeColor: Color {
+        switch appState.menubarUnreadBadgeColor {
+        case "accent": return .accentColor
+        case "red": return .red
+        case "orange": return .orange
+        case "blue": return .blue
+        case "green": return .green
+        case "purple": return .purple
+        case "gray": return .gray
+        default: return .accentColor
+        }
+    }
+    
+    private func batteryColor(level: Int, isCharging: Bool) -> Color {
+        if level < 20 {
+            return .yellow
+        } else {
+            return .primary
+        }
+    }
+    
+    private func getBatteryIconName(level: Int, isCharging: Bool) -> String {
+        if isCharging {
+            return "battery.100.bolt"
+        } else if level >= 88 {
+            return "battery.100"
+        } else if level >= 62 {
+            return "battery.75"
+        } else if level >= 38 {
+            return "battery.50"
+        } else if level >= 12 {
+            return "battery.25"
+        } else {
+            return "battery.0"
+        }
+    }
+    
+    private func formatCallDuration(seconds: Int) -> String {
+        let hours = seconds / 3600
+        let minutes = (seconds % 3600) / 60
+        let secs = seconds % 60
+        
+        if hours > 0 {
+            return String(format: "%02d:%02d:%02d", hours, minutes, secs)
+        } else {
+            return String(format: "%02d:%02d", minutes, secs)
+        }
+    }
+    
+
 }

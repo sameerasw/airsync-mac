@@ -22,6 +22,7 @@ public class InboundNearbyConnection: NearbyConnection{
 	private var currentState:State = .initial
 	public var delegate:InboundNearbyConnectionDelegate?
 	private var cipherCommitment:Data?
+	internal var completedURLs: [URL] = []
 	
 	private var textPayloadID:Int64=0
 	
@@ -126,6 +127,7 @@ public class InboundNearbyConnection: NearbyConnection{
 			try? fileInfo.fileHandle?.close()
 			transferredFiles[id]!.fileHandle=nil
 			fileInfo.progress?.unpublish()
+			completedURLs.append(fileInfo.destinationURL)
 			transferredFiles.removeValue(forKey: id)
 			if transferredFiles.isEmpty{
 				delegate?.transferDidComplete(connection: self)
@@ -150,6 +152,7 @@ public class InboundNearbyConnection: NearbyConnection{
 			try fileInfo.fileHandle?.close()
 			transferredFiles[id]!.fileHandle=nil
 			fileInfo.progress?.unpublish()
+			completedURLs.append(fileInfo.destinationURL)
 			transferredFiles.removeValue(forKey: id)
 			try sendDisconnectionAndDisconnect()
 			return true

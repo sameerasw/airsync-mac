@@ -49,53 +49,16 @@ struct WebView: NSViewRepresentable {
             let js = """
     var style = document.createElement('style');
     style.innerHTML = `
-      
-    /* notion-transparency */
-    body {
-    background-color: #00000000 !important;
-    background: #00000000 !important;
+    
+    body, html, .docs-wrapper,
+    #background {
+    background-color: transparent !important;
+    background: none !important;
     transition:
     background-color 0.5s ease-in-out,
     background 0.5s ease-in-out,
     border 0.5s ease-in-out,
     box-shadow 0.5s ease-in-out !important;
-    }
-    
-    .notion-app-inner,
-    .notion-cursor-listener,
-    .notion-frame,
-    .notion-sidebar-container,
-    header {
-    background-color: #00000000 !important;
-    background: #00000000 !important;
-    box-shadow: none !important;
-    transition:
-    background-color 0.5s ease-in-out,
-    background 0.5s ease-in-out,
-    border 0.5s ease-in-out,
-    box-shadow 0.5s ease-in-out !important;
-    }
-    
-    /* notion-hide elements */
-    div.autolayout-row.autolayout-fill-width.autolayout-center.autolayout-space {
-    display: none !important;
-    }
-    
-    /* notion-rounded banner */
-    .layout-full img {
-    border-radius: 1em !important;
-    }
-    
-    /* custom */
-    header{
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    width: 100% !important;
-    }
-    
-    header{
-    display: none;
     }
     
     `;

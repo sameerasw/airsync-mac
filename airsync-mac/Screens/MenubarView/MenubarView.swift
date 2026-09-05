@@ -58,17 +58,19 @@ struct MenubarView: View {
             )
             .staggeredEntrance(index: 0, isVisible: appState.isMenubarWindowOpen)
             
-            DiscoverySegmentView()
+            CallControlSegmentView()
                 .staggeredEntrance(index: 1, isVisible: appState.isMenubarWindowOpen)
             
-            MediaSegmentView()
+            DiscoverySegmentView()
                 .staggeredEntrance(index: 2, isVisible: appState.isMenubarWindowOpen)
             
-            NotificationsSegmentView()
+            MediaSegmentView()
                 .staggeredEntrance(index: 3, isVisible: appState.isMenubarWindowOpen)
+            
+            NotificationsSegmentView()
+                .staggeredEntrance(index: 4, isVisible: appState.isMenubarWindowOpen)
         }
         .padding(.horizontal, 24)
-        .padding(.top, 24)
         .padding(.bottom, 24)
         .frame(width: minWidthTabs + 48)
         .environment(\.controlActiveState, .active)

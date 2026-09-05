@@ -15,7 +15,7 @@ struct NotificationAction: Codable, Hashable, Identifiable {
 }
 
 struct Notification: Codable, Identifiable, Equatable {
-    let id = UUID()
+    var id: String { nid }
     let title: String
     let body: String
     let app: String
@@ -23,8 +23,39 @@ struct Notification: Codable, Identifiable, Equatable {
     let package: String
     let priority: String?
     let actions: [NotificationAction]
+    let progress: Int?
+    let progressMax: Int?
+    let progressIndeterminate: Bool?
+    let ongoing: Bool?
+
+    init(
+        title: String,
+        body: String,
+        app: String,
+        nid: String,
+        package: String,
+        priority: String? = nil,
+        actions: [NotificationAction] = [],
+        progress: Int? = nil,
+        progressMax: Int? = nil,
+        progressIndeterminate: Bool? = nil,
+        ongoing: Bool? = nil
+    ) {
+        self.title = title
+        self.body = body
+        self.app = app
+        self.nid = nid
+        self.package = package
+        self.priority = priority
+        self.actions = actions
+        self.progress = progress
+        self.progressMax = progressMax
+        self.progressIndeterminate = progressIndeterminate
+        self.ongoing = ongoing
+    }
 
     private enum CodingKeys: String, CodingKey {
         case title, body, app, nid, package, priority, actions
+        case progress, progressMax, progressIndeterminate, ongoing
     }
 }

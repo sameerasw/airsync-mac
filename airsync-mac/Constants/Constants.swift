@@ -31,3 +31,20 @@ enum CallNotificationMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum CrashReportingMode: String, CaseIterable, Identifiable {
+    case manual = "manual"
+    case notify = "notify"
+    
+    var id: String { self.rawValue }
+    
+    var displayName: String {
+        switch self {
+        case .manual:
+            return "Manual"
+        case .notify:
+            return "Notify"
+        }
+    }
+}
+
+

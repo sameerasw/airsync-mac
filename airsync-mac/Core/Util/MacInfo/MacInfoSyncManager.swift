@@ -9,6 +9,7 @@ import Combine
 import CryptoKit
 
 class MacInfoSyncManager: ObservableObject {
+    static let shared = MacInfoSyncManager()
     @Published var title: String = "Unknown Title"
     @Published var artist: String = "Unknown Artist"
     @Published var album: String = "Unknown Album"
@@ -34,6 +35,8 @@ class MacInfoSyncManager: ObservableObject {
             let isMuted: Bool
             let albumArt: String
             let likeStatus: String
+            let elapsedTime: Int
+            let duration: Int
         }
         let batteryLevel: Int
         let isCharging: Bool
@@ -66,10 +69,9 @@ class MacInfoSyncManager: ObservableObject {
 
         print("[mac-info-sync] Starting device status monitoring - device connected")
         fetch() // initial fetch
-        timer = Timer.scheduledTimer(withTimeInterval: 7, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
             self?.fetch()
         }
-        RunLoop.main.add(timer!, forMode: .common)
     }
 
     private func stopPolling() {
@@ -94,7 +96,7 @@ class MacInfoSyncManager: ObservableObject {
         }
     }
 
-    private func fetch() {
+    func fetch() {
         // Only fetch if there's a connected device
         guard AppState.shared.device != nil else { return }
 
@@ -108,22 +110,30 @@ class MacInfoSyncManager: ObservableObject {
                     self?.sendDeviceStatusWithoutMusic()
                     return
                 }
+
+                // IMPORTANT: Filter out AirSync's own bundle ID.
+                // NowPlayingPublisher writes Android's media info into macOS
+                // MPNowPlayingInfoCenter so boringNotch can display it.
+                // media-control reads from the same source, so without this guard
+                // we'd forward AirSync's own published entry back to Android,
+                // creating a play/pause feedback loop.
+                let ownBundleId = Bundle.main.bundleIdentifier ?? ""
+                if let bundleId = info.bundleIdentifier, !ownBundleId.isEmpty,
+                   bundleId == ownBundleId {
+                    // This is our own reflection — treat as nothing playing on Mac
+                    self?.sendDeviceStatusWithoutMusic()
+                    return
+                }
+
                 // MUST update @Published properties on main thread
                 DispatchQueue.main.async {
-//                    print("Now Playing fetched:", info) // debug
+                    // Set raw state first
                     self?.title = info.title ?? "Unknown Title"
                     self?.artist = info.artist ?? "Unknown Artist"
                     self?.album = info.album ?? "Unknown Album"
                     self?.elapsed = info.elapsedTime ?? 0
                     self?.duration = info.duration ?? 0
                     self?.isPlaying = info.isPlaying ?? false
-
-                    // Convert artwork to base64 if available
-                    if let artworkData = info.artworkData {
-                        self?.artworkBase64 = artworkData.base64EncodedString()
-                    } else {
-                        self?.artworkBase64 = ""
-                    }
 
                     // Send to Android if connected and info has changed
                     self?.sendDeviceStatusIfNeeded(with: info)
@@ -185,22 +195,25 @@ class MacInfoSyncManager: ObservableObject {
         // Get battery info
         let batteryInfo = getBatteryInfo()
 
-        let currentArtwork = artworkBase64
         var currentHash: String? = nil
-        
-        if !currentArtwork.isEmpty {
-            let inputData = Data(currentArtwork.utf8)
-            let hashed = SHA256.hash(data: inputData)
+        if let rawData = info.artworkData {
+            let hashed = SHA256.hash(data: rawData)
             currentHash = hashed.compactMap { String(format: "%02x", $0) }.joined()
         }
 
+        let isArtworkChanged = (currentHash != lastSentArtworkHash)
         let artworkToSend: String?
         if shouldIncludeMusicInfo {
-            if currentHash != lastSentArtworkHash {
-                artworkToSend = currentArtwork.isEmpty ? "" : currentArtwork
+            if isArtworkChanged {
+                if let rawData = info.artworkData {
+                    artworkToSend = rawData.base64EncodedString()
+                } else {
+                    artworkToSend = ""
+                }
+                self.artworkBase64 = artworkToSend ?? ""
             } else {
-                
-                artworkToSend = nil
+                // If artwork hash hasn't changed, send current cached artworkBase64 so Android doesn't miss or clear it
+                artworkToSend = self.artworkBase64
             }
         } else {
             artworkToSend = nil
@@ -216,7 +229,9 @@ class MacInfoSyncManager: ObservableObject {
                 volume: MacRemoteManager.shared.lastVolumeLevel,
                 isMuted: MacRemoteManager.shared.lastVolumeLevel == 0,
                 albumArt: currentHash ?? "", // Use hash for snapshot comparison
-                likeStatus: "none" // must match payload default
+                likeStatus: "none", // must match payload default
+                elapsedTime: Int(info.elapsedTime ?? 0),
+                duration: Int(info.duration ?? 0)
             )
         }()
 

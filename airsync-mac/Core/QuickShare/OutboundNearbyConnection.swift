@@ -141,8 +141,9 @@ public class OutboundNearbyConnection:NearbyConnection{
 		frame.v1.type = .connectionRequest
 		frame.v1.connectionRequest=Location_Nearby_Connections_ConnectionRequestFrame()
 		frame.v1.connectionRequest.endpointID=String(bytes: NearbyConnectionManager.shared.endpointID, encoding: .ascii)!
-		frame.v1.connectionRequest.endpointName=Host.current().localizedName!
-		let endpointInfo=EndpointInfo(name: Host.current().localizedName!, deviceType: .computer)
+		let macName = AppState.shared.myDevice?.name ?? Host.current().localizedName ?? "Mac"
+		frame.v1.connectionRequest.endpointName=macName
+		let endpointInfo=EndpointInfo(name: macName, deviceType: .computer)
 		frame.v1.connectionRequest.endpointInfo=endpointInfo.serialize()
 		frame.v1.connectionRequest.mediums=[.wifiLan]
 		sendFrameAsync(try frame.serializedData())
@@ -394,6 +395,7 @@ public class OutboundNearbyConnection:NearbyConnection{
 		transfer.payloadHeader.totalSize=Int64(currentTransfer!.totalBytes)
 		transfer.payloadHeader.isSensitive=false
 		currentTransfer!.currentOffset+=Int64(fileBuffer.count)
+		let isLastChunk = currentTransfer!.currentOffset == currentTransfer!.totalBytes
 		
 		var wrapper=Location_Nearby_Connections_OfflineFrame()
 		wrapper.version = .v1
@@ -402,7 +404,40 @@ public class OutboundNearbyConnection:NearbyConnection{
 		wrapper.v1.payloadTransfer=transfer
 		try encryptAndSendOfflineFrame(wrapper, completion: {
 			do{
-				try self.sendNextFileChunk()
+				if isLastChunk {
+					// Signal end of file (yes, all this for one bit)
+					var eofTransfer=Location_Nearby_Connections_PayloadTransferFrame()
+					eofTransfer.packetType = .data
+					eofTransfer.payloadChunk.offset=self.currentTransfer!.currentOffset
+					eofTransfer.payloadChunk.flags=1 // <- EOF flag
+					eofTransfer.payloadHeader.id=self.currentTransfer!.payloadID
+					eofTransfer.payloadHeader.type = .file
+					eofTransfer.payloadHeader.totalSize=Int64(self.currentTransfer!.totalBytes)
+					eofTransfer.payloadHeader.isSensitive=false
+					
+					var eofWrapper=Location_Nearby_Connections_OfflineFrame()
+					eofWrapper.version = .v1
+					eofWrapper.v1=Location_Nearby_Connections_V1Frame()
+					eofWrapper.v1.type = .payloadTransfer
+					eofWrapper.v1.payloadTransfer=eofTransfer
+					
+					#if DEBUG
+					print("sent data chunk, now sending EOF, current transfer: \(String(describing: self.currentTransfer))")
+					#endif
+					try self.encryptAndSendOfflineFrame(eofWrapper, completion: {
+						do {
+							#if DEBUG
+							print("EOF sent successfully, calling sendNextFileChunk for next file or clean disconnect")
+							#endif
+							try self.sendNextFileChunk()
+						} catch {
+							self.lastError=error
+							self.protocolError()
+						}
+					})
+				} else {
+					try self.sendNextFileChunk()
+				}
 			}catch{
 				self.lastError=error
 				self.protocolError()
@@ -413,28 +448,6 @@ public class OutboundNearbyConnection:NearbyConnection{
 		#endif
 		totalBytesSent+=Int64(fileBuffer.count)
 		delegate?.outboundConnection(connection: self, transferProgress: Double(totalBytesSent)/Double(totalBytesToSend))
-		
-		if currentTransfer!.currentOffset==currentTransfer!.totalBytes{
-			// Signal end of file (yes, all this for one bit)
-			var transfer=Location_Nearby_Connections_PayloadTransferFrame()
-			transfer.packetType = .data
-			transfer.payloadChunk.offset=currentTransfer!.currentOffset
-			transfer.payloadChunk.flags=1 // <- this one here
-			transfer.payloadHeader.id=currentTransfer!.payloadID
-			transfer.payloadHeader.type = .file
-			transfer.payloadHeader.totalSize=Int64(currentTransfer!.totalBytes)
-			transfer.payloadHeader.isSensitive=false
-			
-			var wrapper=Location_Nearby_Connections_OfflineFrame()
-			wrapper.version = .v1
-			wrapper.v1=Location_Nearby_Connections_V1Frame()
-			wrapper.v1.type = .payloadTransfer
-			wrapper.v1.payloadTransfer=transfer
-			try encryptAndSendOfflineFrame(wrapper)
-			#if DEBUG
-			print("sent EOF, current transfer: \(String(describing: currentTransfer))")
-			#endif
-		}
 	}
 	
 	private static func sanitizeFileName(name:String)->String{

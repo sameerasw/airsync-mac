@@ -28,6 +28,8 @@ extension WebSocketServer {
             handleNotification(message)
         case .callEvent:
             handleCallEvent(message)
+        case .callProgress:
+            handleCallProgress(message)
         case .notificationActionResponse:
             handleNotificationActionResponse(message)
         case .notificationAction:
@@ -94,6 +96,8 @@ extension WebSocketServer {
             handleClipboardUpdate(message)
         case .callEvent:
             handleCallEvent(message)
+        case .callProgress:
+            handleCallProgress(message)
         case .remoteControl:
             handleRemoteControl(message)
         case .macMediaControl:
@@ -172,17 +176,24 @@ extension WebSocketServer {
 
             let version = dict["version"] as? String ?? "2.0.0"
             let adbPorts = dict["adbPorts"] as? [String] ?? []
+            let deviceId = dict["id"] as? String ?? ""
+
+            if !hasActiveLocalSession() {
+                AppState.shared.updatePeerTransportHint("relay")
+            }
 
             AppState.shared.device = Device(
                 name: name,
                 ipAddress: ip,
                 port: port,
                 version: version,
-                adbPorts: adbPorts
+                adbPorts: adbPorts,
+                deviceId: deviceId
             )
 
             if let base64 = dict["wallpaper"] as? String {
                 AppState.shared.currentDeviceWallpaperBase64 = base64
+                UserDefaults.standard.set(base64, forKey: "lastCachedWallpaperBase64")
                 
                 // Save wallpaper to disk for DeviceCard
                 if let id = dict["id"] as? String,
@@ -196,7 +207,9 @@ extension WebSocketServer {
                                     try fileManager.createDirectory(at: wallpaperDir, withIntermediateDirectories: true)
                                 }
                                 let fileURL = wallpaperDir.appendingPathComponent("\(id).jpg")
+                                let fallbackURL = wallpaperDir.appendingPathComponent("last_wallpaper.jpg")
                                 try data.write(to: fileURL)
+                                try? data.write(to: fallbackURL)
                                 print("[websocket] Saved wallpaper for device \(id)")
                             }
                         } catch {
@@ -213,27 +226,79 @@ extension WebSocketServer {
                     AppState.shared.manualAdbConnectionPending = false
                     return
                 }
+                let killServer = AppState.shared.userInitiatedAdbConnect || AppState.shared.alwaysKillAdbBeforeConnect
+                
                 if AppState.shared.wiredAdbEnabled {
-                    ADBConnector.getWiredDeviceSerial(completion: { serial in
-                        if let serial = serial {
-                            DispatchQueue.main.async {
-                                AppState.shared.adbConnected = true
-                                AppState.shared.adbConnectionMode = .wired
-                                AppState.shared.adbConnectionResult = "Connected via Wired ADB (Serial: \(serial))"
-                                AppState.shared.manualAdbConnectionPending = false
+                    ADBConnector.getWiredDevices { wiredDevices in
+                        let mappedSerial = AppState.shared.selectedWiredSerial ?? AppState.shared.deviceAdbSerials[deviceId]
+                        
+                        if !wiredDevices.isEmpty {
+                            if let mappedSerial = mappedSerial {
+                                if let matchedDevice = wiredDevices.first(where: { $0.serial == mappedSerial }) {
+                                    DispatchQueue.main.async {
+                                        AppState.shared.selectedWiredSerial = matchedDevice.serial
+                                        AppState.shared.adbConnected = true
+                                        AppState.shared.adbConnectionMode = .wired
+                                        AppState.shared.adbConnectionResult = "Connected via Wired ADB (Serial: \(matchedDevice.serial))"
+                                        AppState.shared.manualAdbConnectionPending = false
+                                        AppState.shared.userInitiatedAdbConnect = false
+                                    }
+                                } else {
+                                    if AppState.shared.adbEnabled || AppState.shared.manualAdbConnectionPending {
+                                        ADBConnector.connectToADB(ip: ip, killServer: killServer)
+                                    }
+                                    DispatchQueue.main.async {
+                                        AppState.shared.manualAdbConnectionPending = false
+                                        AppState.shared.userInitiatedAdbConnect = false
+                                    }
+                                }
+                            } else {
+                                if wiredDevices.count == 1, let singleDevice = wiredDevices.first {
+                                    DispatchQueue.main.async {
+                                        AppState.shared.deviceAdbSerials[deviceId] = singleDevice.serial
+                                        AppState.shared.selectedWiredSerial = singleDevice.serial
+                                        AppState.shared.adbConnected = true
+                                        AppState.shared.adbConnectionMode = .wired
+                                        AppState.shared.adbConnectionResult = "Connected via Wired ADB (Serial: \(singleDevice.serial))"
+                                        AppState.shared.manualAdbConnectionPending = false
+                                        AppState.shared.userInitiatedAdbConnect = false
+                                    }
+                                } else {
+                                    if AppState.shared.adbEnabled || AppState.shared.manualAdbConnectionPending {
+                                        ADBConnector.connectToADB(ip: ip, killServer: killServer)
+                                    }
+                                    DispatchQueue.main.async {
+                                        AppState.shared.manualAdbConnectionPending = false
+                                        AppState.shared.userInitiatedAdbConnect = false
+                                    }
+                                }
                             }
-                        } else if AppState.shared.adbEnabled || AppState.shared.manualAdbConnectionPending {
-                            // Try wireless connection if wired failed or no device found
-                            ADBConnector.connectToADB(ip: ip)
+                        } else {
+                            if AppState.shared.adbEnabled || AppState.shared.manualAdbConnectionPending {
+                                ADBConnector.connectToADB(ip: ip, killServer: killServer)
+                            }
                             DispatchQueue.main.async {
                                 AppState.shared.manualAdbConnectionPending = false
+                                AppState.shared.userInitiatedAdbConnect = false
                             }
                         }
-                    })
+                    }
                 } else if AppState.shared.adbEnabled || AppState.shared.manualAdbConnectionPending {
                     // Try wireless connection directly
-                    ADBConnector.connectToADB(ip: ip)
+                    ADBConnector.connectToADB(ip: ip, killServer: killServer)
                     AppState.shared.manualAdbConnectionPending = false
+                    AppState.shared.userInitiatedAdbConnect = false
+                }
+            }
+
+            if let bleToken = dict["bleAuthToken"] as? String {
+                let oldToken = UserDefaults.standard.string(forKey: "bleAuthToken")
+                UserDefaults.standard.set(bleToken, forKey: "bleAuthToken")
+                print("[websocket] Received BLE auth token")
+                
+                // If token changed or was new, and BLE is enabled, we might want to reconnect
+                if oldToken != bleToken && AppState.shared.isBLEEnabled {
+                    BLECentralManager.shared.startScanning()
                 }
             }
 
@@ -262,7 +327,24 @@ extension WebSocketServer {
                     }
                 }
             }
-            let notif = Notification(title: title, body: body, app: app, nid: nid, package: package, priority: priority, actions: actions)
+            let progress = dict["progress"] as? Int
+            let progressMax = dict["progressMax"] as? Int
+            let progressIndeterminate = dict["progressIndeterminate"] as? Bool
+            let ongoing = dict["ongoing"] as? Bool
+            
+            let notif = Notification(
+                title: title,
+                body: body,
+                app: app,
+                nid: nid,
+                package: package,
+                priority: priority,
+                actions: actions,
+                progress: progress,
+                progressMax: progressMax,
+                progressIndeterminate: progressIndeterminate,
+                ongoing: ongoing
+            )
             DispatchQueue.main.async {
                 AppState.shared.addNotification(notif)
             }
@@ -310,6 +392,15 @@ extension WebSocketServer {
         }
     }
 
+    private func handleCallProgress(_ message: Message) {
+        if let dict = message.data.value as? [String: Any],
+           let eventId = dict["eventId"] as? String {
+            DispatchQueue.main.async {
+                AppState.shared.receivedCallProgress(eventId: eventId)
+            }
+        }
+    }
+
     private func handleStatusUpdate(_ message: Message) {
         if let dict = message.data.value as? [String: Any],
            let battery = dict["battery"] as? [String: Any],
@@ -325,6 +416,34 @@ extension WebSocketServer {
         {
             let albumArt = (music["albumArt"] as? String) ?? ""
             let likeStatus = (music["likeStatus"] as? String) ?? "none"
+            let isBuffering = (music["isBuffering"] as? Bool) ?? false
+
+            // Android sends duration/position in ms; convert to seconds.
+            // Using NSNumber because Swift's `as? Double` fails if the JSON parser inferred an Int.
+            let durationSec = (music["duration"] as? NSNumber).map { $0.doubleValue / 1000.0 } ?? -1.0
+            var positionSec = (music["position"] as? NSNumber).map { $0.doubleValue / 1000.0 } ?? -1.0
+
+            // Timestamp-based position correction:
+            // Android includes the wall-clock ms when the position snapshot was taken.
+            // We add the elapsed time since then (which includes WiFi transit) to get a
+            // much more accurate "current" position — effectively NTP-style compensation.
+            // Clamp: only correct for realistic WiFi delays (< 5s). Larger deltas likely
+            // indicate clock skew between devices, which would worsen accuracy if applied.
+            if positionSec >= 0, playing, !isBuffering,
+               let tsMs = music["positionTimestamp"] as? NSNumber {
+                let capturedAt = tsMs.doubleValue / 1000.0
+                let nowSec = Date().timeIntervalSince1970
+                let networkDelta = nowSec - capturedAt
+                if networkDelta > -2.0 && networkDelta < 5.0 {
+                    positionSec += max(0.0, networkDelta)
+                }
+            }
+            // Clamp to duration to prevent the seekbar going past the end
+            if durationSec > 0 && positionSec > durationSec {
+                positionSec = durationSec
+            }
+
+            let oldTitle = AppState.shared.status?.music?.title
 
             AppState.shared.status = DeviceStatus(
                 battery: .init(level: level, isCharging: isCharging),
@@ -336,9 +455,46 @@ extension WebSocketServer {
                     volume: volume,
                     isMuted: isMuted,
                     albumArt: albumArt,
-                    likeStatus: likeStatus
+                    likeStatus: likeStatus,
+                    duration: durationSec,
+                    position: positionSec,
+                    isBuffering: isBuffering
                 )
             )
+
+            DispatchQueue.main.async {
+                if oldTitle != title {
+                    AppState.shared.handleTrackChange()
+                } else {
+                    AppState.shared.syncMediaPosition(incoming: positionSec)
+                }
+            }
+
+            // Only publish to macOS Control Center / boringNotch when the user opts in,
+            // because it requires a silent background audio track which can cause multipoint
+            // Bluetooth headphones to route audio focus to the Mac.
+            if UserDefaults.standard.showInControlCenter {
+                var npInfo = NowPlayingInfo()
+                npInfo.title = title
+                npInfo.artist = artist
+                npInfo.isPlaying = playing
+                if let data = Data(base64Encoded: albumArt) {
+                    npInfo.artworkData = data
+                }
+                // Seekbar: Android sends duration/position in ms; MPNowPlayingInfoCenter needs seconds.
+                // positionMs uses optDouble so missing/null safely falls back to -1.
+                // NOTE: Use NSNumber because Swift's JSON parser returns an Int type for flat numbers.
+                if let nsNum = music["duration"] as? NSNumber, nsNum.doubleValue > 0 {
+                    npInfo.duration = nsNum.doubleValue / 1000.0
+                }
+                if let pMs = music["position"] as? NSNumber, pMs.doubleValue >= 0 {
+                    npInfo.elapsedTime = pMs.doubleValue / 1000.0
+                }
+                NowPlayingPublisher.shared.update(info: npInfo)
+            } else {
+                // If the setting is off, ensure any previously running session is cleared
+                NowPlayingPublisher.shared.clear()
+            }
         }
     }
 
@@ -601,7 +757,9 @@ extension WebSocketServer {
     private func handleRemoteControl(_ message: Message) {
         if let dict = message.data.value as? [String: Any],
            let action = dict["action"] as? String {
+            #if DEBUG
             print("[WebSocketServer] Received remote action: \(action)")
+            #endif
             
             switch action {
             case "keypress":
@@ -793,23 +951,33 @@ extension WebSocketServer {
         }
     }
 
-    private func handleMacMediaControlRequest(_ message: Message) {
+    func handleMacMediaControlRequest(_ message: Message) {
         if let dict = message.data.value as? [String: Any],
            let action = dict["action"] as? String {
-            handleMacMediaControl(action: action)
+            handleMediaControl(action: action)
         }
     }
 
-    private func handleMacMediaControl(action: String) {
+    func handleMediaControl(action: String) {
         switch action {
         case "play": NowPlayingCLI.shared.play()
         case "pause": NowPlayingCLI.shared.pause()
         case "previous": NowPlayingCLI.shared.previous()
         case "next": NowPlayingCLI.shared.next()
         case "stop": NowPlayingCLI.shared.stop()
+        case "playPause": NowPlayingCLI.shared.toggle()
         default: break
         }
         sendMacMediaControlResponse(action: action, success: true)
+    }
+    
+    func handleVolumeControl(action: String) {
+        switch action {
+        case "up", "vol_up": MacRemoteManager.shared.increaseVolume()
+        case "down", "vol_down": MacRemoteManager.shared.decreaseVolume()
+        case "mute", "vol_mute": MacRemoteManager.shared.toggleMute()
+        default: break
+        }
     }
 
     private func handleNotificationUpdate(_ message: Message) {

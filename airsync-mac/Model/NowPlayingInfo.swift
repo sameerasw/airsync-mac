@@ -16,6 +16,8 @@ struct NowPlayingInfo {
     var artworkData: Data? = nil
     var artworkMimeType: String? = nil
     var bundleIdentifier: String? = nil
+    var timestamp: String? = nil
+    var playbackRate: Double? = 1.0
 
     mutating func updateFromPayload(_ payload: [String: Any]) {
         if let title = payload["title"] as? String { self.title = title }
@@ -24,6 +26,8 @@ struct NowPlayingInfo {
         if let elapsed = payload["elapsedTime"] as? Double { self.elapsedTime = elapsed }
         if let duration = payload["duration"] as? Double { self.duration = duration }
         if let playing = payload["playing"] as? Bool { self.isPlaying = playing }
+        if let rate = payload["playbackRate"] as? Double { self.playbackRate = rate }
+        if let ts = payload["timestamp"] as? String { self.timestamp = ts }
         if let artworkBase64 = payload["artworkData"] as? String,
            let data = Data(base64Encoded: artworkBase64) {
             self.artworkData = data

@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ConnectionStatusPill: View {
     @ObservedObject var appState = AppState.shared
+    @ObservedObject var bleManager = BLECentralManager.shared
     @State private var showingPopover = false
     @State private var isHovered = false
     
@@ -18,15 +19,18 @@ struct ConnectionStatusPill: View {
         }) {
             HStack(spacing: 8) {
                 // Network Connection Icon
-                Image(systemName: appState.isEffectivelyLocalTransport ? "wifi" : "globe")
-                    .foregroundStyle(connectionIconColor)
-                    .contentTransition(.symbolEffect(.replace))
-                    .help(connectionIconHelp)
+                if let ip = appState.device?.ipAddress, ip != "BLE" {
+                    Image(systemName: appState.isEffectivelyLocalTransport ? "wifi" : "globe")
+                        .foregroundStyle(connectionIconColor)
+                        .contentTransition(.symbolEffect(.replace))
+                        .help(appState.isEffectivelyLocalTransport ? "Local WiFi" : "AirBridge Relay")
+                }
                 
                 if appState.isPlus {
                     if appState.adbConnecting {
                         ProgressView()
                             .controlSize(.small)
+                            .help("ADB Connecting...")
                             .transition(.asymmetric(
                                 insertion: .scale.combined(with: .opacity),
                                 removal: .opacity
@@ -36,6 +40,7 @@ struct ConnectionStatusPill: View {
                         HStack(spacing: 6) {
                             Image(systemName: "iphone.gen3.crop.circle")
                                 .contentTransition(.symbolEffect(.replace))
+                                .help("ADB Connected")
                             
                             // ADB Mode Icon
                             Image(systemName: adbModeIcon)
@@ -58,6 +63,15 @@ struct ConnectionStatusPill: View {
                             ))
                     }
                 }
+                
+                if bleManager.isAuthenticated {
+                    Image("logo.bluetooth")
+                        .help("BLE Connected")
+                        .transition(.asymmetric(
+                            insertion: .scale.combined(with: .opacity),
+                            removal: .opacity
+                        ))
+                }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
@@ -68,6 +82,7 @@ struct ConnectionStatusPill: View {
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appState.adbConnectionMode)
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appState.isEffectivelyLocalTransport)
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: QuickShareManager.shared.isRunning)
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: bleManager.connectionStatus)
         }
         .buttonStyle(.plain)
         .onHover { hovering in
@@ -122,15 +137,25 @@ struct ConnectionStatusPill: View {
 struct ConnectionPillPopover: View {
     @ObservedObject var appState = AppState.shared
     @ObservedObject var quickShareManager = QuickShareManager.shared
+    @ObservedObject var bleManager = BLECentralManager.shared
     @State private var currentIPAddress: String = "N/A"
     
+    @State private var availableWiredDevices: [WiredADBDevice] = []
+    
+    var bleStatusText: String {
+        switch bleManager.connectionStatus {
+        case .scanning: return "Scanning..."
+        case .connected: return "Authenticating..."
+        case .authenticated: return "Connected"
+        case .disconnected: return "Disconnected"
+        }
+    }
+    
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Connection")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 16) {
             
             if let device = appState.device {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 12) {
                     ConnectionInfoText(
                         label: "Device",
                         icon: "iphone.gen3",
@@ -147,17 +172,43 @@ struct ConnectionPillPopover: View {
                         ConnectionInfoText(
                             label: "IP Address",
                             icon: "network",
-                            text: currentIPAddress,
-                            activeIp: appState.activeMacIp
+                            text: appState.device?.ipAddress == "BLE" ? "BLE only" : currentIPAddress,
+                            activeIp: appState.device?.ipAddress == "BLE" ? nil : appState.activeMacIp
                         )
                     }
                     
-                    if appState.isPlus && appState.adbConnected {
-                        ConnectionInfoText(
-                            label: "ADB Connection",
-                            icon: appState.adbConnectionMode == .wired ? "cable.connector" : "airplay.audio",
-                            text: appState.adbConnectionMode == .wired ? "Wired (USB)" : "Wireless"
-                        )
+                    if appState.isPlus {
+                        if appState.wiredAdbEnabled {
+                            HStack {
+                                Label(L("connection.wiredAdb"), systemImage: "cable.connector")
+                                Spacer()
+                                Picker("", selection: Binding(
+                                    get: { appState.selectedWiredSerial ?? "" },
+                                    set: { newSerial in
+                                        appState.selectedWiredSerial = newSerial
+                                        if let deviceId = appState.device?.deviceId {
+                                            appState.deviceAdbSerials[deviceId] = newSerial
+                                        }
+                                        appState.adbConnectionResult = "Switched to Wired ADB Serial: \(newSerial)"
+                                    }
+                                )) {
+                                    Text(loc: "connection.selectDevice").tag("")
+                                    ForEach(availableWiredDevices, id: \.serial) { dev in
+                                        Text("\(dev.model) (\(dev.serial))").tag(dev.serial)
+                                    }
+                                }
+                                .pickerStyle(MenuPickerStyle())
+                                .frame(width: 140)
+                            }
+                        }
+                        
+                        if appState.adbConnected && appState.adbConnectionMode == .wireless {
+                            ConnectionInfoText(
+                                label: "ADB Connection",
+                                icon: "airplay.audio",
+                                text: L("connection.wireless")
+                            )
+                        }
                     }
 
                     HStack {
@@ -166,43 +217,40 @@ struct ConnectionPillPopover: View {
                         Toggle("", isOn: $quickShareManager.isEnabled)
                             .toggleStyle(.switch)
                     }
+
+                    if appState.isBLEEnabled {
+                        ConnectionInfoText(
+                            label: "Bluetooth LE",
+                            icon: "logo.bluetooth",
+                            text: bleStatusText
+                        )
+                    }
                 }
                 .padding(.bottom, 4)
                 
-                HStack(spacing: 8) {
+                HStack(alignment: .center, spacing: 8) {
+                    Spacer()
                     if appState.isPlus {
-                        if appState.adbConnected {
-                            GlassButtonView(
-                                label: "Disconnect ADB",
-                                systemImage: "cable.connector.slash",
-                                iconOnly: false,
-                                primary: false,
-                                action: {
+                        GlassButtonView(
+                            label: appState.adbConnected ? "Disconnect ADB" : (appState.adbConnecting ? "Connecting ADB..." : "Connect ADB"),
+                            systemImage: appState.adbConnected ? "cable.connector.slash" : (appState.adbConnecting ? nil : "cable.connector"),
+                            iconOnly: false,
+                            primary: false,
+                            isLoading: appState.adbConnecting,
+                            action: {
+                                if appState.adbConnected {
                                     ADBConnector.disconnectADB()
+                                } else if !appState.adbConnecting {
+                                    appState.adbConnectionResult = "" // Clear console
+                                    appState.manualAdbConnectionPending = true
+                                    appState.userInitiatedAdbConnect = true
+                                    WebSocketServer.shared.sendRefreshAdbPortsRequest()
+                                    appState.adbConnectionResult = "Refreshing latest ADB ports from device..."
                                 }
-                            )
-                            .focusable(false)
-                        } else if !appState.adbConnecting {
-                            GlassButtonView(
-                                label: "Connect ADB",
-                                systemImage: "cable.connector",
-                                iconOnly: false,
-                                primary: false,
-                                action: {
-                                    if !appState.adbConnecting {
-                                        ADBConnector.requestConnectionFromCurrentTransport()
-                                    }
-                                }
-                            )
-                            .focusable(false)
-                        } else {
-                            HStack {
-                                ProgressView().controlSize(.small)
-                                Text("Connecting ADB...")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+
                             }
-                        }
+                        )
+                        .focusable(false)
                     }
                     
                     GlassButtonView(
@@ -219,15 +267,52 @@ struct ConnectionPillPopover: View {
                         }
                     )
                     .focusable(false)
+                    Spacer()
                 }
             } else {
-                Text("No device connected")
-                    .foregroundColor(.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+                
+                HStack {
+                    Label("Bluetooth LE Discovery", image: "logo.bluetooth")
+                        .font(.system(size: 12))
+                    Spacer()
+                    Toggle("", isOn: $appState.isBLEEnabled)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                }
+                
+                HStack {
+                    Label("Auto-connect", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 12))
+                    Spacer()
+                    Toggle("", isOn: $appState.isBLEAutoConnectEnabled)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .disabled(!appState.isBLEEnabled)
+                }
+
+                HStack {
+                    Label("Auto switch with nearby", systemImage: "arrow.triangle.swap")
+                        .font(.system(size: 12))
+                    Spacer()
+                    Toggle("", isOn: $appState.isAutoSwitchWithBLEEnabled)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .disabled(!appState.isBLEEnabled)
+                }
+            }
+            .frame(width: 240)
             }
         }
         .padding()
+        .frame(minWidth: 380)
         .onAppear {
             currentIPAddress = WebSocketServer.shared.getLocalIPAddress(adapterName: appState.selectedNetworkAdapterName) ?? "N/A"
+            ADBConnector.getWiredDevices { devices in
+                DispatchQueue.main.async {
+                    self.availableWiredDevices = devices
+                }
+            }
         }
     }
 }

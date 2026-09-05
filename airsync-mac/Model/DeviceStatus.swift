@@ -9,21 +9,27 @@ import Foundation
 
 struct DeviceStatus: Codable {
     struct Battery: Codable {
-        let level: Int
-        let isCharging: Bool
+        var level: Int
+        var isCharging: Bool
     }
 
     struct Music: Codable {
-        let isPlaying: Bool
-        let title: String
-        let artist: String
-        let volume: Int
-        let isMuted: Bool
-        let albumArt: String
-        let likeStatus: String
+        var isPlaying: Bool
+        var title: String
+        var artist: String
+        var volume: Int
+        var isMuted: Bool
+        var albumArt: String
+        var likeStatus: String
+        /// Total track duration in seconds. -1 means not available.
+        var duration: Double
+        /// Current playback position in seconds (corrected for network transit on Mac side).
+        var position: Double
+        /// True when Android is buffering — position is frozen, Mac timer should pause.
+        var isBuffering: Bool
     }
 
-    let battery: Battery
-    let isPaired: Bool
-    let music: Music
+    var battery: Battery
+    var isPaired: Bool
+    var music: Music?
 }

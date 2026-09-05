@@ -44,11 +44,23 @@ class QuickConnectManager: ObservableObject {
             return
         }
         
+        let isBLE = device.ipAddress == "Bluetooth LE" || device.ipAddress == "BLE"
+        
         DispatchQueue.main.async {
+            if isBLE {
+                if let existing = self.lastConnectedDevices[currentMacIP] {
+                    let existingIsBLE = existing.ipAddress == "Bluetooth LE" || existing.ipAddress == "BLE"
+                    if !existingIsBLE {
+                        print("[quick-connect] Not overwriting existing Wi-Fi device (\(existing.name): \(existing.ipAddress)) with BLE device")
+                        return
+                    }
+                }
+            }
+            
             self.lastConnectedDevices[currentMacIP] = device
             self.saveDeviceHistoryToDisk()
+            print("[quick-connect] Saved last connected device for network \(currentMacIP): \(device.name) (\(device.ipAddress))")
         }
-        print("[quick-connect] Saved last connected device for network \(currentMacIP): \(device.name) (\(device.ipAddress))")
     }
     
     /// Clears the last connected device for the current network
@@ -64,8 +76,36 @@ class QuickConnectManager: ObservableObject {
     
     /// Attempts to wake up and reconnect to a specific discovered device
     func connect(to discoveredDevice: DiscoveredDevice) {
+        let hasWifiIPs = discoveredDevice.ips.contains { $0 != "Bluetooth LE" && !$0.isEmpty }
+        if (discoveredDevice.type == "ble" || discoveredDevice.ips.contains("Bluetooth LE")) && !hasWifiIPs {
+            print("[quick-connect] Discovered device is Bluetooth LE, connecting directly via BLE...")
+            // Show progress in UI
+            DispatchQueue.main.async {
+                self.connectingDeviceID = discoveredDevice.id
+            }
+            
+            // Save as last connected device (so we can auto-reconnect later)
+            let device = Device(
+                name: discoveredDevice.name,
+                ipAddress: "Bluetooth LE",
+                port: discoveredDevice.port,
+                version: "Unknown",
+                adbPorts: [],
+                deviceId: discoveredDevice.deviceId
+            )
+            saveLastConnectedDevice(device)
+            
+            BLECentralManager.shared.connectManually(toUuid: discoveredDevice.deviceId)
+            
+            // Clear progress after short delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                self.connectingDeviceID = nil
+            }
+            return
+        }
+        
         // Pick best IP: prefer local (non-100.x) over VPN
-        let bestIP = discoveredDevice.ips.first(where: { !$0.hasPrefix("100.") }) ?? discoveredDevice.ips.first ?? ""
+        let bestIP = discoveredDevice.ips.first(where: { !$0.hasPrefix("100.") && $0 != "Bluetooth LE" }) ?? discoveredDevice.ips.first(where: { $0 != "Bluetooth LE" }) ?? ""
         
         // Convert DiscoveredDevice to Device model
         let device = Device(
@@ -73,7 +113,8 @@ class QuickConnectManager: ObservableObject {
             ipAddress: bestIP,
             port: discoveredDevice.port,
             version: "Unknown",
-            adbPorts: []
+            adbPorts: [],
+            deviceId: discoveredDevice.deviceId
         )
         
         saveLastConnectedDevice(device)
@@ -94,6 +135,12 @@ class QuickConnectManager: ObservableObject {
     func wakeUpLastConnectedDevice() {
         guard let lastDevice = getLastConnectedDevice() else {
             print("[quick-connect] No last connected device to wake up")
+            return
+        }
+        
+        if lastDevice.ipAddress == "Bluetooth LE" {
+            print("[quick-connect] Last connected device is BLE. Initiating BLE reconnection...")
+            BLECentralManager.shared.connectManually(toUuid: lastDevice.deviceId)
             return
         }
         

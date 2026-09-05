@@ -10,8 +10,8 @@ import SwiftUI
 struct HelpWebSheet: View {
     @Binding var isPresented: Bool
 
-    @State private var webURL: URL = URL(string: "https://airsync.notion.site")!
-    @State private var currentURL: URL = URL(string: "https://airsync.notion.site")!
+    @State private var webURL: URL = URL(string: "https://sameerasw.com/docs/airsync")!
+    @State private var currentURL: URL = URL(string: "https://sameerasw.com/docs/airsync")!
 
     var body: some View {
         ZStack {

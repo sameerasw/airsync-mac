@@ -386,7 +386,7 @@ class MacRemoteManager: ObservableObject {
         checkVolumeChange()
         
         // Start timer
-        volumeCheckTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        volumeCheckTimer = Timer.scheduledTimer(withTimeInterval: 7.0, repeats: true) { [weak self] _ in
             self?.checkVolumeChange()
         }
     }

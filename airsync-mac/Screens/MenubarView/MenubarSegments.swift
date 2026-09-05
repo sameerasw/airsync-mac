@@ -21,12 +21,6 @@ struct TopSegmentView: View {
                     .frame(width: toolButtonSize, height: toolButtonSize)
 
                 Menu {
-                    #if DEBUG
-                    Button("Crash", systemImage: "bolt.trianglebadge.exclamationmark") {
-                        fatalError("Sentry Test Crash")
-                    }
-                    #endif
-                    
                     Button("Quit", systemImage: "power") {
                         NSApplication.shared.terminate(nil)
                     }
@@ -73,35 +67,81 @@ struct TopSegmentView: View {
                             openQuickShare()
                         }
                     )
+
+                    if appState.isFileAccessEnabled && WebDAVManager.shared.isMounted {
+                        GlassButtonView(
+                            label: L("menu.browseFiles"),
+                            systemImage: "folder",
+                            iconOnly: true,
+                            circleSize: toolButtonSize,
+                            action: {
+                                WebDAVManager.shared.openInFinder()
+                            }
+                        )
+                    }
                     
-                    if appState.adbConnected {
+                    if appState.adbConnected && (appState.isPlus || !appState.licenseCheck) {
                         GlassButtonView(
                             label: "Mirror",
                             systemImage: "apps.iphone",
                             iconOnly: true,
                             circleSize: toolButtonSize,
                             action: {
-                                ADBConnector.startScrcpy(
-                                    ip: appState.device?.ipAddress ?? "",
-                                    port: appState.adbPort,
-                                    deviceName: appState.device?.name ?? "My Phone"
-                                )
+                                if appState.useNativeMirroringByDefault {
+                                    appState.isNativeMirroring = true
+                                } else {
+                                    ADBConnector.startScrcpy(
+                                        ip: appState.device?.ipAddress ?? "",
+                                        port: appState.adbPort,
+                                        deviceName: appState.device?.name ?? "My Phone"
+                                    )
+                                }
                             }
                         )
                         .contextMenu {
-                            Button("Android Mirror") {
-                                appState.isNativeMirroring = true
+                            if appState.useNativeMirroringByDefault {
+                                Button("scrcpy Mirror") {
+                                    ADBConnector.startScrcpy(
+                                        ip: appState.device?.ipAddress ?? "",
+                                        port: appState.adbPort,
+                                        deviceName: appState.device?.name ?? "My Phone"
+                                    )
+                                }
+                            } else {
+                                Button("Android Mirror") {
+                                    appState.isNativeMirroring = true
+                                }
                             }
-                            
-                            Button("Desktop Mode") {
-                                ADBConnector.startScrcpy(
-                                    ip: appState.device?.ipAddress ?? "",
-                                    port: appState.adbPort,
-                                    deviceName: appState.device?.name ?? "My Phone",
-                                    desktop: true
-                                )
+
+                            Divider()
+
+                            if appState.useNativeDesktopMirroringByDefault {
+                                Button("Native Desktop") {
+                                    appState.isNativeDesktopMirroring = true
+                                }
+                                Button("scrcpy Desktop") {
+                                    ADBConnector.startScrcpy(
+                                        ip: appState.device?.ipAddress ?? "",
+                                        port: appState.adbPort,
+                                        deviceName: appState.device?.name ?? "My Phone",
+                                        desktop: true
+                                    )
+                                }
+                            } else {
+                                Button("Desktop Mode") {
+                                    ADBConnector.startScrcpy(
+                                        ip: appState.device?.ipAddress ?? "",
+                                        port: appState.adbPort,
+                                        deviceName: appState.device?.name ?? "My Phone",
+                                        desktop: true
+                                    )
+                                }
+                                Button("Native Desktop") {
+                                    appState.isNativeDesktopMirroring = true
+                                }
                             }
                         }
+
                     }
                     
                     
@@ -169,7 +209,7 @@ struct MediaSegmentView: View {
         if let status = appState.status {
             DeviceStatusView(showMediaToggle: true)
                 .background {
-                    let artwork = status.music.albumArt
+                    let artwork = status.music?.albumArt ?? ""
                     if !appState.isMusicCardHidden,
                        !artwork.isEmpty,
                        let data = Data(base64Encoded: artwork),
@@ -190,10 +230,14 @@ struct MediaSegmentView: View {
 
 struct DiscoverySegmentView: View {
     @ObservedObject var appState = AppState.shared
-    @StateObject private var udpDiscovery = UDPDiscoveryManager.shared
+    @ObservedObject private var udpDiscovery = DiscoveryManager.shared
+    @ObservedObject private var bleManager = BLECentralManager.shared
 
     var body: some View {
-        if appState.device == nil && !udpDiscovery.discoveredDevices.isEmpty {
+        let hasUdp = !udpDiscovery.discoveredDevices.isEmpty
+        let hasBle = appState.isBLEEnabled && !bleManager.discoveredBLEDevices.isEmpty
+        
+        if appState.device == nil && (hasUdp || hasBle) {
             MenubarDeviceDiscoveryView()
                 .padding(10)
                 .segmentStyle()
@@ -203,9 +247,13 @@ struct DiscoverySegmentView: View {
 
 struct NotificationsSegmentView: View {
     @ObservedObject var appState = AppState.shared
+    @ObservedObject var summaryViewModel = NotificationSummaryViewModel.shared
     
     var body: some View {
-        if appState.device != nil && !appState.notifications.isEmpty {
+        let nonSilentNotifications = appState.notifications.filter { $0.priority != "silent" }
+        let filtered = appState.includeSilentInAIOption ? appState.notifications : nonSilentNotifications
+        
+        if appState.device != nil && !nonSilentNotifications.isEmpty {
             VStack(spacing: 6) {
                 HStack {
                     Text("Notifications")
@@ -215,8 +263,33 @@ struct NotificationsSegmentView: View {
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
 
+                if !appState.disableAllAIFeatures && appState.enableMenubarAISummary && filtered.count >= 3 {
+                    if summaryViewModel.showMenubarSummary {
+                        MenubarSummaryCardView(viewModel: summaryViewModel)
+                            .padding(6)
+                            .segmentStyle()
+                            .modifier(AIGlowModifier(isGenerating: summaryViewModel.isGeneratingSummary, cornerRadius: 20))
+                    }
+                }
+
                 MenuBarNotificationsListView()
+            }
+            .onAppear {
+                if appState.autoMenubarSummary {
+                    summaryViewModel.showMenubarSummary = true
+                }
+                if summaryViewModel.showMenubarSummary {
+                    summaryViewModel.generateSummary(notifications: appState.notifications, androidApps: appState.androidApps)
+                }
+            }
+            .onChange(of: appState.notifications) { _, newNotifications in
+                if summaryViewModel.showMenubarSummary {
+                    summaryViewModel.generateSummary(notifications: newNotifications, androidApps: appState.androidApps)
+                }
             }
         }
     }
 }
+
+
+

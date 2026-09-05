@@ -55,7 +55,23 @@ extension WebSocketServer {
             let lastDate = self.lastActivity[sessionId] ?? .distantPast
             self.lock.unlock()
             
-            let isStale = now.timeIntervalSince(lastDate) > timeout
+            let timeSinceLastActivity = now.timeIntervalSince(lastDate)
+            let isStale = timeSinceLastActivity > timeout
+            
+            let isPrimary = (sessionId == primary)
+            if isPrimary && !isStale {
+                let isWeak = timeSinceLastActivity > 10
+                DispatchQueue.main.async {
+                    if AppState.shared.isConnectionWeak != isWeak {
+                        AppState.shared.isConnectionWeak = isWeak
+                        if isWeak {
+                            print("[websocket] Primary session connection is weak. Time since last activity: \(Int(timeSinceLastActivity))s")
+                        } else {
+                            print("[websocket] Primary session connection recovered.")
+                        }
+                    }
+                }
+            }
             
             if isStale {
                 // If relay is currently active, avoid hard restart: stale local sessions
@@ -84,12 +100,43 @@ extension WebSocketServer {
 
                 let isPrimary = (sessionId == primary)
                 if isPrimary {
-                    // Primary session has gone silent — full reconnect cycle
-                    print("[websocket] Primary session \(sessionId) is stale (>\(Int(timeout))s). Restarting server.")
-                    DispatchQueue.main.async {
+                    self.lock.lock()
+                    let alreadyRestarting = self.isRestarting
+                    self.lock.unlock()
+                    
+                    if alreadyRestarting {
+                        return
+                    }
+                    
+                    print("[websocket] Primary session \(sessionId) is stale (>\(Int(timeout))s). Disconnecting now.")
+                    
+                    self.lock.lock()
+                    self.isRestarting = true
+                    self.lock.unlock()
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.0) { [weak self] in
+                        guard let self = self else { return }
+                        
+                        self.lock.lock()
+                        let currentPrimary = self.primarySessionID
+                        self.lock.unlock()
+                        
+                        guard currentPrimary == sessionId, AppState.shared.device != nil else {
+                            self.lock.lock()
+                            self.isRestarting = false
+                            self.lock.unlock()
+                            print("[websocket] Grace period expired but primary session changed or device disconnected. Cancelling restart.")
+                            return
+                        }
+                        
                         AppState.shared.disconnectDevice()
                         ADBConnector.disconnectADB()
                         AppState.shared.adbConnected = false
+                        
+                        self.lock.lock()
+                        self.isRestarting = false
+                        self.lock.unlock()
+                        
                         self.restartServer()
                     }
                     return // Let the restart handle everything; stop iterating
@@ -99,15 +146,18 @@ extension WebSocketServer {
                     self.lock.lock()
                     self.activeSessions.removeAll { $0 === session }
                     self.lastActivity.removeValue(forKey: sessionId)
-                    self.lock.unlock()
                     session.writeBinary([]) // Force-close
+                    self.lock.unlock()
                     continue
                 }
             }
             
             let pingJson = "{\"type\":\"ping\",\"data\":{}}"
             
-            DispatchQueue.global(qos: .utility).async {
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                guard let self = self else { return }
+                self.lock.lock()
+                defer { self.lock.unlock() }
                 if let key = key, let encrypted = encryptMessage(pingJson, using: key) {
                     session.writeText(encrypted)
                 } else {

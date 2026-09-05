@@ -6,30 +6,77 @@
 //
 
 import SwiftUI
+import FoundationModels
 
 struct NotificationView: View {
     @ObservedObject var appState = AppState.shared
     @AppStorage("notificationStacks") private var notificationStacks = true
+    @ObservedObject private var summaryViewModel = NotificationSummaryViewModel.shared
     @State private var expandedPackages: Set<String> = []
     @State private var isSilentExpanded: Bool = false
 
     @ViewBuilder
     var body: some View {
         if !appState.notifications.isEmpty {
-            ZStack {
-                // stacked view on top when notificationStacks == true
-                stackedList
-                    .opacity(notificationStacks ? 1 : 0)
-                    .allowsHitTesting(notificationStacks)     // only interact when visible
-                    .accessibilityHidden(!notificationStacks)
-                    .animation(.easeInOut(duration: 0.5), value: notificationStacks)
+            VStack(spacing: 0) {
+                if !appState.disableAllAIFeatures && summaryViewModel.showSummary {
+                    NotificationSummaryView(viewModel: summaryViewModel)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                }
 
-                // flat view on top when notificationStacks == false
-                flatList
-                    .opacity(notificationStacks ? 0 : 1)
-                    .allowsHitTesting(!notificationStacks)
-                    .accessibilityHidden(notificationStacks)
-                    .animation(.easeInOut(duration: 0.5), value: notificationStacks)
+                ZStack {
+                    // stacked view on top when notificationStacks == true
+                    stackedList
+                        .opacity(notificationStacks ? 1 : 0)
+                        .allowsHitTesting(notificationStacks)     // only interact when visible
+                        .accessibilityHidden(!notificationStacks)
+                        .animation(.easeInOut(duration: 0.5), value: notificationStacks)
+
+                    // flat view on top when notificationStacks == false
+                    flatList
+                        .opacity(notificationStacks ? 0 : 1)
+                        .allowsHitTesting(!notificationStacks)
+                        .accessibilityHidden(notificationStacks)
+                        .animation(.easeInOut(duration: 0.5), value: notificationStacks)
+                }
+            }
+            .whatsNewPopover(item: .firstNotification, arrowEdge: .top)
+            .toolbar {
+                let hasValidNotifications = appState.includeSilentInAIOption ? !appState.notifications.isEmpty : appState.notifications.contains(where: { $0.priority != "silent" })
+                if !appState.disableAllAIFeatures && appState.showAIToolbarButton && hasValidNotifications {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            summaryViewModel.generateSummary(notifications: appState.notifications, androidApps: appState.androidApps, isFromToolbar: true)
+                        } label: {
+                            Label("Summarize", systemImage: "sparkles")
+                        }
+                        .disabled(summaryViewModel.isGeneratingSummary)
+                        .help("Summarize notifications with AI")
+                    }
+                }
+            }
+            .onAppear {
+                WhatsNewTourManager.shared.evaluateActiveItem()
+            }
+            .onChange(of: appState.disableAllAIFeatures) { _, disabled in
+                if disabled {
+                    summaryViewModel.showSummary = false
+                }
+            }
+            .onChange(of: appState.notifications.count) { _, _ in
+                WhatsNewTourManager.shared.evaluateActiveItem()
+            }
+            .onChange(of: appState.selectedTab) { _, _ in
+                WhatsNewTourManager.shared.evaluateActiveItem()
+            }
+            .sheet(item: Binding(
+                get: { appState.configuringLaunchPreferenceFor.map { NotifConfigureTarget(id: $0) } },
+                set: { appState.configuringLaunchPreferenceFor = $0?.id }
+            )) { target in
+                if let app = appState.androidApps[target.id] {
+                    AppNotificationSettingsView(app: app)
+                }
             }
         } else {
             NotificationEmptyView()
@@ -165,23 +212,13 @@ struct NotificationView: View {
     private func notificationRowWithTap(for notif: Notification) -> some View {
         notificationRow(for: notif)
             .onTapGesture {
-                handleNotificationTap(notif)
+                appState.handleNotificationTap(notif)
             }
     }
+}
 
-    private func handleNotificationTap(_ notif: Notification) {
-        if appState.device != nil && appState.adbConnected &&
-           notif.package != "" &&
-           notif.package != "com.sameerasw.airsync" &&
-           appState.mirroringPlus {
-            ADBConnector.startScrcpy(
-                ip: appState.device?.ipAddress ?? "",
-                port: appState.adbPort,
-                deviceName: appState.device?.name ?? "My Phone",
-                package: notif.package
-            )
-        }
-    }
+private struct NotifConfigureTarget: Identifiable {
+    let id: String
 }
 
 #Preview {

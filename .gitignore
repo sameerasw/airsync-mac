@@ -75,3 +75,4 @@ AGENTS.md
 .tend-stack
 docs/plans/
 build.log
+*.trace
