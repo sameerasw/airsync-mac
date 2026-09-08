@@ -115,11 +115,19 @@ class AirBridgeClient: ObservableObject {
 
     // MARK: - Public Interface
 
+    /// Connection mode gate. Reads the persisted mode directly from UserDefaults:
+    /// `AppState.shared` may still be initializing (dispatch_once) when connect() is
+    /// triggered from `AppState.init`, and touching it there would re-enter the
+    /// once-token ("trying to lock recursively" crash).
+    private func isRelayModePermitted() -> Bool {
+        UserDefaults.standard.string(forKey: "appConnectionMode") == AppState.AppConnectionMode.dynamic.rawValue
+    }
+
     /// Connects to the relay server. Does nothing if already connected, the URL is empty,
     /// or the current connection mode does not permit the relay (Dynamic only).
     func connect() {
-        guard AppState.shared.isRelayAllowedByMode else {
-            print("[airbridge] connect skipped: relay disabled in \(AppState.shared.connectionMode.rawValue) mode")
+        guard isRelayModePermitted() else {
+            print("[airbridge] connect skipped: relay disabled in \(UserDefaults.standard.string(forKey: "appConnectionMode") ?? "unknown") mode")
             DispatchQueue.main.async { self.connectionState = .disconnected }
             return
         }
@@ -329,8 +337,8 @@ class AirBridgeClient: ObservableObject {
 
     private func connectInternal() {
         // Backstop: internal reconnect paths (wake, scheduleReconnect) must not bypass the mode gate.
-        guard AppState.shared.isRelayAllowedByMode else {
-            print("[airbridge] reconnect skipped: relay disabled in \(AppState.shared.connectionMode.rawValue) mode")
+        guard isRelayModePermitted() else {
+            print("[airbridge] reconnect skipped: relay disabled in \(UserDefaults.standard.string(forKey: "appConnectionMode") ?? "unknown") mode")
             DispatchQueue.main.async { self.connectionState = .disconnected }
             return
         }

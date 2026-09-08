@@ -174,17 +174,24 @@ class AppState: ObservableObject {
         self.licenseDetails = AppState.loadLicenseDetailsFromUserDefaults()
 
         let savedConnectionModeStr = UserDefaults.standard.string(forKey: "appConnectionMode")
+        let resolvedMode: AppConnectionMode
         if let savedMode = savedConnectionModeStr.flatMap(AppConnectionMode.init(rawValue:)) {
+            resolvedMode = savedMode
             self.connectionMode = savedMode
             self.isBLEEnabled = (savedMode != .network)
         } else if UserDefaults.standard.object(forKey: "isBLEEnabled") != nil {
             let legacyBle = UserDefaults.standard.bool(forKey: "isBLEEnabled")
+            resolvedMode = legacyBle ? .dynamic : .network
             self.connectionMode = legacyBle ? .dynamic : .network
             self.isBLEEnabled = legacyBle
         } else {
+            resolvedMode = .dynamic
             self.connectionMode = .dynamic
             self.isBLEEnabled = true
         }
+        // Persist the resolved mode: didSet does not fire during init, and
+        // AirBridgeClient's mode gate reads this key directly.
+        UserDefaults.standard.set(resolvedMode.rawValue, forKey: "appConnectionMode")
 
         self.isBLEAutoConnectEnabled = UserDefaults.standard.object(forKey: "isBLEAutoConnectEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "isBLEAutoConnectEnabled")
         self.isAutoSwitchWithBLEEnabled = UserDefaults.standard.object(forKey: "isAutoSwitchWithBLEEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "isAutoSwitchWithBLEEnabled")
@@ -712,6 +719,8 @@ class AppState: ObservableObject {
                 }
             }
             // AirBridge relay rides only in Dynamic mode.
+            // Note: side effects are safe here — the gate inside AirBridgeClient reads
+            // UserDefaults, not AppState, so this is re-entrancy-proof during init.
             if self.airBridgeEnabled {
                 if connectionMode == .dynamic {
                     AirBridgeClient.shared.connect()
