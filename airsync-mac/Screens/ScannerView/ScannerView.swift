@@ -201,6 +201,10 @@ func generateQRText(ip: String?, port: UInt16?, name: String?, key: String) -> S
 
     if AppState.shared.airBridgeEnabled && AppState.shared.isRelayAllowedByMode {
         let client = AirBridgeClient.shared
+        // Ensure credentials exist before reading them: they are otherwise
+        // created lazily on the first relay connect, which races with the QR
+        // build and silently drops the relay params from the first scan.
+        client.ensureCredentialsExist()
         let relay = client.relayServerURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let pairingId = client.pairingId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let secret = client.secret.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
