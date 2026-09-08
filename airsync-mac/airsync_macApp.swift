@@ -25,6 +25,8 @@ struct airsync_macApp: App {
     @StateObject private var macInfoSyncManager = MacInfoSyncManager.shared
 
     init() {
+        // Pre-load all Keychain items in a single query so macOS only shows ONE password prompt instead of the individual prompts.
+        KeychainStorage.preload()
 
         // Initialize NowPlayingPublisher for MPNowPlayingInfoCenter integration
         NowPlayingPublisher.shared.start()

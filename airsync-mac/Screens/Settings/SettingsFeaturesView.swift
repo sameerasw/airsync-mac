@@ -69,7 +69,13 @@ struct SettingsFeaturesView: View {
                                 }
                             )
                             .disabled(
-                                appState.device == nil || appState.adbConnecting || !AppState.shared.isPlus
+                                appState.device == nil ||
+                                appState.adbConnecting ||
+                                !AppState.shared.isPlus ||
+                                (
+                                    !WebSocketServer.shared.hasActiveLocalSession() &&
+                                    !(AirBridgeClient.shared.connectionState == .relayActive && appState.wiredAdbEnabled)
+                                )
                             )
                         }
 

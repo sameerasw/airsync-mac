@@ -74,6 +74,30 @@ extension WebSocketServer {
             }
             
             if isStale {
+                // If relay is currently active, avoid hard restart: stale local sessions
+                // can happen during transport switch (LAN <-> relay).
+                if AirBridgeClient.shared.connectionState == .relayActive {
+                    self.lock.lock()
+                    self.activeSessions.removeAll(where: { ObjectIdentifier($0) == sessionId })
+                    self.lastActivity.removeValue(forKey: sessionId)
+                    let evictedPrimary = (self.primarySessionID == sessionId)
+                    if self.primarySessionID == sessionId {
+                        self.primarySessionID = nil
+                    }
+                    let sessionCount = self.activeSessions.count
+                    self.lock.unlock()
+
+                    if evictedPrimary {
+                        self.publishLanTransportState(isActive: false, reason: "stale_primary_evicted_by_ping")
+                    }
+
+                    if sessionCount == 0 {
+                        MacRemoteManager.shared.stopVolumeMonitoring()
+                        self.stopPing()
+                    }
+                    continue
+                }
+
                 let isPrimary = (sessionId == primary)
                 if isPrimary {
                     self.lock.lock()

@@ -25,7 +25,7 @@ struct InstallAndroidView: View {
                 Image(decorative: qrImage, scale: 1.0)
                     .resizable()
                     .interpolation(.none)
-                    .frame(width: 190, height: 190)
+                    .frame(width: 300, height: 300)
                     .accessibilityLabel("QR Code to download AirSync Android app")
                     .shadow(radius: 10)
                     .padding()
@@ -72,7 +72,7 @@ struct InstallAndroidView: View {
         let text = "https://play.google.com/store/apps/details?id=com.sameerasw.airsync"
 
         Task {
-            if let cgImage = await QRCodeGenerator.generateQRCode(for: text) {
+            if let cgImage = await QRCodeGenerator.generateQRCode(for: text, dimension: 600) {
                 DispatchQueue.main.async {
                     self.qrImage = cgImage
                 }

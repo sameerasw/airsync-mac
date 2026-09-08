@@ -150,6 +150,14 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
 
     public func sendFiles(urls: [URL], to device: RemoteDeviceInfo) {
         guard let deviceID = device.id else { return }
+        // If we are only connected via relay (no local LAN session), block Quick Share sends.
+        if AirBridgeClient.shared.connectionState.isConnected,
+           !AppState.shared.isEffectivelyLocalTransport {
+            print("[quickshare] Blocking Quick Share send: relay-only connection, no local transport available")
+            transferState = .idle
+            AppState.shared.showingQuickShareTransfer = false
+            return
+        }
         transferState = .connecting(deviceID)
         transferProgress = 0
         

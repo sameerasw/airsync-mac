@@ -50,7 +50,7 @@ class QRConnectionManager: ObservableObject {
         ) ?? "That doesn't look right, QR Generation failed"
 
         Task {
-            if let cgImage = await QRCodeGenerator.generateQRCode(for: text) {
+            if let cgImage = await QRCodeGenerator.generateQRCode(for: text, dimension: 600) {
                 DispatchQueue.main.async {
                     self.qrImage = cgImage
                 }

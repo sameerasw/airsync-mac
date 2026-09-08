@@ -206,6 +206,7 @@
   "connectionMode.dynamic": "Dynamic",
   "connectionMode.nearby": "Nearby",
   "settings.connectionMode.network.info": "Uses local area network only. Bluetooth LE is disabled.",
-  "settings.connectionMode.dynamic.info": "Uses Wi-Fi and Bluetooth LE with automatic fallback and switching.",
-  "settings.connectionMode.nearby.info": "Uses Bluetooth LE only. Local network discovery is disabled."
+  "settings.connectionMode.dynamic.info": "Uses Wi-Fi and Bluetooth LE with automatic fallback and switching. With AirBridge enabled, the relay server is used as a last-resort fallback over the internet.",
+  "settings.connectionMode.nearby.info": "Uses Bluetooth LE only. Local network discovery is disabled.",
+  "settings.airbridge.blockedByMode": "AirBridge relay is inactive in this connection mode. Switch to Dynamic to use it."
 }

@@ -20,6 +20,12 @@ class AppState: ObservableObject {
         case wired
     }
 
+    enum PeerTransportHint: String {
+        case unknown
+        case wifi
+        case relay
+    }
+
     enum AppConnectionMode: String, CaseIterable, Identifiable {
         case network = "network"
         case dynamic = "dynamic"
@@ -36,6 +42,9 @@ class AppState: ObservableObject {
         }
     }
 
+    /// AirBridge relay is permitted only in Dynamic mode (full adaptive transport).
+    var isRelayAllowedByMode: Bool { connectionMode == .dynamic }
+
     private var clipboardCancellable: AnyCancellable?
     private var lastClipboardValue: String? = nil
     private var lastClipboardChangeCount: Int = -1
@@ -47,6 +56,9 @@ class AppState: ObservableObject {
     @Published var isOS26: Bool = true
 
     init() {
+        // Load all Keychain items up front before any subsystem tries to read individual keys and triggers multiple prompts.
+        KeychainStorage.preload()
+
         self.deviceAdbSerials = UserDefaults.standard.dictionary(forKey: "deviceAdbSerials") as? [String: String] ?? [:]
         self.selectedWiredSerial = UserDefaults.standard.string(forKey: "selectedWiredSerial")
 
@@ -138,6 +150,8 @@ class AppState: ObservableObject {
         let savedCrashReportingMode = UserDefaults.standard.string(forKey: "crashReportingMode") ?? CrashReportingMode.manual.rawValue
         self.crashReportingMode = CrashReportingMode(rawValue: savedCrashReportingMode) ?? .manual
 
+        self.airBridgeEnabled = UserDefaults.standard.bool(forKey: "airBridgeEnabled")
+
         let savedAdapterName = UserDefaults.standard.string(forKey: "selectedNetworkAdapterName")
         let validatedAdapter = AppState.validateAndGetNetworkAdapter(savedName: savedAdapterName)
         self.selectedNetworkAdapterName = validatedAdapter
@@ -160,17 +174,24 @@ class AppState: ObservableObject {
         self.licenseDetails = AppState.loadLicenseDetailsFromUserDefaults()
 
         let savedConnectionModeStr = UserDefaults.standard.string(forKey: "appConnectionMode")
+        let resolvedMode: AppConnectionMode
         if let savedMode = savedConnectionModeStr.flatMap(AppConnectionMode.init(rawValue:)) {
+            resolvedMode = savedMode
             self.connectionMode = savedMode
             self.isBLEEnabled = (savedMode != .network)
         } else if UserDefaults.standard.object(forKey: "isBLEEnabled") != nil {
             let legacyBle = UserDefaults.standard.bool(forKey: "isBLEEnabled")
+            resolvedMode = legacyBle ? .dynamic : .network
             self.connectionMode = legacyBle ? .dynamic : .network
             self.isBLEEnabled = legacyBle
         } else {
+            resolvedMode = .dynamic
             self.connectionMode = .dynamic
             self.isBLEEnabled = true
         }
+        // Persist the resolved mode: didSet does not fire during init, and
+        // AirBridgeClient's mode gate reads this key directly.
+        UserDefaults.standard.set(resolvedMode.rawValue, forKey: "appConnectionMode")
 
         self.isBLEAutoConnectEnabled = UserDefaults.standard.object(forKey: "isBLEAutoConnectEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "isBLEAutoConnectEnabled")
         self.isAutoSwitchWithBLEEnabled = UserDefaults.standard.object(forKey: "isAutoSwitchWithBLEEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "isAutoSwitchWithBLEEnabled")
@@ -189,6 +210,17 @@ class AppState: ObservableObject {
         if isClipboardSyncEnabled {
             startClipboardMonitoring()
         }
+
+        // Seed initial LAN state from current WebSocketServer snapshot.
+        self.isConnectedOverLocalNetwork = WebSocketServer.shared.hasActiveLocalSession()
+
+        // Subscribe to immediate LAN session events for UI reactivity.
+        WebSocketServer.shared.lanSessionEvents
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isActive in
+                self?.isConnectedOverLocalNetwork = isActive
+            }
+            .store(in: &cancellables)
 
         #if SELF_COMPILED
         self.isPlus = true
@@ -215,6 +247,10 @@ class AppState: ObservableObject {
         updateDockIconVisibility()
         updateAutoStart()
 
+        // Auto-connect to AirBridge relay if previously enabled
+        if airBridgeEnabled {
+            AirBridgeClient.shared.connect()
+        }
         // Reset mirroring state on launch to prevent auto-opening if it was open during last session
         self.isNativeMirroring = false
         self.isNativeDesktopMirroring = false
@@ -429,10 +465,32 @@ class AppState: ObservableObject {
     var seekTargetPosition: Double = -1
     private var mediaTickTimer: AnyCancellable?
     
-    var isConnectedOverLocalNetwork: Bool {
-        guard let device = device, device.isRegularConnection else { return false }
-        // Tailscale IPs usually start with 100.
-        return !device.ipAddress.hasPrefix("100.")
+    // Reactive snapshot of whether we currently have a direct LAN WebSocket session.
+    // Updated via WebSocketServer.lanSessionEvents so UI can flip icons instantly when transport changes.
+    @Published var isConnectedOverLocalNetwork: Bool = false
+    @Published var peerTransportHint: PeerTransportHint = .unknown
+
+    // Effective transport for UI/actions: explicit peer hint overrides stale local-session state.
+    var isEffectivelyLocalTransport: Bool {
+        switch peerTransportHint {
+        case .relay: return false
+        case .wifi: return true
+        case .unknown: return isConnectedOverLocalNetwork
+        }
+    }
+
+    func updatePeerTransportHint(_ transport: String?) {
+        let next: PeerTransportHint
+        switch transport?.lowercased() {
+        case "wifi": next = .wifi
+        case "relay": next = .relay
+        default: next = .unknown
+        }
+        if Thread.isMainThread {
+            peerTransportHint = next
+        } else {
+            DispatchQueue.main.async { self.peerTransportHint = next }
+        }
     }
 
     // Audio player for ringtone
@@ -660,6 +718,16 @@ class AppState: ObservableObject {
                     DiscoveryManager.shared.start()
                 }
             }
+            // AirBridge relay rides only in Dynamic mode.
+            // Note: side effects are safe here — the gate inside AirBridgeClient reads
+            // UserDefaults, not AppState, so this is re-entrancy-proof during init.
+            if self.airBridgeEnabled {
+                if connectionMode == .dynamic {
+                    AirBridgeClient.shared.connect()
+                } else {
+                    AirBridgeClient.shared.disconnect()
+                }
+            }
         }
     }
 
@@ -865,6 +933,19 @@ class AppState: ObservableObject {
     @Published var alwaysKillAdbBeforeConnect: Bool {
         didSet {
             UserDefaults.standard.set(alwaysKillAdbBeforeConnect, forKey: "alwaysKillAdbBeforeConnect")
+        }
+    }
+
+    @Published var airBridgeEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(airBridgeEnabled, forKey: "airBridgeEnabled")
+            // Connection is managed explicitly:
+            // Onboarding: connects after "Continue"
+            // Settings: connects on "Save & Reconnect"
+            // We only auto-disconnect here when the user turns AirBridge off.
+            if !airBridgeEnabled {
+                AirBridgeClient.shared.disconnect()
+            }
         }
     }
 
@@ -1197,6 +1278,15 @@ class AppState: ObservableObject {
             self.notifications.removeAll()
             self.status = nil
             self.currentDeviceWallpaperBase64 = nil
+            // Preserve an accurate transport hint after device reset so UI actions
+            // (icon/Quick Share gating) do not fall back to stale LAN snapshots.
+            if WebSocketServer.shared.hasActiveLocalSession() {
+                self.peerTransportHint = .wifi
+            } else if AirBridgeClient.shared.connectionState == .relayActive {
+                self.peerTransportHint = .relay
+            } else {
+                self.peerTransportHint = .unknown
+            }
             
             // Disconnect BLE
             BLECentralManager.shared.disconnect()

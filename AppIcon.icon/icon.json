@@ -1,72 +1,28 @@
 {
-  "features" : [
-    "refractivity",
-    "specular-location"
-  ],
   "fill" : "automatic",
   "groups" : [
     {
-      "blur-material" : 0.04,
       "layers" : [
         {
-          "fill" : {
-            "solid" : "srgb:0.00000,1.00000,0.31864,0.65000"
-          },
-          "glass" : true,
           "image-name" : "Frame 2608031(3).svg",
           "name" : "Frame 2608031(3)"
-        }
-      ],
-      "position" : {
-        "scale" : 1.45,
-        "translation-in-points" : [
-          0,
-          0
-        ]
-      },
-      "refractivity" : {
-        "depth" : 0.07,
-        "enabled" : true,
-        "strength" : 0.08
-      },
-      "shadow" : {
-        "kind" : "layer-color",
-        "opacity" : 0.68
-      },
-      "specular" : "inside",
-      "translucency" : {
-        "enabled" : true,
-        "value" : 0.57
-      }
-    },
-    {
-      "blur-material" : 0.26,
-      "layers" : [
+        },
         {
-          "fill" : {
-            "solid" : "srgb:0.00000,0.63464,1.00000,0.90252"
-          },
           "image-name" : "Frame 2608031(2).svg",
           "name" : "Frame 2608031(2)"
         }
       ],
       "position" : {
-        "scale" : 1.38,
+        "scale" : 1.44,
         "translation-in-points" : [
           0,
           0
         ]
       },
-      "refractivity" : {
-        "depth" : 0.29600000000000004,
-        "enabled" : true,
-        "strength" : 0.6935546875
-      },
       "shadow" : {
-        "kind" : "layer-color",
+        "kind" : "neutral",
         "opacity" : 0.5
       },
-      "specular" : true,
       "translucency" : {
         "enabled" : true,
         "value" : 0.5
