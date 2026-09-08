@@ -83,7 +83,7 @@ struct QRScannerSidebarView: View {
                             Image(decorative: qrImage, scale: 1.0)
                                 .resizable()
                                 .interpolation(.none)
-                                .frame(width: 180, height: 180)
+                                .frame(width: 300, height: 300)
                                 .accessibilityLabel("QR Code")
                                 .shadow(radius: 20)
                                 .padding()
