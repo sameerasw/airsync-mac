@@ -265,6 +265,15 @@ class WebSocketServer: ObservableObject {
         lock.unlock()
     }
 
+    internal func resetTransportNegotiationState() {
+        lock.lock()
+        transportGenerationCounter = 0
+        activeTransportGeneration = 0
+        activeTransportGenerationStartedAt = nil
+        validatedTransportGeneration = 0
+        lock.unlock()
+    }
+
     internal func isTransportGenerationActive(_ generation: Int64) -> Bool {
         guard generation > 0 else { return false }
         lock.lock()

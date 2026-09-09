@@ -486,6 +486,10 @@ class AirBridgeClient: ObservableObject {
                 }
                 DispatchQueue.main.async {
                     self.connectionState = .relayActive
+                    // Fresh relay session: the peer may have restarted and its
+                    // transport generation counter starts over, so stale higher
+                    // generations must not block the next negotiation round.
+                    WebSocketServer.shared.resetTransportNegotiationState()
                     if !WebSocketServer.shared.hasActiveLocalSession() {
                         AppState.shared.updatePeerTransportHint("relay")
                     }
