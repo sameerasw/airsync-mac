@@ -277,10 +277,11 @@ class UdpBroadcastDiscovery: ObservableObject {
                 .autoconnect()
                 .sink { [weak self] _ in
                     guard let self = self, self.isListening else { return }
-                    let isWifiConnected = AppState.shared.device != nil &&
-                                         AppState.shared.device?.ipAddress != "BLE" &&
-                                         AppState.shared.device?.ipAddress != "Bluetooth LE"
-                    guard !isWifiConnected else { return }
+                    // Advertise periodically unless a LAN session is actually active.
+                    // When connected via relay, phones must still be able to
+                    // re-discover this Mac's current IP to recover the LAN path
+                    // (e.g. after the Mac switches interface and its IP changes).
+                    guard !WebSocketServer.shared.hasActiveLocalSession() else { return }
                     self.broadcastPresence()
                 }
                 .store(in: &cancellables)
