@@ -88,7 +88,8 @@ class DiscoveryManager: ObservableObject {
         // Verify TCP reachability over Wi-Fi socket before exposing to UI or auto-switching
         verifyIPReachability(ip: bestIP, port: detected.port) { [weak self] isReachable in
             guard let self = self else { return }
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
                 guard isReachable else {
                     print("[DiscoveryManager] Discovered Wi-Fi device (\(detected.name)) is NOT reachable over TCP at \(bestIP):\(detected.port). Ignoring stale mDNS record.")
                     self.availableWifiDeviceForCurrentBLE = nil
@@ -324,9 +325,9 @@ class DiscoveryManager: ObservableObject {
     }
     
     private func startReachabilityTimer() {
-        DispatchQueue.main.async {
-            self.reachabilityTimer?.invalidate()
-            self.reachabilityTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
+        DispatchQueue.main.async { [weak self] in
+            self?.reachabilityTimer?.invalidate()
+            self?.reachabilityTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
                 self?.checkMdnsDevicesReachability()
             }
         }
