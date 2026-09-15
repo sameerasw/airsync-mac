@@ -349,9 +349,16 @@ class AppState: ObservableObject {
         activeCallDurationSec = 0
     }
     @Published var status: DeviceStatus? = nil {
-        didSet { syncMediaTimerToPlayState() }
+        didSet {
+            syncMediaTimerToPlayState()
+            updateWidgetData()
+        }
     }
-    @Published var myDevice: Device? = nil
+    @Published var myDevice: Device? = nil {
+        didSet {
+            updateWidgetData()
+        }
+    }
     @Published var port: UInt16 = Defaults.serverPort
     @Published var androidApps: [String: AndroidApp] = [:]
     @Published var notificationLaunchPreferences: [String: MacAppLaunchPreference] = [:]
@@ -1973,5 +1980,10 @@ class AppState: ObservableObject {
         if let pos = status?.music?.position {
             syncMediaPosition(incoming: pos)
         }
+    }
+
+    private func updateWidgetData() {
+        let deviceName = device?.name ?? "Your Phone"
+        WidgetDataManager.shared.updateWidgetData(deviceStatus: status, deviceName: deviceName)
     }
 }
