@@ -111,9 +111,15 @@ struct PhoneInfoWidgetEntryView: View {
         ZStack {
             if let nsImage = largeBackgroundNSImage {
                 GeometryReader { geo in
-                    largeBackgroundImage(nsImage)
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .clipped()
+                    ZStack {
+                        largeBackgroundImage(nsImage)
+                            .frame(width: geo.size.width, height: geo.size.height)
+                            .clipped()
+
+                        blurredBackgroundLayer(nsImage, size: geo.size, radius: 6, fadeStart: 0.35)
+                        blurredBackgroundLayer(nsImage, size: geo.size, radius: 16, fadeStart: 0.55)
+                        blurredBackgroundLayer(nsImage, size: geo.size, radius: 32, fadeStart: 0.75)
+                    }
                 }
 
                  LinearGradient(
@@ -177,8 +183,11 @@ struct PhoneInfoWidgetEntryView: View {
         .foregroundColor(.white)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(.ultraThinMaterial, in: Capsule())
-        .widgetAccentable()
+        .background(
+            .black.opacity(0.3)
+//            .ultraThinMaterial
+            , in: Capsule())
+//        .widgetAccentable()
     }
 
     private var largeBackgroundNSImage: NSImage? {
@@ -189,6 +198,29 @@ struct PhoneInfoWidgetEntryView: View {
             return nsImage
         }
         return nil
+    }
+
+    private func blurredBackgroundLayer(
+        _ nsImage: NSImage,
+        size: CGSize,
+        radius: CGFloat,
+        fadeStart: CGFloat
+    ) -> some View {
+        largeBackgroundImage(nsImage)
+            .frame(width: size.width, height: size.height)
+            .blur(radius: radius)
+            .scaleEffect(1.1)
+            .clipped()
+            .mask(
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: fadeStart),
+                        .init(color: .white, location: min(fadeStart + 0.25, 1.0))
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
     }
 
     @ViewBuilder
