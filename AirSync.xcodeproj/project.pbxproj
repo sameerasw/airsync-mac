@@ -67,6 +67,14 @@
 				Configs/Secrets.xcconfig,
 				Configs/SelfCompiled.xcconfig,
 				Configs/Shared.xcconfig,
+				Core/QuickShare/GenerateProtobuf.sh,
+				Core/QuickShare/ProtobufSource/device_to_device_messages.proto,
+				Core/QuickShare/ProtobufSource/offline_wire_formats.proto,
+				Core/QuickShare/ProtobufSource/securegcm.proto,
+				Core/QuickShare/ProtobufSource/securemessage.proto,
+				Core/QuickShare/ProtobufSource/sharing_enums.proto,
+				Core/QuickShare/ProtobufSource/ukey.proto,
+				Core/QuickShare/ProtobufSource/wire_format.proto,
 				Info.plist,
 			);
 			target = B9673B562E35A2A1006D284A /* AirSync */;
