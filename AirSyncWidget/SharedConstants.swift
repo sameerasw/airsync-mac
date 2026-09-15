@@ -12,9 +12,13 @@ let WIDGET_DATA_KEYS = (
     batteryLevel: "batteryLevel",
     isCharging: "isCharging",
     isPaired: "isPaired",
-    connectionType: "connectionType",
     isLocalNetwork: "isLocalNetwork",
     isBLEConnected: "isBLEConnected",
     isADBConnected: "isADBConnected",
-    adbMode: "adbMode"
+    adbMode: "adbMode",
+    wallpaperBase64: "wallpaperBase64",
+    isMusicPlaying: "isMusicPlaying",
+    musicTitle: "musicTitle",
+    musicArtist: "musicArtist",
+    musicAlbumArt: "musicAlbumArt"
 )

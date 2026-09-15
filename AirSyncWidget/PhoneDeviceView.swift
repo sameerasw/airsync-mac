@@ -5,10 +5,12 @@
 
 import SwiftUI
 import AppKit
+import WidgetKit
 
 struct PhoneDeviceView: View {
     let wallpaperImageData: Data?
-    let isGrayscale: Bool = false
+
+    @Environment(\.widgetRenderingMode) private var renderingMode
 
     var body: some View {
         ZStack {
@@ -17,16 +19,27 @@ struct PhoneDeviceView: View {
 
             if let imageData = wallpaperImageData,
                let nsImage = NSImage(data: imageData) {
-                Image(nsImage: nsImage)
-                    .resizable()
-                    .scaledToFill()
-                    .clipped()
-                    .grayscale(isGrayscale ? 1 : 0)
+                renderedWallpaper(nsImage)
             }
         }
         .aspectRatio(CGSize(width: 60, height: 120), contentMode: .fit)
-        .cornerRadius(10)
-        .opacity(isGrayscale ? 0.6 : 1)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    @ViewBuilder
+    private func renderedWallpaper(_ nsImage: NSImage) -> some View {
+        if #available(macOS 15.0, *), renderingMode == .accented {
+            Image(nsImage: nsImage)
+                .resizable()
+                .widgetAccentedRenderingMode(.accentedDesaturated)
+                .scaledToFill()
+                .clipped()
+        } else {
+            Image(nsImage: nsImage)
+                .resizable()
+                .scaledToFill()
+                .clipped()
+        }
     }
 }
 

@@ -54,17 +54,4 @@ class WidgetDataManager {
             WidgetCenter.shared.reloadAllTimelines()
         }
     }
-
-    func getWidgetData() -> (deviceName: String, batteryLevel: Int, isCharging: Bool, isPaired: Bool) {
-        guard let shared = sharedDefaults else {
-            return ("Unknown", 0, false, false)
-        }
-
-        let deviceName = shared.string(forKey: "deviceName") ?? "Unknown"
-        let batteryLevel = shared.integer(forKey: "batteryLevel")
-        let isCharging = shared.bool(forKey: "isCharging")
-        let isPaired = shared.bool(forKey: "isPaired")
-
-        return (deviceName, batteryLevel, isCharging, isPaired)
-    }
 }

@@ -29,6 +29,7 @@ struct PhoneInfoEntry: TimelineEntry {
 struct PhoneInfoWidgetEntryView: View {
     var entry: PhoneInfoEntry
     @Environment(\.widgetFamily) var widgetFamily
+    @Environment(\.widgetRenderingMode) private var renderingMode
 
     var body: some View {
         if entry.isPaired {
@@ -39,6 +40,15 @@ struct PhoneInfoWidgetEntryView: View {
             }
         } else {
             disconnectedLayout
+        }
+    }
+
+    @ViewBuilder
+    private var glassBackground: some View {
+        if #available(macOS 26.0, *) {
+            Color.clear.glassEffect(in: .rect(cornerRadius: 0))
+        } else {
+            Color.clear.background(.ultraThinMaterial)
         }
     }
 
@@ -53,24 +63,12 @@ struct PhoneInfoWidgetEntryView: View {
                     .lineLimit(1)
                     .foregroundColor(.primary)
 
-                HStack(spacing: 4) {
-                    Image(systemName: "battery.100percent")
-                        .font(.system(size: 10))
-                        .foregroundColor(.green)
-                    Text("\(entry.batteryLevel)%")
-                        .font(.system(.caption2, design: .rounded))
-                        .foregroundColor(.secondary)
-
-                    if entry.isCharging {
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 8))
-                            .foregroundColor(.green)
-                    }
-                }
+                BatteryIconView(level: entry.batteryLevel, isCharging: entry.isCharging)
             }
+            .widgetAccentable()
         }
         .padding(12)
-        .containerBackground(Color(nsColor: .controlBackgroundColor), for: .widget)
+        .containerBackground(for: .widget) { glassBackground }
     }
 
     private var mediumLayout: some View {
@@ -87,6 +85,7 @@ struct PhoneInfoWidgetEntryView: View {
                     .lineLimit(2)
                     .foregroundColor(.primary)
                     .multilineTextAlignment(.trailing)
+                    .widgetAccentable()
 
                 if entry.isMusicPlaying {
                     statusIconsRow
@@ -99,7 +98,7 @@ struct PhoneInfoWidgetEntryView: View {
             }
         }
         .padding(16)
-        .containerBackground(Color(nsColor: .controlBackgroundColor), for: .widget)
+        .containerBackground(for: .widget) { glassBackground }
     }
 
     private var statusIconsRow: some View {
@@ -119,6 +118,7 @@ struct PhoneInfoWidgetEntryView: View {
             BatteryIconView(level: entry.batteryLevel, isCharging: entry.isCharging)
         }
         .foregroundColor(.secondary)
+        .widgetAccentable()
     }
 
     private var mediaPlayerRow: some View {
@@ -133,13 +133,10 @@ struct PhoneInfoWidgetEntryView: View {
                     .lineLimit(1)
                     .foregroundColor(.secondary)
             }
+            .widgetAccentable()
 
             if let artData = entry.musicAlbumArtData, let nsImage = NSImage(data: artData) {
-                Image(nsImage: nsImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 48, height: 48)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                renderedAlbumArt(nsImage)
             } else {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.gray.opacity(0.3))
@@ -149,7 +146,26 @@ struct PhoneInfoWidgetEntryView: View {
                             .font(.system(size: 16))
                             .foregroundColor(.secondary)
                     )
+                    .widgetAccentable()
             }
+        }
+    }
+
+    @ViewBuilder
+    private func renderedAlbumArt(_ nsImage: NSImage) -> some View {
+        if #available(macOS 15.0, *), renderingMode == .accented {
+            Image(nsImage: nsImage)
+                .resizable()
+                .widgetAccentedRenderingMode(.accentedDesaturated)
+                .scaledToFill()
+                .frame(width: 48, height: 48)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        } else {
+            Image(nsImage: nsImage)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 48, height: 48)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
         }
     }
 
@@ -168,15 +184,17 @@ struct PhoneInfoWidgetEntryView: View {
                     .background(Color(nsColor: .controlBackgroundColor))
                     .cornerRadius(8)
                     .offset(x: 8, y: 8)
+                    .widgetAccentable()
             }
 
             Text(entry.deviceName)
                 .font(.system(.caption, design: .rounded))
                 .lineLimit(1)
                 .foregroundColor(.primary)
+                .widgetAccentable()
         }
         .padding(12)
-        .containerBackground(Color(nsColor: .controlBackgroundColor), for: .widget)
+        .containerBackground(for: .widget) { glassBackground }
     }
 }
 
@@ -206,7 +224,7 @@ struct PhoneInfoProvider: TimelineProvider {
         let isPaired = shared?.bool(forKey: WIDGET_DATA_KEYS.isPaired) ?? false
 
         var wallpaperData: Data? = nil
-        if let base64String = shared?.string(forKey: "wallpaperBase64") {
+        if let base64String = shared?.string(forKey: WIDGET_DATA_KEYS.wallpaperBase64) {
             wallpaperData = Data(base64Encoded: base64String)
         }
 
@@ -215,11 +233,11 @@ struct PhoneInfoProvider: TimelineProvider {
         let isADBConnected = shared?.bool(forKey: WIDGET_DATA_KEYS.isADBConnected) ?? false
         let adbMode = shared?.string(forKey: WIDGET_DATA_KEYS.adbMode) ?? "wireless"
 
-        let isMusicPlaying = shared?.bool(forKey: "isMusicPlaying") ?? false
-        let musicTitle = shared?.string(forKey: "musicTitle") ?? ""
-        let musicArtist = shared?.string(forKey: "musicArtist") ?? ""
+        let isMusicPlaying = shared?.bool(forKey: WIDGET_DATA_KEYS.isMusicPlaying) ?? false
+        let musicTitle = shared?.string(forKey: WIDGET_DATA_KEYS.musicTitle) ?? ""
+        let musicArtist = shared?.string(forKey: WIDGET_DATA_KEYS.musicArtist) ?? ""
         var musicAlbumArtData: Data? = nil
-        if let albumArtBase64 = shared?.string(forKey: "musicAlbumArt"), !albumArtBase64.isEmpty {
+        if let albumArtBase64 = shared?.string(forKey: WIDGET_DATA_KEYS.musicAlbumArt), !albumArtBase64.isEmpty {
             musicAlbumArtData = Data(base64Encoded: albumArtBase64)
         }
 
