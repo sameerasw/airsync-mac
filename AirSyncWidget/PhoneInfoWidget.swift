@@ -30,12 +30,16 @@ struct PhoneInfoWidgetEntryView: View {
     var entry: PhoneInfoEntry
     @Environment(\.widgetFamily) var widgetFamily
     @Environment(\.widgetRenderingMode) private var renderingMode
+    @Environment(\.widgetContentMargins) private var contentMargins
 
     var body: some View {
         if entry.isPaired {
-            if widgetFamily == .systemMedium {
+            switch widgetFamily {
+            case .systemLarge:
+                largeLayout
+            case .systemMedium:
                 mediumLayout
-            } else {
+            default:
                 smallLayout
             }
         } else {
@@ -68,6 +72,7 @@ struct PhoneInfoWidgetEntryView: View {
             .widgetAccentable()
         }
         .padding(12)
+        .padding(contentMargins)
         .containerBackground(for: .widget) { glassBackground }
     }
 
@@ -98,7 +103,106 @@ struct PhoneInfoWidgetEntryView: View {
             }
         }
         .padding(16)
+        .padding(contentMargins)
         .containerBackground(for: .widget) { glassBackground }
+    }
+
+    private var largeLayout: some View {
+        ZStack {
+            if let nsImage = largeBackgroundNSImage {
+                GeometryReader { geo in
+                    largeBackgroundImage(nsImage)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                }
+
+                 LinearGradient(
+                     colors: [.clear, .black.opacity(0.55)],
+                     startPoint: .center,
+                     endPoint: .bottom
+                 )
+                 .ignoresSafeArea()
+            }
+
+            VStack(spacing: 0) {
+                largeStatusIconsRow
+
+                Spacer()
+
+                if entry.isMusicPlaying {
+                    VStack(spacing: 4) {
+                        Text(entry.musicTitle)
+                            .font(.system(.subheadline, design: .rounded))
+                            .fontWeight(.medium)
+                            .lineLimit(1)
+                            .foregroundColor(.white)
+                        Text(entry.musicArtist)
+                            .font(.system(.caption, design: .rounded))
+                            .lineLimit(1)
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+                    .multilineTextAlignment(.center)
+
+                    Spacer()
+                }
+
+                Text(entry.deviceName)
+                    .font(.system(.title3, design: .rounded))
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                    .foregroundColor(.white)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(contentMargins)
+        }
+        .containerBackground(for: .widget) { glassBackground }
+    }
+
+    private var largeStatusIconsRow: some View {
+        HStack(spacing: 6) {
+            if entry.isLocalNetwork {
+                Image(systemName: "wifi")
+                    .font(.system(size: 10))
+            }
+            if entry.isADBConnected {
+                Image(systemName: entry.adbMode == "wired" ? "cable.connector" : "iphone.gen3.crop.circle")
+                    .font(.system(size: 10))
+            }
+            if entry.isBLEConnected {
+                Image(systemName: "bluetooth")
+                    .font(.system(size: 10))
+            }
+            BatteryIconView(level: entry.batteryLevel, isCharging: entry.isCharging)
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(.ultraThinMaterial, in: Capsule())
+        .widgetAccentable()
+    }
+
+    private var largeBackgroundNSImage: NSImage? {
+        if entry.isMusicPlaying, let artData = entry.musicAlbumArtData, let nsImage = NSImage(data: artData) {
+            return nsImage
+        }
+        if let wallpaperData = entry.wallpaperImageData, let nsImage = NSImage(data: wallpaperData) {
+            return nsImage
+        }
+        return nil
+    }
+
+    @ViewBuilder
+    private func largeBackgroundImage(_ nsImage: NSImage) -> some View {
+        if #available(macOS 15.0, *), renderingMode == .accented {
+            Image(nsImage: nsImage)
+                .resizable()
+                .widgetAccentedRenderingMode(.accentedDesaturated)
+                .scaledToFill()
+        } else {
+            Image(nsImage: nsImage)
+                .resizable()
+                .scaledToFill()
+        }
     }
 
     private var statusIconsRow: some View {
@@ -194,6 +298,7 @@ struct PhoneInfoWidgetEntryView: View {
                 .widgetAccentable()
         }
         .padding(12)
+        .padding(contentMargins)
         .containerBackground(for: .widget) { glassBackground }
     }
 }
@@ -207,7 +312,8 @@ struct PhoneInfoWidget: Widget {
         }
         .configurationDisplayName("Phone Info")
         .description("Display your connected phone's battery and status")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .contentMarginsDisabled()
     }
 }
 
@@ -377,6 +483,48 @@ struct PhoneInfoProvider: TimelineProvider {
 }
 
 #Preview("Medium - Playing Music", as: .systemMedium) {
+    PhoneInfoWidget()
+} timeline: {
+    PhoneInfoEntry(
+        date: .now,
+        deviceName: "Pixel 8 Pro",
+        batteryLevel: 82,
+        isCharging: false,
+        isPaired: true,
+        wallpaperImageData: nil,
+        isLocalNetwork: true,
+        isBLEConnected: false,
+        isADBConnected: true,
+        adbMode: "wireless",
+        isMusicPlaying: true,
+        musicTitle: "Blinding Lights",
+        musicArtist: "The Weeknd",
+        musicAlbumArtData: nil
+    )
+}
+
+#Preview("Large - Connected", as: .systemLarge) {
+    PhoneInfoWidget()
+} timeline: {
+    PhoneInfoEntry(
+        date: .now,
+        deviceName: "Pixel 8 Pro",
+        batteryLevel: 82,
+        isCharging: true,
+        isPaired: true,
+        wallpaperImageData: nil,
+        isLocalNetwork: true,
+        isBLEConnected: false,
+        isADBConnected: false,
+        adbMode: "wireless",
+        isMusicPlaying: false,
+        musicTitle: "",
+        musicArtist: "",
+        musicAlbumArtData: nil
+    )
+}
+
+#Preview("Large - Playing Music", as: .systemLarge) {
     PhoneInfoWidget()
 } timeline: {
     PhoneInfoEntry(
