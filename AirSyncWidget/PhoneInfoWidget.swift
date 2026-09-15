@@ -7,6 +7,7 @@
 
 import WidgetKit
 import SwiftUI
+import AppKit
 
 struct PhoneInfoEntry: TimelineEntry {
     let date: Date
@@ -19,6 +20,10 @@ struct PhoneInfoEntry: TimelineEntry {
     let isBLEConnected: Bool
     let isADBConnected: Bool
     let adbMode: String
+    let isMusicPlaying: Bool
+    let musicTitle: String
+    let musicArtist: String
+    let musicAlbumArtData: Data?
 }
 
 struct PhoneInfoWidgetEntryView: View {
@@ -83,31 +88,69 @@ struct PhoneInfoWidgetEntryView: View {
                     .foregroundColor(.primary)
                     .multilineTextAlignment(.trailing)
 
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 6) {
-                    BatteryIconView(level: entry.batteryLevel, isCharging: entry.isCharging)
-
-                    HStack(spacing: 6) {
-                        if entry.isLocalNetwork {
-                            Image(systemName: "wifi")
-                                .font(.system(size: 10))
-                        }
-                        if entry.isADBConnected {
-                            Image(systemName: entry.adbMode == "wired" ? "cable.connector" : "iphone.gen3.crop.circle")
-                                .font(.system(size: 10))
-                        }
-                        if entry.isBLEConnected {
-                            Image(systemName: "bluetooth")
-                                .font(.system(size: 10))
-                        }
-                    }
-                    .foregroundColor(.secondary)
+                if entry.isMusicPlaying {
+                    statusIconsRow
+                    Spacer()
+                    mediaPlayerRow
+                } else {
+                    Spacer()
+                    statusIconsRow
                 }
             }
         }
         .padding(16)
         .containerBackground(Color(nsColor: .controlBackgroundColor), for: .widget)
+    }
+
+    private var statusIconsRow: some View {
+        HStack(spacing: 6) {
+            if entry.isLocalNetwork {
+                Image(systemName: "wifi")
+                    .font(.system(size: 10))
+            }
+            if entry.isADBConnected {
+                Image(systemName: entry.adbMode == "wired" ? "cable.connector" : "iphone.gen3.crop.circle")
+                    .font(.system(size: 10))
+            }
+            if entry.isBLEConnected {
+                Image(systemName: "bluetooth")
+                    .font(.system(size: 10))
+            }
+            BatteryIconView(level: entry.batteryLevel, isCharging: entry.isCharging)
+        }
+        .foregroundColor(.secondary)
+    }
+
+    private var mediaPlayerRow: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(entry.musicTitle)
+                    .font(.system(.caption, design: .rounded))
+                    .lineLimit(1)
+                    .foregroundColor(.primary)
+                Text(entry.musicArtist)
+                    .font(.system(.caption2, design: .rounded))
+                    .lineLimit(1)
+                    .foregroundColor(.secondary)
+            }
+
+            if let artData = entry.musicAlbumArtData, let nsImage = NSImage(data: artData) {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 48, height: 48)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.gray.opacity(0.3))
+                    .frame(width: 48, height: 48)
+                    .overlay(
+                        Image(systemName: "music.note")
+                            .font(.system(size: 16))
+                            .foregroundColor(.secondary)
+                    )
+            }
+        }
     }
 
     private var disconnectedLayout: some View {
@@ -172,6 +215,14 @@ struct PhoneInfoProvider: TimelineProvider {
         let isADBConnected = shared?.bool(forKey: WIDGET_DATA_KEYS.isADBConnected) ?? false
         let adbMode = shared?.string(forKey: WIDGET_DATA_KEYS.adbMode) ?? "wireless"
 
+        let isMusicPlaying = shared?.bool(forKey: "isMusicPlaying") ?? false
+        let musicTitle = shared?.string(forKey: "musicTitle") ?? ""
+        let musicArtist = shared?.string(forKey: "musicArtist") ?? ""
+        var musicAlbumArtData: Data? = nil
+        if let albumArtBase64 = shared?.string(forKey: "musicAlbumArt"), !albumArtBase64.isEmpty {
+            musicAlbumArtData = Data(base64Encoded: albumArtBase64)
+        }
+
         return PhoneInfoEntry(
             date: Date(),
             deviceName: deviceName,
@@ -182,7 +233,11 @@ struct PhoneInfoProvider: TimelineProvider {
             isLocalNetwork: isLocalNetwork,
             isBLEConnected: isBLEConnected,
             isADBConnected: isADBConnected,
-            adbMode: adbMode
+            adbMode: adbMode,
+            isMusicPlaying: isMusicPlaying,
+            musicTitle: musicTitle,
+            musicArtist: musicArtist,
+            musicAlbumArtData: musicAlbumArtData
         )
     }
 
@@ -197,7 +252,11 @@ struct PhoneInfoProvider: TimelineProvider {
             isLocalNetwork: false,
             isBLEConnected: false,
             isADBConnected: false,
-            adbMode: "wireless"
+            adbMode: "wireless",
+            isMusicPlaying: false,
+            musicTitle: "",
+            musicArtist: "",
+            musicAlbumArtData: nil
         )
     }
 
@@ -228,7 +287,11 @@ struct PhoneInfoProvider: TimelineProvider {
         isLocalNetwork: false,
         isBLEConnected: false,
         isADBConnected: false,
-        adbMode: "wireless"
+        adbMode: "wireless",
+        isMusicPlaying: false,
+        musicTitle: "",
+        musicArtist: "",
+        musicAlbumArtData: nil
     )
 }
 
@@ -245,7 +308,11 @@ struct PhoneInfoProvider: TimelineProvider {
         isLocalNetwork: false,
         isBLEConnected: false,
         isADBConnected: false,
-        adbMode: "wireless"
+        adbMode: "wireless",
+        isMusicPlaying: false,
+        musicTitle: "",
+        musicArtist: "",
+        musicAlbumArtData: nil
     )
 }
 
@@ -262,7 +329,11 @@ struct PhoneInfoProvider: TimelineProvider {
         isLocalNetwork: false,
         isBLEConnected: false,
         isADBConnected: false,
-        adbMode: "wireless"
+        adbMode: "wireless",
+        isMusicPlaying: false,
+        musicTitle: "",
+        musicArtist: "",
+        musicAlbumArtData: nil
     )
 }
 
@@ -276,10 +347,35 @@ struct PhoneInfoProvider: TimelineProvider {
         isCharging: true,
         isPaired: true,
         wallpaperImageData: nil,
-        isLocalNetwork: false,
+        isLocalNetwork: true,
         isBLEConnected: false,
         isADBConnected: false,
-        adbMode: "wireless"
+        adbMode: "wireless",
+        isMusicPlaying: false,
+        musicTitle: "",
+        musicArtist: "",
+        musicAlbumArtData: nil
+    )
+}
+
+#Preview("Medium - Playing Music", as: .systemMedium) {
+    PhoneInfoWidget()
+} timeline: {
+    PhoneInfoEntry(
+        date: .now,
+        deviceName: "Pixel 8 Pro",
+        batteryLevel: 82,
+        isCharging: false,
+        isPaired: true,
+        wallpaperImageData: nil,
+        isLocalNetwork: true,
+        isBLEConnected: false,
+        isADBConnected: true,
+        adbMode: "wireless",
+        isMusicPlaying: true,
+        musicTitle: "Blinding Lights",
+        musicArtist: "The Weeknd",
+        musicAlbumArtData: nil
     )
 }
 
@@ -296,6 +392,10 @@ struct PhoneInfoProvider: TimelineProvider {
         isLocalNetwork: false,
         isBLEConnected: false,
         isADBConnected: false,
-        adbMode: "wireless"
+        adbMode: "wireless",
+        isMusicPlaying: false,
+        musicTitle: "",
+        musicArtist: "",
+        musicAlbumArtData: nil
     )
 }

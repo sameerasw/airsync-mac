@@ -40,6 +40,12 @@ class WidgetDataManager {
         shared.set(isADBConnected, forKey: "isADBConnected")
         shared.set(adbMode, forKey: "adbMode")
 
+        let isMusicPlaying = deviceStatus?.music?.isPlaying ?? false
+        shared.set(isMusicPlaying, forKey: "isMusicPlaying")
+        shared.set(deviceStatus?.music?.title ?? "", forKey: "musicTitle")
+        shared.set(deviceStatus?.music?.artist ?? "", forKey: "musicArtist")
+        shared.set(deviceStatus?.music?.albumArt ?? "", forKey: "musicAlbumArt")
+
         shared.synchronize()
 
         print("[Widget] Updated: \(deviceName), Battery: \(batteryLevel)%, Paired: \(isPaired)")
