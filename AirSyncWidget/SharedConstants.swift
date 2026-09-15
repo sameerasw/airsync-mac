@@ -11,5 +11,10 @@ let WIDGET_DATA_KEYS = (
     deviceName: "deviceName",
     batteryLevel: "batteryLevel",
     isCharging: "isCharging",
-    isPaired: "isPaired"
+    isPaired: "isPaired",
+    connectionType: "connectionType",
+    isLocalNetwork: "isLocalNetwork",
+    isBLEConnected: "isBLEConnected",
+    isADBConnected: "isADBConnected",
+    adbMode: "adbMode"
 )

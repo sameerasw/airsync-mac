@@ -8,6 +8,7 @@ import AppKit
 
 struct PhoneDeviceView: View {
     let wallpaperImageData: Data?
+    let isGrayscale: Bool = false
 
     var body: some View {
         ZStack {
@@ -20,10 +21,12 @@ struct PhoneDeviceView: View {
                     .resizable()
                     .scaledToFill()
                     .clipped()
+                    .grayscale(isGrayscale ? 1 : 0)
             }
         }
         .aspectRatio(CGSize(width: 60, height: 120), contentMode: .fit)
         .cornerRadius(10)
+        .opacity(isGrayscale ? 0.6 : 1)
     }
 }
 

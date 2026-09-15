@@ -1987,7 +1987,11 @@ class AppState: ObservableObject {
         WidgetDataManager.shared.updateWidgetData(
             deviceStatus: status,
             deviceName: deviceName,
-            wallpaperBase64: currentDeviceWallpaperBase64
+            wallpaperBase64: currentDeviceWallpaperBase64,
+            isLocalNetwork: isConnectedOverLocalNetwork,
+            isBLEConnected: BLECentralManager.shared.isAuthenticated,
+            isADBConnected: adbConnected,
+            adbMode: adbConnectionMode?.rawValue ?? "wireless"
         )
     }
 }

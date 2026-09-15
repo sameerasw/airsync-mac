@@ -16,7 +16,7 @@ class WidgetDataManager {
         UserDefaults(suiteName: appGroupIdentifier)
     }
 
-    func updateWidgetData(deviceStatus: DeviceStatus?, deviceName: String, wallpaperBase64: String? = nil) {
+    func updateWidgetData(deviceStatus: DeviceStatus?, deviceName: String, wallpaperBase64: String? = nil, isLocalNetwork: Bool = false, isBLEConnected: Bool = false, isADBConnected: Bool = false, adbMode: String = "wireless") {
         guard let shared = sharedDefaults else {
             print("[Widget] App Groups container not available - check App Groups capability")
             return
@@ -34,6 +34,11 @@ class WidgetDataManager {
         if let base64 = wallpaperBase64 {
             shared.set(base64, forKey: "wallpaperBase64")
         }
+
+        shared.set(isLocalNetwork, forKey: "isLocalNetwork")
+        shared.set(isBLEConnected, forKey: "isBLEConnected")
+        shared.set(isADBConnected, forKey: "isADBConnected")
+        shared.set(adbMode, forKey: "adbMode")
 
         shared.synchronize()
 

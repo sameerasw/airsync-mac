@@ -15,6 +15,10 @@ struct PhoneInfoEntry: TimelineEntry {
     let isCharging: Bool
     let isPaired: Bool
     let wallpaperImageData: Data?
+    let isLocalNetwork: Bool
+    let isBLEConnected: Bool
+    let isADBConnected: Bool
+    let adbMode: String
 }
 
 struct PhoneInfoWidgetEntryView: View {
@@ -81,21 +85,24 @@ struct PhoneInfoWidgetEntryView: View {
 
                 Spacer()
 
-                VStack(alignment: .trailing, spacing: 4) {
-                    HStack(spacing: 8) {
-                        if entry.isCharging {
-                            Image(systemName: "bolt.fill")
-                                .foregroundColor(.green)
-                        }
-                        Text("\(entry.batteryLevel)%")
-                            .font(.system(.title3, design: .rounded))
-                            .fontWeight(.semibold)
-                            .foregroundColor(.primary)
-                    }
+                VStack(alignment: .trailing, spacing: 6) {
+                    BatteryIconView(level: entry.batteryLevel, isCharging: entry.isCharging)
 
-                    Text(entry.isCharging ? "Charging" : "Connected")
-                        .font(.system(.caption, design: .rounded))
-                        .foregroundColor(.secondary)
+                    HStack(spacing: 6) {
+                        if entry.isLocalNetwork {
+                            Image(systemName: "wifi")
+                                .font(.system(size: 10))
+                        }
+                        if entry.isADBConnected {
+                            Image(systemName: entry.adbMode == "wired" ? "cable.connector" : "iphone.gen3.crop.circle")
+                                .font(.system(size: 10))
+                        }
+                        if entry.isBLEConnected {
+                            Image(systemName: "bluetooth")
+                                .font(.system(size: 10))
+                        }
+                    }
+                    .foregroundColor(.secondary)
                 }
             }
         }
@@ -105,19 +112,27 @@ struct PhoneInfoWidgetEntryView: View {
 
     private var disconnectedLayout: some View {
         VStack(spacing: 12) {
-            Image(systemName: "questionmark.circle")
-                .font(.system(size: 48))
-                .foregroundColor(.gray)
+            ZStack(alignment: .bottomTrailing) {
+                PhoneDeviceView(wallpaperImageData: entry.wallpaperImageData)
+                    .frame(maxHeight: 100)
+                    .grayscale(1)
+                    .opacity(0.6)
 
-            Text("Not Connected")
-                .font(.headline)
-                .foregroundColor(.secondary)
+                Image(systemName: "iphone.slash")
+                    .font(.system(size: 20))
+                    .foregroundColor(.gray)
+                    .padding(4)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                    .cornerRadius(8)
+                    .offset(x: 8, y: 8)
+            }
 
-            Text("Open AirSync to connect")
-                .font(.caption2)
-                .multilineTextAlignment(.center)
+            Text(entry.deviceName)
+                .font(.system(.caption, design: .rounded))
+                .lineLimit(1)
+                .foregroundColor(.primary)
         }
-        .padding(16)
+        .padding(12)
         .containerBackground(Color(nsColor: .controlBackgroundColor), for: .widget)
     }
 }
@@ -152,13 +167,22 @@ struct PhoneInfoProvider: TimelineProvider {
             wallpaperData = Data(base64Encoded: base64String)
         }
 
+        let isLocalNetwork = shared?.bool(forKey: WIDGET_DATA_KEYS.isLocalNetwork) ?? false
+        let isBLEConnected = shared?.bool(forKey: WIDGET_DATA_KEYS.isBLEConnected) ?? false
+        let isADBConnected = shared?.bool(forKey: WIDGET_DATA_KEYS.isADBConnected) ?? false
+        let adbMode = shared?.string(forKey: WIDGET_DATA_KEYS.adbMode) ?? "wireless"
+
         return PhoneInfoEntry(
             date: Date(),
             deviceName: deviceName,
             batteryLevel: batteryLevel,
             isCharging: isCharging,
             isPaired: isPaired,
-            wallpaperImageData: wallpaperData
+            wallpaperImageData: wallpaperData,
+            isLocalNetwork: isLocalNetwork,
+            isBLEConnected: isBLEConnected,
+            isADBConnected: isADBConnected,
+            adbMode: adbMode
         )
     }
 
@@ -169,7 +193,11 @@ struct PhoneInfoProvider: TimelineProvider {
             batteryLevel: 0,
             isCharging: false,
             isPaired: false,
-            wallpaperImageData: nil
+            wallpaperImageData: nil,
+            isLocalNetwork: false,
+            isBLEConnected: false,
+            isADBConnected: false,
+            adbMode: "wireless"
         )
     }
 
@@ -196,7 +224,11 @@ struct PhoneInfoProvider: TimelineProvider {
         batteryLevel: 75,
         isCharging: false,
         isPaired: true,
-        wallpaperImageData: nil
+        wallpaperImageData: nil,
+        isLocalNetwork: false,
+        isBLEConnected: false,
+        isADBConnected: false,
+        adbMode: "wireless"
     )
 }
 
@@ -209,7 +241,11 @@ struct PhoneInfoProvider: TimelineProvider {
         batteryLevel: 15,
         isCharging: false,
         isPaired: true,
-        wallpaperImageData: nil
+        wallpaperImageData: nil,
+        isLocalNetwork: false,
+        isBLEConnected: false,
+        isADBConnected: false,
+        adbMode: "wireless"
     )
 }
 
@@ -222,7 +258,11 @@ struct PhoneInfoProvider: TimelineProvider {
         batteryLevel: 45,
         isCharging: true,
         isPaired: true,
-        wallpaperImageData: nil
+        wallpaperImageData: nil,
+        isLocalNetwork: false,
+        isBLEConnected: false,
+        isADBConnected: false,
+        adbMode: "wireless"
     )
 }
 
@@ -235,7 +275,11 @@ struct PhoneInfoProvider: TimelineProvider {
         batteryLevel: 82,
         isCharging: true,
         isPaired: true,
-        wallpaperImageData: nil
+        wallpaperImageData: nil,
+        isLocalNetwork: false,
+        isBLEConnected: false,
+        isADBConnected: false,
+        adbMode: "wireless"
     )
 }
 
@@ -248,6 +292,10 @@ struct PhoneInfoProvider: TimelineProvider {
         batteryLevel: 0,
         isCharging: false,
         isPaired: false,
-        wallpaperImageData: nil
+        wallpaperImageData: nil,
+        isLocalNetwork: false,
+        isBLEConnected: false,
+        isADBConnected: false,
+        adbMode: "wireless"
     )
 }
