@@ -132,12 +132,12 @@ struct PhoneInfoWidgetEntryView: View {
                 if entry.isMusicPlaying {
                     VStack(spacing: 4) {
                         Text(entry.musicTitle)
-                            .font(.system(.subheadline, design: .rounded))
-                            .fontWeight(.medium)
+                            .font(.title3)
+                            .fontWeight(.semibold)
                             .lineLimit(1)
                             .foregroundColor(.white)
                         Text(entry.musicArtist)
-                            .font(.system(.caption, design: .rounded))
+                            .font(.subheadline)
                             .lineLimit(1)
                             .foregroundColor(.white.opacity(0.8))
                     }
@@ -147,7 +147,7 @@ struct PhoneInfoWidgetEntryView: View {
                 }
 
                 Text(entry.deviceName)
-                    .font(.system(.title3, design: .rounded))
+                    .font(.title2)
                     .fontWeight(.semibold)
                     .lineLimit(1)
                     .foregroundColor(.white)
