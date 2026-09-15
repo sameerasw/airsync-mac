@@ -14,6 +14,7 @@ struct PhoneInfoEntry: TimelineEntry {
     let batteryLevel: Int
     let isCharging: Bool
     let isPaired: Bool
+    let wallpaperImageData: Data?
 }
 
 struct PhoneInfoWidgetEntryView: View {
@@ -34,7 +35,7 @@ struct PhoneInfoWidgetEntryView: View {
 
     private var smallLayout: some View {
         VStack(spacing: 8) {
-            PhoneDeviceView()
+            PhoneDeviceView(wallpaperImageData: entry.wallpaperImageData)
                 .frame(maxHeight: 100)
 
             VStack(spacing: 2) {
@@ -65,7 +66,7 @@ struct PhoneInfoWidgetEntryView: View {
 
     private var mediumLayout: some View {
         HStack(spacing: 0) {
-            PhoneDeviceView()
+            PhoneDeviceView(wallpaperImageData: entry.wallpaperImageData)
                 .frame(maxHeight: 110)
                 .padding(.trailing, 20)
 
@@ -146,12 +147,18 @@ struct PhoneInfoProvider: TimelineProvider {
         let isCharging = shared?.bool(forKey: WIDGET_DATA_KEYS.isCharging) ?? false
         let isPaired = shared?.bool(forKey: WIDGET_DATA_KEYS.isPaired) ?? false
 
+        var wallpaperData: Data? = nil
+        if let base64String = shared?.string(forKey: "wallpaperBase64") {
+            wallpaperData = Data(base64Encoded: base64String)
+        }
+
         return PhoneInfoEntry(
             date: Date(),
             deviceName: deviceName,
             batteryLevel: batteryLevel,
             isCharging: isCharging,
-            isPaired: isPaired
+            isPaired: isPaired,
+            wallpaperImageData: wallpaperData
         )
     }
 
@@ -161,7 +168,8 @@ struct PhoneInfoProvider: TimelineProvider {
             deviceName: "Loading...",
             batteryLevel: 0,
             isCharging: false,
-            isPaired: false
+            isPaired: false,
+            wallpaperImageData: nil
         )
     }
 
@@ -187,7 +195,8 @@ struct PhoneInfoProvider: TimelineProvider {
         deviceName: "Pixel 8",
         batteryLevel: 75,
         isCharging: false,
-        isPaired: true
+        isPaired: true,
+        wallpaperImageData: nil
     )
 }
 
@@ -199,7 +208,8 @@ struct PhoneInfoProvider: TimelineProvider {
         deviceName: "Galaxy S24",
         batteryLevel: 15,
         isCharging: false,
-        isPaired: true
+        isPaired: true,
+        wallpaperImageData: nil
     )
 }
 
@@ -211,7 +221,8 @@ struct PhoneInfoProvider: TimelineProvider {
         deviceName: "iPhone 15",
         batteryLevel: 45,
         isCharging: true,
-        isPaired: true
+        isPaired: true,
+        wallpaperImageData: nil
     )
 }
 
@@ -223,7 +234,8 @@ struct PhoneInfoProvider: TimelineProvider {
         deviceName: "Pixel 8 Pro",
         batteryLevel: 82,
         isCharging: true,
-        isPaired: true
+        isPaired: true,
+        wallpaperImageData: nil
     )
 }
 
@@ -235,6 +247,7 @@ struct PhoneInfoProvider: TimelineProvider {
         deviceName: "Unknown",
         batteryLevel: 0,
         isCharging: false,
-        isPaired: false
+        isPaired: false,
+        wallpaperImageData: nil
     )
 }

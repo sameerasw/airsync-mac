@@ -1984,6 +1984,10 @@ class AppState: ObservableObject {
 
     private func updateWidgetData() {
         let deviceName = device?.name ?? "Your Phone"
-        WidgetDataManager.shared.updateWidgetData(deviceStatus: status, deviceName: deviceName)
+        WidgetDataManager.shared.updateWidgetData(
+            deviceStatus: status,
+            deviceName: deviceName,
+            wallpaperBase64: currentDeviceWallpaperBase64
+        )
     }
 }
