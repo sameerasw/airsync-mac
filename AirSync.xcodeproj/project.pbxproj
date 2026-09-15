@@ -15,15 +15,47 @@
 		B98CBE7B2FE6935F00C950DA /* Installations in Frameworks */ = {isa = PBXBuildFile; productRef = B98CBE7A2FE6935F00C950DA /* Installations */; };
 		B98CBE802FE69D9000C950DA /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B98CBE7F2FE69D9000C950DA /* Sparkle */; };
 		B99B04C62F641E1400FF3E2D /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = B99B04C52F641E1400FF3E2D /* AppIcon.icon */; };
+		B99D63FA3059A794003D951A /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B99D63F93059A794003D951A /* WidgetKit.framework */; };
+		B99D63FC3059A794003D951A /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B99D63FB3059A794003D951A /* SwiftUI.framework */; };
+		B99D64093059A795003D951A /* AirSyncWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B99D63F83059A794003D951A /* AirSyncWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B9B1C00D2E94E15D0005F6CB /* LottieUI in Frameworks */ = {isa = PBXBuildFile; productRef = B9B1C00C2E94E15D0005F6CB /* LottieUI */; };
 		B9C3181E2E37AA1D00367F16 /* QRCode in Frameworks */ = {isa = PBXBuildFile; productRef = B9C3181D2E37AA1D00367F16 /* QRCode */; };
 		B9D742FC2E39CF850053128A /* Swifter in Frameworks */ = {isa = PBXBuildFile; productRef = B9D742FB2E39CF850053128A /* Swifter */; };
 		B9E423832FBD914900526D40 /* scrcpy-server in Resources */ = {isa = PBXBuildFile; fileRef = B9E423822FBD914900526D40 /* scrcpy-server */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		B99D64073059A795003D951A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B9673B4F2E35A2A1006D284A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B99D63F73059A794003D951A;
+			remoteInfo = AirSyncWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		B99D640A3059A795003D951A /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B99D64093059A795003D951A /* AirSyncWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		B9673B572E35A2A1006D284A /* AirSync.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AirSync.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B99B04C52F641E1400FF3E2D /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
+		B99D63F83059A794003D951A /* AirSyncWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AirSyncWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B99D63F93059A794003D951A /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		B99D63FB3059A794003D951A /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		B99D64143059A9B3003D951A /* AirSync.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AirSync.entitlements; sourceTree = "<group>"; };
+		B99D64153059A9FC003D951A /* AirSyncWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AirSyncWidgetExtension.entitlements; sourceTree = "<group>"; };
 		B9E423822FBD914900526D40 /* scrcpy-server */ = {isa = PBXFileReference; lastKnownFileType = file; path = "scrcpy-server"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -35,9 +67,24 @@
 				Configs/Secrets.xcconfig,
 				Configs/SelfCompiled.xcconfig,
 				Configs/Shared.xcconfig,
+				Core/QuickShare/GenerateProtobuf.sh,
+				Core/QuickShare/ProtobufSource/device_to_device_messages.proto,
+				Core/QuickShare/ProtobufSource/offline_wire_formats.proto,
+				Core/QuickShare/ProtobufSource/securegcm.proto,
+				Core/QuickShare/ProtobufSource/securemessage.proto,
+				Core/QuickShare/ProtobufSource/sharing_enums.proto,
+				Core/QuickShare/ProtobufSource/ukey.proto,
+				Core/QuickShare/ProtobufSource/wire_format.proto,
 				Info.plist,
 			);
 			target = B9673B562E35A2A1006D284A /* AirSync */;
+		};
+		B99D640F3059A795003D951A /* Exceptions for "AirSyncWidget" folder in "AirSyncWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B99D63F73059A794003D951A /* AirSyncWidgetExtension */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -48,6 +95,14 @@
 				B933ED362E3BEC21007393CB /* Exceptions for "airsync-mac" folder in "AirSync" target */,
 			);
 			path = "airsync-mac";
+			sourceTree = "<group>";
+		};
+		B99D63FD3059A794003D951A /* AirSyncWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B99D640F3059A795003D951A /* Exceptions for "AirSyncWidget" folder in "AirSyncWidgetExtension" target */,
+			);
+			path = AirSyncWidget;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -70,13 +125,25 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B99D63F53059A794003D951A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B99D63FC3059A794003D951A /* SwiftUI.framework in Frameworks */,
+				B99D63FA3059A794003D951A /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		B9673B4E2E35A2A1006D284A = {
 			isa = PBXGroup;
 			children = (
+				B99D64153059A9FC003D951A /* AirSyncWidgetExtension.entitlements */,
+				B99D64143059A9B3003D951A /* AirSync.entitlements */,
 				B9673B592E35A2A1006D284A /* airsync-mac */,
+				B99D63FD3059A794003D951A /* AirSyncWidget */,
 				B9D263192F60D97900628704 /* Frameworks */,
 				B9673B582E35A2A1006D284A /* Products */,
 				B99B04C52F641E1400FF3E2D /* AppIcon.icon */,
@@ -88,6 +155,7 @@
 			isa = PBXGroup;
 			children = (
 				B9673B572E35A2A1006D284A /* AirSync.app */,
+				B99D63F83059A794003D951A /* AirSyncWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -95,6 +163,8 @@
 		B9D263192F60D97900628704 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				B99D63F93059A794003D951A /* WidgetKit.framework */,
+				B99D63FB3059A794003D951A /* SwiftUI.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -109,10 +179,12 @@
 				B9673B532E35A2A1006D284A /* Sources */,
 				B9673B542E35A2A1006D284A /* Frameworks */,
 				B9673B552E35A2A1006D284A /* Resources */,
+				B99D640A3059A795003D951A /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				B99D64083059A795003D951A /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				B9673B592E35A2A1006D284A /* airsync-mac */,
@@ -134,6 +206,28 @@
 			productReference = B9673B572E35A2A1006D284A /* AirSync.app */;
 			productType = "com.apple.product-type.application";
 		};
+		B99D63F73059A794003D951A /* AirSyncWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B99D640E3059A795003D951A /* Build configuration list for PBXNativeTarget "AirSyncWidgetExtension" */;
+			buildPhases = (
+				B99D63F43059A794003D951A /* Sources */,
+				B99D63F53059A794003D951A /* Frameworks */,
+				B99D63F63059A794003D951A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B99D63FD3059A794003D951A /* AirSyncWidget */,
+			);
+			name = AirSyncWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = AirSyncWidgetExtension;
+			productReference = B99D63F83059A794003D951A /* AirSyncWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -141,11 +235,14 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2600;
+				LastSwiftUpdateCheck = 2700;
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
 					B9673B562E35A2A1006D284A = {
 						CreatedOnToolsVersion = 26.0;
+					};
+					B99D63F73059A794003D951A = {
+						CreatedOnToolsVersion = 27.0;
 					};
 				};
 			};
@@ -175,6 +272,7 @@
 			projectRoot = "";
 			targets = (
 				B9673B562E35A2A1006D284A /* AirSync */,
+				B99D63F73059A794003D951A /* AirSyncWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -189,6 +287,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B99D63F63059A794003D951A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -199,7 +304,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B99D63F43059A794003D951A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B99D64083059A795003D951A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B99D63F73059A794003D951A /* AirSyncWidgetExtension */;
+			targetProxy = B99D64073059A795003D951A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		11F6093B2EA2A88900AB6BDC /* Self Compiled */ = {
@@ -273,7 +393,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				AUTOMATION_APPLE_EVENTS = NO;
-				CODE_SIGN_ENTITLEMENTS = "";
+				CODE_SIGN_ENTITLEMENTS = AirSync.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 31;
@@ -453,7 +573,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				AUTOMATION_APPLE_EVENTS = NO;
-				CODE_SIGN_ENTITLEMENTS = "";
+				CODE_SIGN_ENTITLEMENTS = AirSync.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 31;
@@ -505,7 +625,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				AUTOMATION_APPLE_EVENTS = NO;
-				CODE_SIGN_ENTITLEMENTS = "";
+				CODE_SIGN_ENTITLEMENTS = AirSync.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 31;
@@ -548,6 +668,108 @@
 			};
 			name = Release;
 		};
+		B99D640B3059A795003D951A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = AirSyncWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 31;
+				DEVELOPMENT_TEAM = WCB4HTANA6;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = AirSyncWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = AirSyncWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 4.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = "sameerasw.airsync-mac.widget";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B99D640C3059A795003D951A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = AirSyncWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 31;
+				DEVELOPMENT_TEAM = WCB4HTANA6;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = AirSyncWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = AirSyncWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 4.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = "sameerasw.airsync-mac.widget";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		B99D640D3059A795003D951A /* Self Compiled */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = AirSyncWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 31;
+				DEVELOPMENT_TEAM = WCB4HTANA6;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = AirSyncWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = AirSyncWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 4.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = "sameerasw.airsync-mac.widget";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = "Self Compiled";
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -567,6 +789,16 @@
 				B9673B632E35A2A3006D284A /* Debug */,
 				B9673B642E35A2A3006D284A /* Release */,
 				11F6093C2EA2A88900AB6BDC /* Self Compiled */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B99D640E3059A795003D951A /* Build configuration list for PBXNativeTarget "AirSyncWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B99D640B3059A795003D951A /* Debug */,
+				B99D640C3059A795003D951A /* Release */,
+				B99D640D3059A795003D951A /* Self Compiled */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -111,19 +111,21 @@ class BLECentralManager: NSObject, ObservableObject {
         
         // Restart scan periodically to avoid stale states
         scanTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            // Skip restart cycle when already connected — nothing to rediscover
-            guard self.connectionStatus == .scanning else { return }
-            
-            // Prune stale devices older than 25 seconds
-            let now = Date()
-            let staleUUIDs = self.discoveredPeripherals.filter { now.timeIntervalSince($1.lastSeen) > 15.0 }.map { $0.key }
-            for uuid in staleUUIDs {
-                self.discoveredPeripherals.removeValue(forKey: uuid)
+            MainActor.assumeIsolated {
+                guard let self = self else { return }
+                // Skip restart cycle when already connected — nothing to rediscover
+                guard self.connectionStatus == .scanning else { return }
+
+                // Prune stale devices older than 25 seconds
+                let now = Date()
+                let staleUUIDs = self.discoveredPeripherals.filter { now.timeIntervalSince($1.lastSeen) > 15.0 }.map { $0.key }
+                for uuid in staleUUIDs {
+                    self.discoveredPeripherals.removeValue(forKey: uuid)
+                }
+
+                self.centralManager.stopScan()
+                self.centralManager.scanForPeripherals(withServices: [BLEConstants.serviceSystem], options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
             }
-            
-            self.centralManager.stopScan()
-            self.centralManager.scanForPeripherals(withServices: [BLEConstants.serviceSystem], options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
         }
     }
     
@@ -240,9 +242,9 @@ class BLECentralManager: NSObject, ObservableObject {
     }
     
     private func resetWatchdog() {
-        DispatchQueue.main.async {
-            self.watchdogTimer?.invalidate()
-            self.watchdogTimer = Timer.scheduledTimer(withTimeInterval: 120.0, repeats: false) { [weak self] _ in
+        DispatchQueue.main.async { [weak self] in
+            self?.watchdogTimer?.invalidate()
+            self?.watchdogTimer = Timer.scheduledTimer(withTimeInterval: 120.0, repeats: false) { [weak self] _ in
                 print("[BLE] Heartbeat timeout (120s), disconnecting...")
                 self?.disconnect()
             }
