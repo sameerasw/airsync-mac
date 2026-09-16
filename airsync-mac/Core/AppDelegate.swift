@@ -42,6 +42,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // which — unlike an NSEvent global monitor — doesn't require Accessibility permission).
         GlobalHotkeyManager.registerIfNeeded()
 
+        // Require holding Cmd+Q instead of a single press to quit
+        QuitHoldManager.registerIfNeeded()
+
         // Register Services Provider
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()

@@ -14,11 +14,11 @@
 		B949716B2F62525800F59BC9 /* SwiftProtobufPluginLibrary in Frameworks */ = {isa = PBXBuildFile; productRef = B949716A2F62525800F59BC9 /* SwiftProtobufPluginLibrary */; };
 		B98CBE7B2FE6935F00C950DA /* Installations in Frameworks */ = {isa = PBXBuildFile; productRef = B98CBE7A2FE6935F00C950DA /* Installations */; };
 		B98CBE802FE69D9000C950DA /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B98CBE7F2FE69D9000C950DA /* Sparkle */; };
-		B9AA00032FEB0003000AA003 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = B9AA00022FEB0002000AA002 /* KeyboardShortcuts */; };
 		B99B04C62F641E1400FF3E2D /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = B99B04C52F641E1400FF3E2D /* AppIcon.icon */; };
 		B99D63FA3059A794003D951A /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B99D63F93059A794003D951A /* WidgetKit.framework */; };
 		B99D63FC3059A794003D951A /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B99D63FB3059A794003D951A /* SwiftUI.framework */; };
 		B99D64093059A795003D951A /* AirSyncWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B99D63F83059A794003D951A /* AirSyncWidgetExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		B9AA00032FEB0003000AA003 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = B9AA00022FEB0002000AA002 /* KeyboardShortcuts */; };
 		B9B1C00D2E94E15D0005F6CB /* LottieUI in Frameworks */ = {isa = PBXBuildFile; productRef = B9B1C00C2E94E15D0005F6CB /* LottieUI */; };
 		B9C3181E2E37AA1D00367F16 /* QRCode in Frameworks */ = {isa = PBXBuildFile; productRef = B9C3181D2E37AA1D00367F16 /* QRCode */; };
 		B9D742FC2E39CF850053128A /* Swifter in Frameworks */ = {isa = PBXBuildFile; productRef = B9D742FB2E39CF850053128A /* Swifter */; };
@@ -858,6 +858,14 @@
 				minimumVersion = 2.9.3;
 			};
 		};
+		B9AA00012FEB0001000AA001 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sindresorhus/KeyboardShortcuts";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.2.0;
+			};
+		};
 		B9B1C00B2E94E15D0005F6CB /* XCRemoteSwiftPackageReference "LottieUI" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/tfmart/LottieUI";
@@ -880,14 +888,6 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 1.5.0;
-			};
-		};
-		B9AA00012FEB0001000AA001 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/sindresorhus/KeyboardShortcuts";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.2.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -928,6 +928,11 @@
 			package = B98CBE7E2FE69D9000C950DA /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
 		};
+		B9AA00022FEB0002000AA002 /* KeyboardShortcuts */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B9AA00012FEB0001000AA001 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */;
+			productName = KeyboardShortcuts;
+		};
 		B9B1C00C2E94E15D0005F6CB /* LottieUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = B9B1C00B2E94E15D0005F6CB /* XCRemoteSwiftPackageReference "LottieUI" */;
@@ -942,11 +947,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B9D742FA2E39CF850053128A /* XCRemoteSwiftPackageReference "swifter" */;
 			productName = Swifter;
-		};
-		B9AA00022FEB0002000AA002 /* KeyboardShortcuts */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = B9AA00012FEB0001000AA001 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */;
-			productName = KeyboardShortcuts;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

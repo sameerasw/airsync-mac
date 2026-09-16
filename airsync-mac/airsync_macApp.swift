@@ -146,6 +146,11 @@ struct airsync_macApp: App {
                 CheckForUpdatesView(updater: updaterController.updater)
             }
             CommandGroup(replacing: .newItem) { }
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit AirSync") {
+                    NSApp.terminate(nil)
+                }
+            }
             CommandGroup(replacing: .appSettings) {
                 Button("Settings...") {
                     AppState.shared.selectedTab = .settings
