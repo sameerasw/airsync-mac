@@ -96,7 +96,7 @@ struct QuickShareSettingsView: View {
                 .padding()
                 .glassBoxIfAvailable(radius: 18)
 
-                SettingsHeaderView(title: "Summon", icon: "sparkles.rectangle.stack")
+                SettingsHeaderView(title: "Summon", icon: "iphone.pattern.diagonalline.on.rectangle.portrait.dashed")
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Label("Screenshot shortcut", systemImage: "keyboard")
@@ -104,7 +104,7 @@ struct QuickShareSettingsView: View {
                         KeyboardShortcuts.Recorder("", name: .summonScreenshot)
                     }
 
-                    Text("Pulls a screenshot from your phone and copies it to the clipboard. Currently requires an active ADB connection.")
+                    Text("Copy what's on your Android screen.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)

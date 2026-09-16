@@ -154,15 +154,16 @@ struct TopSegmentView: View {
                         appState.silenceAllNotifications.toggle()
                     }
 
-                    GlassButtonView(
-                        label: appState.adbConnected ? "Summon Screenshot" : "Summon Screenshot",
-                        systemImage: "iphone.pattern.diagonalline.on.rectangle.portrait.dashed",
-                        iconOnly: true,
-                        circleSize: toolButtonSize
-                    ) {
-                        SummonManager.shared.summonScreenshot()
+                    if appState.adbConnected {
+                        GlassButtonView(
+                            label: "Summon Screenshot",
+                            systemImage: "iphone.pattern.diagonalline.on.rectangle.portrait.dashed",
+                            iconOnly: true,
+                            circleSize: toolButtonSize
+                        ) {
+                            SummonManager.shared.summonScreenshot()
+                        }
                     }
-                    .opacity(appState.adbConnected ? 1.0 : 0.4)
                 }
                 
                 if appState.adbConnected && !appState.recentApps.isEmpty {
