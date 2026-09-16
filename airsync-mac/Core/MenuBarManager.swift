@@ -212,6 +212,9 @@ class MenuBarManager: NSObject {
                        NSMouseInRect(eventLocation, buttonWindow.frame, false) {
                         return event
                     }
+                   if event.window != nil {
+                        return event
+                    }
                     self?.hidePopover()
                 }
                 return event
