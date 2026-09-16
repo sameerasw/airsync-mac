@@ -33,6 +33,8 @@ enum MessageType: String, Codable {
     case fileTransferCancel
     // wake up / quick connect
     case wakeUpRequest
+    // sent by Android right before it closes the socket for a user-initiated disconnect
+    case userDisconnected
     // remote control (Mac)
     case remoteControl
     case volumeControl // outgoing from Mac (legacy/other direction)

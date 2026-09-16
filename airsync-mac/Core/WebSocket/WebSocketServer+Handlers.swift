@@ -66,6 +66,8 @@ extension WebSocketServer {
             handleRemoteControl(message)
         case .browseData:
             handleBrowseData(message)
+        case .userDisconnected:
+            handleUserDisconnected()
         case .volumeControl, .macVolume, .toggleAppNotif, .browseLs, .wakeUpRequest, .macMediaControlResponse, .macInfo, .callControl:
             // Outgoing or unexpected messages
             break
@@ -808,6 +810,12 @@ extension WebSocketServer {
            let action = dict["action"] as? String,
            let success = dict["success"] as? Bool {
             print("[websocket] Media control \(action) \(success ? "succeeded" : "failed")")
+        }
+    }
+
+    private func handleUserDisconnected() {
+        DispatchQueue.main.async {
+            AppState.shared.disconnectDevice(manual: true)
         }
     }
 
