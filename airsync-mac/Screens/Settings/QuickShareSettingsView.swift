@@ -1,55 +1,5 @@
 import SwiftUI
-import AppKit
-
-struct HotkeyRecorderView: View {
-    @State private var isRecording = false
-    @State private var localMonitor: Any?
-    @State private var displayString: String = GlobalHotkeyManager.shared.shortcutDisplayString
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Text(isRecording ? "Press a key combo…" : displayString)
-                .font(.system(.body, design: .monospaced))
-                .foregroundColor(isRecording ? .secondary : .primary)
-                .frame(minWidth: 110, alignment: .trailing)
-            Button(isRecording ? "Cancel" : "Change") {
-                if isRecording {
-                    stopRecording()
-                } else {
-                    startRecording()
-                }
-            }
-        }
-        .onDisappear {
-            stopRecording()
-        }
-    }
-
-    private func startRecording() {
-        isRecording = true
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            // Ignore a bare Escape with no modifiers - treat it as "cancel recording".
-            if event.keyCode == 53 && event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty {
-                stopRecording()
-                return nil
-            }
-            GlobalHotkeyManager.shared.keyCode = event.keyCode
-            GlobalHotkeyManager.shared.modifierFlags = event.modifierFlags.intersection([.command, .option, .control, .shift])
-            GlobalHotkeyManager.shared.registerIfNeeded()
-            displayString = GlobalHotkeyManager.shared.shortcutDisplayString
-            stopRecording()
-            return nil
-        }
-    }
-
-    private func stopRecording() {
-        isRecording = false
-        if let monitor = localMonitor {
-            NSEvent.removeMonitor(monitor)
-            localMonitor = nil
-        }
-    }
-}
+import KeyboardShortcuts
 
 struct QuickShareSettingsView: View {
     @ObservedObject var appState = AppState.shared
@@ -151,7 +101,7 @@ struct QuickShareSettingsView: View {
                     HStack {
                         Label("Screenshot shortcut", systemImage: "keyboard")
                         Spacer()
-                        HotkeyRecorderView()
+                        KeyboardShortcuts.Recorder("", name: .summonScreenshot)
                     }
 
                     Text("Pulls a screenshot from your phone and copies it to the clipboard. Currently requires an active ADB connection.")
