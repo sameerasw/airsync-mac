@@ -76,7 +76,7 @@ public class NearbyConnection{
 	func connectionReady(){}
 	
 	internal func handleConnectionClosure(){
-		print("Connection closed")
+		print("Connection closed (lastError: \(String(describing: lastError)))")
 	}
 	
 	internal func protocolError(){
@@ -110,26 +110,27 @@ public class NearbyConnection{
 				if self.connectionClosed{
 					return
 				}
-				if isComplete{
-					self.handleConnectionClosure()
-					return
-				}
 				if !(error==nil){
 					self.lastError=error
 					self.protocolError()
 					return
 				}
-				guard let content=content else {
-					assertionFailure()
+				if let content=content, content.count==4{
+					let frameLength:UInt32=UInt32(content[0]) << 24 | UInt32(content[1]) << 16 | UInt32(content[2]) << 8 | UInt32(content[3])
+					guard frameLength<NearbyConnection.SANE_FRAME_LENGTH else {
+						self.lastError=NearbyError.protocolError("Unexpected packet length")
+						self.protocolError()
+						return
+					}
+					// print("[quickshare-debug] Length prefix read: expecting \(frameLength) byte frame")
+					self.receiveFrameAsync(length: frameLength)
 					return
 				}
-				let frameLength:UInt32=UInt32(content[0]) << 24 | UInt32(content[1]) << 16 | UInt32(content[2]) << 8 | UInt32(content[3])
-				guard frameLength<NearbyConnection.SANE_FRAME_LENGTH else {
-					self.lastError=NearbyError.protocolError("Unexpected packet length")
-					self.protocolError()
+				if isComplete{
+					self.handleConnectionClosure()
 					return
 				}
-				self.receiveFrameAsync(length: frameLength)
+				assertionFailure()
 			}
 		}
 	}
@@ -141,16 +142,21 @@ public class NearbyConnection{
 				if self.connectionClosed{
 					return
 				}
+				if let content=content, content.count==Int(length){
+					// print("[quickshare-debug] Frame arrived: \(content.count) bytes")
+					self.processReceivedFrame(frameData: content)
+					if isComplete && !self.connectionClosed{
+						self.handleConnectionClosure()
+					}else if !isComplete{
+						self.receiveFrameAsync()
+					}
+					return
+				}
 				if isComplete{
 					self.handleConnectionClosure()
 					return
 				}
-				guard let content=content else {
-					self.protocolError()
-					return
-				}
-				self.processReceivedFrame(frameData: content)
-				self.receiveFrameAsync()
+				self.protocolError()
 			}
 		}
 	}
@@ -274,7 +280,8 @@ public class NearbyConnection{
 		clientSeq+=1
 		guard d2dMsg.sequenceNumber==clientSeq else { throw NearbyError.protocolError("Wrong sequence number. Expected \(clientSeq), got \(d2dMsg.sequenceNumber)") }
 		let offlineFrame=try Location_Nearby_Connections_OfflineFrame(serializedData: d2dMsg.message)
-		
+		// print("[quickshare-debug] Decrypted secure message seq=\(d2dMsg.sequenceNumber), offlineFrame.v1.type=\(offlineFrame.hasV1 ? String(describing: offlineFrame.v1.type) : "no-v1")")
+
 		if offlineFrame.hasV1 && offlineFrame.v1.hasType, case .payloadTransfer = offlineFrame.v1.type {
 			guard offlineFrame.v1.hasPayloadTransfer else { throw NearbyError.requiredFieldMissing("offlineFrame.v1.payloadTransfer") }
 			let payloadTransfer=offlineFrame.v1.payloadTransfer

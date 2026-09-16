@@ -112,6 +112,7 @@ public class InboundNearbyConnection: NearbyConnection{
 	
 	override func processFileChunk(frame: Location_Nearby_Connections_PayloadTransferFrame) throws{
 		let id=frame.payloadHeader.id
+		// print("[quickshare-debug] processFileChunk id=\(id) offset=\(frame.payloadChunk.offset) flags=\(frame.payloadChunk.flags) bodyBytes=\(frame.payloadChunk.body.count) knownIDs=\(Array(transferredFiles.keys))")
 		guard let fileInfo=transferredFiles[id] else { throw NearbyError.protocolError("File payload ID \(id) is not known") }
 		let currentOffset=fileInfo.bytesTransferred
 		guard frame.payloadChunk.offset==currentOffset else { throw NearbyError.protocolError("Invalid offset into file \(frame.payloadChunk.offset), expected \(currentOffset)") }
