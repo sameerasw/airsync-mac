@@ -280,7 +280,9 @@ class AppState: ObservableObject {
                 let workItem = DispatchWorkItem { [weak self] in
                     guard let self = self else { return }
                     let stillDisconnected = self.device == nil || self.device?.isBLE == true
-                    if stillDisconnected && self.isBLEEnabled && self.isBLEAutoConnectEnabled && !BLECentralManager.shared.isAuthenticated {
+                    if stillDisconnected && self.isBLEEnabled && self.isBLEAutoConnectEnabled
+                        && !BLECentralManager.shared.isAuthenticated
+                        && !UserDefaults.standard.isManuallyDisconnected {
                         print("[state] Regular connection stayed lost for 5s — resuming BLE scan to auto-connect nearby")
                         BLECentralManager.shared.isManuallyDisconnected = false
                         BLECentralManager.shared.startScanning()
@@ -1202,11 +1204,9 @@ class AppState: ObservableObject {
 
     func disconnectDevice(manual: Bool = false) {
         DispatchQueue.main.async {
-            // Send request to remote device to disconnect
-            WebSocketServer.shared.sendDisconnectRequest()
-
             if manual {
                 UserDefaults.standard.isManuallyDisconnected = true
+                WebSocketServer.shared.sendDisconnectRequest()
             }
 
             // Then locally reset state
