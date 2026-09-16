@@ -29,6 +29,8 @@ class DiscoveryManager: ObservableObject {
     @Published var availableWifiDeviceForCurrentBLE: DiscoveredDevice? = nil
     private var wifiAutoSwitchTimer: Timer?
     private var wifiStabilityDisconnectBleTimer: Timer?
+    private var lastDeviceReconnectAttemptAt: Date?
+    private static let lastDeviceReconnectCooldown: TimeInterval = 15.0
 
     private func setupDeviceConnectionObserver() {
         AppState.shared.$device
@@ -270,6 +272,42 @@ class DiscoveryManager: ObservableObject {
         
         self.discoveredDevices = Array(merged.values)
         self.updateAvailableWifiDevice()
+        self.attemptAutoReconnectToLastDevice()
+    }
+
+    private func attemptAutoReconnectToLastDevice() {
+        guard AppState.shared.device == nil else { return }
+        guard !UserDefaults.standard.isManuallyDisconnected else { return }
+
+        guard let lastDevice = QuickConnectManager.shared.getLastConnectedDevice(), !lastDevice.isBLE else { return }
+
+        guard let candidate = discoveredDevices.first(where: { discovered in
+            let wifiIps = discovered.ips.filter { $0 != "Bluetooth LE" && $0 != "Nearby" && !$0.isEmpty }
+            guard !wifiIps.isEmpty else { return false }
+
+            if !lastDevice.deviceId.isEmpty && !discovered.deviceId.isEmpty {
+                return lastDevice.deviceId == discovered.deviceId
+            }
+
+            let clean1 = cleanName(lastDevice.name)
+            let clean2 = cleanName(discovered.name)
+            return !clean1.isEmpty && !clean2.isEmpty && clean1 == clean2
+        }), let bestIP = candidate.ips.first(where: { $0 != "Bluetooth LE" && $0 != "Nearby" && !$0.isEmpty }) else { return }
+
+        if let lastAttempt = lastDeviceReconnectAttemptAt,
+           Date().timeIntervalSince(lastAttempt) < Self.lastDeviceReconnectCooldown {
+            return
+        }
+
+        verifyIPReachability(ip: bestIP, port: candidate.port) { [weak self] isReachable in
+            guard let self = self, isReachable else { return }
+            DispatchQueue.main.async {
+                guard AppState.shared.device == nil, !UserDefaults.standard.isManuallyDisconnected else { return }
+                print("[DiscoveryManager] Last connected device '\(candidate.name)' reappeared on the network. Auto-reconnecting...")
+                self.lastDeviceReconnectAttemptAt = Date()
+                QuickConnectManager.shared.connect(to: candidate)
+            }
+        }
     }
     
     func isIPOnLocalNetwork(_ targetIP: String) -> Bool {
@@ -329,6 +367,7 @@ class DiscoveryManager: ObservableObject {
             self?.reachabilityTimer?.invalidate()
             self?.reachabilityTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
                 self?.checkMdnsDevicesReachability()
+                self?.attemptAutoReconnectToLastDevice()
             }
         }
     }

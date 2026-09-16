@@ -166,7 +166,7 @@ struct AppContentView: View {
                 title: Text("Disconnect Device"),
                 message: Text("Are you sure you want to disconnect from \(appState.device?.name ?? "this device")?"),
                 primaryButton: .destructive(Text("Disconnect")) {
-                    appState.disconnectDevice()
+                    appState.disconnectDevice(manual: true)
                 },
                 secondaryButton: .cancel()
             )

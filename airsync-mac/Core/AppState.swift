@@ -230,6 +230,7 @@ class AppState: ObservableObject {
         didSet {
             // Store the last connected device when a new device connects
             if let newDevice = device {
+                UserDefaults.standard.isManuallyDisconnected = false
                 QuickConnectManager.shared.saveLastConnectedDevice(newDevice)
                 // Validate pinned apps when connecting to a device
                 validatePinnedApps()
@@ -1199,10 +1200,14 @@ class AppState: ObservableObject {
         }
     }
 
-    func disconnectDevice() {
+    func disconnectDevice(manual: Bool = false) {
         DispatchQueue.main.async {
             // Send request to remote device to disconnect
             WebSocketServer.shared.sendDisconnectRequest()
+
+            if manual {
+                UserDefaults.standard.isManuallyDisconnected = true
+            }
 
             // Then locally reset state
             self.device = nil
