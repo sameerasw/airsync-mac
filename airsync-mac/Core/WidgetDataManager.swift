@@ -16,6 +16,24 @@ class WidgetDataManager {
         UserDefaults(suiteName: appGroupIdentifier)
     }
 
+    private struct Snapshot: Equatable {
+        let deviceName: String
+        let batteryLevel: Int
+        let isCharging: Bool
+        let isPaired: Bool
+        let wallpaperBase64: String?
+        let isLocalNetwork: Bool
+        let isBLEConnected: Bool
+        let isADBConnected: Bool
+        let adbMode: String
+        let isMusicPlaying: Bool
+        let musicTitle: String
+        let musicArtist: String
+        let musicAlbumArt: String
+    }
+
+    private var lastSnapshot: Snapshot?
+
     func updateWidgetData(deviceStatus: DeviceStatus?, deviceName: String, wallpaperBase64: String? = nil, isLocalNetwork: Bool = false, isBLEConnected: Bool = false, isADBConnected: Bool = false, adbMode: String = "wireless") {
         guard let shared = sharedDefaults else {
             print("[Widget] App Groups container not available - check App Groups capability")
@@ -25,6 +43,31 @@ class WidgetDataManager {
         let isPaired = deviceStatus?.isPaired ?? false
         let batteryLevel = deviceStatus?.battery.level ?? 0
         let isCharging = deviceStatus?.battery.isCharging ?? false
+        let isMusicPlaying = deviceStatus?.music?.isPlaying ?? false
+        let musicTitle = deviceStatus?.music?.title ?? ""
+        let musicArtist = deviceStatus?.music?.artist ?? ""
+        let musicAlbumArt = deviceStatus?.music?.albumArt ?? ""
+
+        let snapshot = Snapshot(
+            deviceName: deviceName,
+            batteryLevel: batteryLevel,
+            isCharging: isCharging,
+            isPaired: isPaired,
+            wallpaperBase64: wallpaperBase64,
+            isLocalNetwork: isLocalNetwork,
+            isBLEConnected: isBLEConnected,
+            isADBConnected: isADBConnected,
+            adbMode: adbMode,
+            isMusicPlaying: isMusicPlaying,
+            musicTitle: musicTitle,
+            musicArtist: musicArtist,
+            musicAlbumArt: musicAlbumArt
+        )
+
+        guard snapshot != lastSnapshot else {
+            return
+        }
+        lastSnapshot = snapshot
 
         shared.set(deviceName, forKey: "deviceName")
         shared.set(batteryLevel, forKey: "batteryLevel")
@@ -40,11 +83,10 @@ class WidgetDataManager {
         shared.set(isADBConnected, forKey: "isADBConnected")
         shared.set(adbMode, forKey: "adbMode")
 
-        let isMusicPlaying = deviceStatus?.music?.isPlaying ?? false
         shared.set(isMusicPlaying, forKey: "isMusicPlaying")
-        shared.set(deviceStatus?.music?.title ?? "", forKey: "musicTitle")
-        shared.set(deviceStatus?.music?.artist ?? "", forKey: "musicArtist")
-        shared.set(deviceStatus?.music?.albumArt ?? "", forKey: "musicAlbumArt")
+        shared.set(musicTitle, forKey: "musicTitle")
+        shared.set(musicArtist, forKey: "musicArtist")
+        shared.set(musicAlbumArt, forKey: "musicAlbumArt")
 
         shared.synchronize()
 

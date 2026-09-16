@@ -17,7 +17,7 @@
 		B99B04C62F641E1400FF3E2D /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = B99B04C52F641E1400FF3E2D /* AppIcon.icon */; };
 		B99D63FA3059A794003D951A /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B99D63F93059A794003D951A /* WidgetKit.framework */; };
 		B99D63FC3059A794003D951A /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B99D63FB3059A794003D951A /* SwiftUI.framework */; };
-		B99D64093059A795003D951A /* AirSyncWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B99D63F83059A794003D951A /* AirSyncWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B99D64093059A795003D951A /* AirSyncWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B99D63F83059A794003D951A /* AirSyncWidgetExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		B9B1C00D2E94E15D0005F6CB /* LottieUI in Frameworks */ = {isa = PBXBuildFile; productRef = B9B1C00C2E94E15D0005F6CB /* LottieUI */; };
 		B9C3181E2E37AA1D00367F16 /* QRCode in Frameworks */ = {isa = PBXBuildFile; productRef = B9C3181D2E37AA1D00367F16 /* QRCode */; };
 		B9D742FC2E39CF850053128A /* Swifter in Frameworks */ = {isa = PBXBuildFile; productRef = B9D742FB2E39CF850053128A /* Swifter */; };
