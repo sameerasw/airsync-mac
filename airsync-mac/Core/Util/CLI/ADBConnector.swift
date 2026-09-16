@@ -589,6 +589,64 @@ struct ADBConnector {
         }
     }
 
+    static func summonScreenshot(completion: @escaping (Data?) -> Void) {
+        let wiredAdbEnabled = AppState.shared.wiredAdbEnabled
+        let fullAddress = "\(AppState.shared.adbConnectedIP):\(AppState.shared.adbPort)"
+        let mappedSerial = AppState.shared.selectedWiredSerial ?? (AppState.shared.device?.deviceId).flatMap { AppState.shared.deviceAdbSerials[$0] }
+
+        getWiredDevices { devices in
+            let serialToUse: String?
+            if let mapped = mappedSerial, devices.contains(where: { $0.serial == mapped }) {
+                serialToUse = mapped
+            } else {
+                serialToUse = devices.first?.serial
+            }
+
+            DispatchQueue.global(qos: .userInitiated).async {
+                guard let adbPath = findExecutable(named: "adb", fallbackPaths: possibleADBPaths) else {
+                    completion(nil)
+                    return
+                }
+
+                var args = ["exec-out", "screencap", "-p"]
+                if wiredAdbEnabled, let serial = serialToUse {
+                    args.insert(contentsOf: ["-s", serial], at: 0)
+                } else {
+                    args.insert(contentsOf: ["-s", fullAddress], at: 0)
+                }
+
+                let task = Process()
+                task.executableURL = URL(fileURLWithPath: adbPath)
+                task.arguments = args
+
+                let outPipe = Pipe()
+                task.standardOutput = outPipe
+                task.standardError = Pipe() // discard stderr so it doesn't mix into the PNG stream
+
+                do {
+                    try task.run()
+                } catch {
+                    logBinaryDetection("Summon screenshot failed to launch adb: \(error.localizedDescription)")
+                    completion(nil)
+                    return
+                }
+
+                let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+                task.waitUntilExit()
+
+                // A valid PNG starts with this 8-byte signature; adb error text wouldn't.
+                let pngSignature: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+                guard data.count > pngSignature.count, Array(data.prefix(pngSignature.count)) == pngSignature else {
+                    logBinaryDetection("Summon screenshot did not return valid PNG data (\(data.count) bytes)")
+                    completion(nil)
+                    return
+                }
+
+                completion(data)
+            }
+        }
+    }
+
     static func push(localPath: String, remotePath: String, completion: ((Bool) -> Void)? = nil) {
         DispatchQueue.main.async {
             let wiredAdbEnabled = AppState.shared.wiredAdbEnabled

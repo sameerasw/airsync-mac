@@ -37,7 +37,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Initialize Quick Share
         _ = QuickShareManager.shared
-        
+
+        // Register the Summon global keyboard shortcut monitor — done here rather than in
+        // App.init() since NSEvent global monitors need NSApplication to have fully finished
+        // launching first; registering earlier interfered with the app's own event delivery.
+        GlobalHotkeyManager.shared.registerIfNeeded()
+
         // Register Services Provider
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()

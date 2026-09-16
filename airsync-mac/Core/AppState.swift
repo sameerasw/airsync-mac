@@ -106,6 +106,7 @@ class AppState: ObservableObject {
         let limit = UserDefaults.standard.integer(forKey: "sharedImagePopupsLimit")
         self.sharedImagePopupsLimit = limit == 0 ? 3 : limit
         self.popupSharedImagesOnLeft = UserDefaults.standard.bool(forKey: "popupSharedImagesOnLeft")
+        self.showSummonedFiles = UserDefaults.standard.object(forKey: "showSummonedFiles") == nil ? true : UserDefaults.standard.bool(forKey: "showSummonedFiles")
 
         let savedNotificationMode = UserDefaults.standard.string(forKey: "callNotificationMode") ?? CallNotificationMode.popup.rawValue
         self.callNotificationMode = CallNotificationMode(rawValue: savedNotificationMode) ?? .popup
@@ -778,6 +779,12 @@ class AppState: ObservableObject {
     @Published var popupSharedImagesOnLeft: Bool {
         didSet {
             UserDefaults.standard.set(popupSharedImagesOnLeft, forKey: "popupSharedImagesOnLeft")
+        }
+    }
+
+    @Published var showSummonedFiles: Bool {
+        didSet {
+            UserDefaults.standard.set(showSummonedFiles, forKey: "showSummonedFiles")
         }
     }
 
