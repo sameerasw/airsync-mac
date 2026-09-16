@@ -61,7 +61,7 @@ struct SidebarView: View {
                             Button("Android Mirror") {
                                 appState.isNativeMirroring = true
                             }
-                            .keyboardShortcut("p", modifiers: [.command])
+                            .appShortcut(AppShortcuts.mirrorPrimary, appState: appState)
                         } else {
                             Button("scrcpy Mirror") {
                                 ADBConnector.startScrcpy(
@@ -70,9 +70,9 @@ struct SidebarView: View {
                                     deviceName: appState.device?.name ?? "My Phone"
                                 )
                             }
-                            .keyboardShortcut("p", modifiers: [.command])
+                            .appShortcut(AppShortcuts.mirrorPrimary, appState: appState)
                         }
-                        
+
                         // 2. Alternative mirror action
                         if appState.useNativeMirroringByDefault {
                             Button("scrcpy Mirror") {
@@ -82,18 +82,18 @@ struct SidebarView: View {
                                     deviceName: appState.device?.name ?? "My Phone"
                                 )
                             }
-                            .keyboardShortcut("p", modifiers: [.command, .shift])
+                            .appShortcut(AppShortcuts.mirrorAlternate, appState: appState)
                         } else {
                             Button("Android Mirror") {
                                 appState.isNativeMirroring = true
                             }
-                            .keyboardShortcut("p", modifiers: [.command, .shift])
+                            .appShortcut(AppShortcuts.mirrorAlternate, appState: appState)
                         }
 
                         Button(appState.isSidebarMirroring ? "Stop Mirroring Here" : "Mirror Here") {
                             appState.isSidebarMirroring.toggle()
                         }
-                        .keyboardShortcut("s", modifiers: [.command, .shift])
+                        .appShortcut(AppShortcuts.mirrorHere, appState: appState)
                     } label: {
                         if appState.isSidebarMirroring {
                             Label("Close", systemImage: "xmark.circle")
@@ -119,7 +119,7 @@ struct SidebarView: View {
                     .controlSize(.large)
                     .glassButtonIfAvailable()
                     .transition(.identity)
-                    .keyboardShortcut("p", modifiers: [.command])
+                    .appShortcut(AppShortcuts.mirrorPrimary, appState: appState)
 
                     Menu {
                         if appState.useNativeDesktopMirroringByDefault {
@@ -130,8 +130,8 @@ struct SidebarView: View {
                                     showingPlusDesktopPopover = true
                                 }
                             }
-                            .keyboardShortcut("d", modifiers: [.command])
-                            
+                            .appShortcut(AppShortcuts.desktopPrimary, appState: appState)
+
                             Button("scrcpy Desktop") {
                                 if appState.isPlus && appState.licenseCheck {
                                     ADBConnector.startScrcpy(
@@ -144,7 +144,7 @@ struct SidebarView: View {
                                     showingPlusDesktopPopover = true
                                 }
                             }
-                            .keyboardShortcut("d", modifiers: [.command, .shift])
+                            .appShortcut(AppShortcuts.desktopAlternate, appState: appState)
                         } else {
                             Button("scrcpy Desktop") {
                                 if appState.isPlus && appState.licenseCheck {
@@ -158,8 +158,8 @@ struct SidebarView: View {
                                     showingPlusDesktopPopover = true
                                 }
                             }
-                            .keyboardShortcut("d", modifiers: [.command])
-                            
+                            .appShortcut(AppShortcuts.desktopPrimary, appState: appState)
+
                             Button("Native Desktop") {
                                 if appState.isPlus && appState.licenseCheck {
                                     appState.isNativeDesktopMirroring = true
@@ -167,7 +167,7 @@ struct SidebarView: View {
                                     showingPlusDesktopPopover = true
                                 }
                             }
-                            .keyboardShortcut("d", modifiers: [.command, .shift])
+                            .appShortcut(AppShortcuts.desktopAlternate, appState: appState)
                         }
                     } label: {
                         Label("Desktop", systemImage: "desktopcomputer")
@@ -191,7 +191,7 @@ struct SidebarView: View {
                     .controlSize(.large)
                     .glassButtonIfAvailable()
                     .transition(.identity)
-                    .keyboardShortcut("d", modifiers: [.command])
+                    .appShortcut(AppShortcuts.desktopPrimary, appState: appState)
                     .popover(isPresented: $showingPlusDesktopPopover, arrowEdge: .top) {
                         PlusFeaturePopover(message: "Desktop Mode is an AirSync+ feature")
                     }

@@ -38,9 +38,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Initialize Quick Share
         _ = QuickShareManager.shared
 
-        // Register the Summon global keyboard shortcut (via KeyboardShortcuts/Carbon hotkeys,
-        // which — unlike an NSEvent global monitor — doesn't require Accessibility permission).
-        GlobalHotkeyManager.registerIfNeeded()
+        // Register all app shortcuts' global (KeyboardShortcuts/Carbon) handlers, enabled per
+        // the user's chosen scope. Carbon hotkey registration — unlike an NSEvent global
+        // monitor — doesn't require Accessibility permission.
+        ShortcutManager.registerIfNeeded()
 
         // Require holding Cmd+Q instead of a single press to quit
         QuitHoldManager.registerIfNeeded()

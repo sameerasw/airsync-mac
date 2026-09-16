@@ -93,6 +93,7 @@ class AppState: ObservableObject {
         self.isClipboardSyncEnabled = UserDefaults.standard.bool(forKey: "isClipboardSyncEnabled")
         self.autoStartAtLogin = UserDefaults.standard.bool(forKey: "autoStartAtLogin")
         self.keepRunningAfterQuit = UserDefaults.standard.bool(forKey: "keepRunningAfterQuit")
+        self.shortcutScopes = UserDefaults.standard.dictionary(forKey: "shortcutScopes") as? [String: String] ?? [:]
         self.windowOpacity = UserDefaults.standard.double(forKey: "windowOpacity")
         self.hideDockIcon = UserDefaults.standard.bool(forKey: "hideDockIcon")
         self.alwaysOpenWindow = UserDefaults.standard.bool(forKey: "alwaysOpenWindow")
@@ -665,6 +666,24 @@ class AppState: ObservableObject {
     }
 
     @Published var closeMainWindowTrigger = 0
+
+    @Published var shortcutScopes: [String: String] = [:] {
+        didSet {
+            UserDefaults.standard.set(shortcutScopes, forKey: "shortcutScopes")
+        }
+    }
+
+    func scope(for shortcutID: String) -> ShortcutScope {
+        if let raw = shortcutScopes[shortcutID], let scope = ShortcutScope(rawValue: raw) {
+            return scope
+        }
+        return AppShortcuts.all.first(where: { $0.id == shortcutID })?.defaultScope ?? .inApp
+    }
+
+    func setScope(_ scope: ShortcutScope, for definition: AppShortcutDefinition) {
+        shortcutScopes[definition.id] = scope.rawValue
+        ShortcutManager.applyScope(for: definition)
+    }
 
     @Published var connectionMode: AppConnectionMode {
         didSet {

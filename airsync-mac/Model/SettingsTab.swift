@@ -16,6 +16,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case menubar = "menubar"
     case appleIntelligence = "apple_intelligence"
     case appearance = "appearance"
+    case keyboardShortcuts = "keyboard_shortcuts"
     case airsyncPlus = "airsync_plus"
 
     var id: String { rawValue }
@@ -38,6 +39,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             return L("settings.appleIntelligence")
         case .appearance:
             return L("settings.appearance")
+        case .keyboardShortcuts:
+            return "Keyboard Shortcuts"
         case .airsyncPlus:
             return L("settings.airsyncPlus")
         }
@@ -61,6 +64,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             return "sparkles"
         case .appearance:
             return "paintbrush"
+        case .keyboardShortcuts:
+            return "keyboard"
         case .airsyncPlus:
             return "plus.diamond.fill"
         }
