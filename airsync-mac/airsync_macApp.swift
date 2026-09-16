@@ -104,6 +104,9 @@ struct airsync_macApp: App {
                     }
             }
         }
+        .onChange(of: appState.closeMainWindowTrigger) { _, _ in
+            dismissWindow(id: "main")
+        }
         .onChange(of: appState.activeCall) { oldValue, newValue in
             if newValue != nil && appState.callNotificationMode == .popup {
                 openWindow(id: "callWindow")

@@ -28,7 +28,11 @@ enum QuitHoldManager {
         switch event.type {
         case .keyDown:
             guard event.keyCode == qKeyCode, event.modifierFlags.contains(.command) else { return event }
-            if !event.isARepeat {
+            guard !event.isARepeat else { return nil }
+
+            if AppState.shared.keepRunningAfterQuit {
+                closeMainWindow()
+            } else {
                 startHold()
             }
             return nil
@@ -50,6 +54,10 @@ enum QuitHoldManager {
         default:
             return event
         }
+    }
+
+    private static func closeMainWindow() {
+        AppState.shared.closeMainWindowTrigger += 1
     }
 
     private static func startHold() {

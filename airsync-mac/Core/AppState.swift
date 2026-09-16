@@ -92,6 +92,7 @@ class AppState: ObservableObject {
 
         self.isClipboardSyncEnabled = UserDefaults.standard.bool(forKey: "isClipboardSyncEnabled")
         self.autoStartAtLogin = UserDefaults.standard.bool(forKey: "autoStartAtLogin")
+        self.keepRunningAfterQuit = UserDefaults.standard.bool(forKey: "keepRunningAfterQuit")
         self.windowOpacity = UserDefaults.standard.double(forKey: "windowOpacity")
         self.hideDockIcon = UserDefaults.standard.bool(forKey: "hideDockIcon")
         self.alwaysOpenWindow = UserDefaults.standard.bool(forKey: "alwaysOpenWindow")
@@ -656,6 +657,14 @@ class AppState: ObservableObject {
             updateAutoStart()
         }
     }
+
+    @Published var keepRunningAfterQuit: Bool {
+        didSet {
+            UserDefaults.standard.set(keepRunningAfterQuit, forKey: "keepRunningAfterQuit")
+        }
+    }
+
+    @Published var closeMainWindowTrigger = 0
 
     @Published var connectionMode: AppConnectionMode {
         didSet {
