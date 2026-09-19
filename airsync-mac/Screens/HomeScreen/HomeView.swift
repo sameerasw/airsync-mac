@@ -109,7 +109,7 @@ struct ConnectionWeakOverlay: View {
                 primary: true,
                 action: {
                     withAnimation {
-                        appState.disconnectDevice()
+                        appState.disconnectDevice(manual: true)
                     }
                 }
             )

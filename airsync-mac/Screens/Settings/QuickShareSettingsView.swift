@@ -1,4 +1,5 @@
 import SwiftUI
+import KeyboardShortcuts
 
 struct QuickShareSettingsView: View {
     @ObservedObject var appState = AppState.shared
@@ -28,52 +29,85 @@ struct QuickShareSettingsView: View {
                             Toggle("", isOn: $appState.autoAcceptQuickShare)
                                 .toggleStyle(.switch)
                         }
+                    }
+                }
+                .padding()
+                .glassBoxIfAvailable(radius: 18)
 
-                        HStack {
-                            Label(Localizer.shared.text("quickshare.settings.popupSharedImages"), systemImage: "doc.on.doc")
-                            Spacer()
-                            Toggle("", isOn: $appState.popupSharedImages)
-                                .toggleStyle(.switch)
-                        }
+                SettingsHeaderView(title: "Shared File Popup", icon: "doc.on.doc")
+                VStack {
+                    HStack {
+                        Label(Localizer.shared.text("quickshare.settings.popupSharedImages"), systemImage: "doc.on.doc")
+                        Spacer()
+                        Toggle("", isOn: $appState.popupSharedImages)
+                            .toggleStyle(.switch)
+                    }
 
-                        if appState.popupSharedImages {
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack {
-                                    Label(Localizer.shared.text("quickshare.settings.maxPopups"), systemImage: "square.3.stack.3d")
-                                        .padding(.leading, 12)
-                                    Spacer()
-                                    HStack(spacing: 8) {
-                                        Text("\(appState.sharedImagePopupsLimit)")
-                                            .font(.system(.body, design: .monospaced))
-                                            .fontWeight(.semibold)
-                                            .foregroundColor(.secondary)
-                                            .frame(width: 24, alignment: .trailing)
-                                        Slider(
-                                            value: Binding(
-                                                get: { Double(appState.sharedImagePopupsLimit) },
-                                                set: { appState.sharedImagePopupsLimit = Int(round($0)) }
-                                            ),
-                                            in: 1...10,
-                                            step: 1
-                                        )
-                                        .frame(width: 120)
-                                    }
-                                }
-                            }
-                            .padding(.bottom, 4)
+                    HStack {
+                        Label("Show summoned files", systemImage: "sparkles.rectangle.stack")
+                        Spacer()
+                        Toggle("", isOn: $appState.showSummonedFiles)
+                            .toggleStyle(.switch)
+                    }
+                    Text("Also show this popup when a file is pulled from your phone using Summon.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
+                    if appState.popupSharedImages {
+                        VStack(alignment: .leading, spacing: 6) {
                             HStack {
-                                Label(Localizer.shared.text("quickshare.settings.popupSide"), systemImage: "macwindow.and.ipad.arrow.left")
+                                Label(Localizer.shared.text("quickshare.settings.maxPopups"), systemImage: "square.3.stack.3d")
                                     .padding(.leading, 12)
                                 Spacer()
-                                Picker("", selection: $appState.popupSharedImagesOnLeft) {
-                                    Text(Localizer.shared.text("quickshare.settings.side.left")).tag(true)
-                                    Text(Localizer.shared.text("quickshare.settings.side.right")).tag(false)
+                                HStack(spacing: 8) {
+                                    Text("\(appState.sharedImagePopupsLimit)")
+                                        .font(.system(.body, design: .monospaced))
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 24, alignment: .trailing)
+                                    Slider(
+                                        value: Binding(
+                                            get: { Double(appState.sharedImagePopupsLimit) },
+                                            set: { appState.sharedImagePopupsLimit = Int(round($0)) }
+                                        ),
+                                        in: 1...10,
+                                        step: 1
+                                    )
+                                    .frame(width: 120)
                                 }
-                                .pickerStyle(.segmented)
                             }
                         }
+                        .padding(.top, 4)
+                        .padding(.bottom, 4)
+
+                        HStack {
+                            Label(Localizer.shared.text("quickshare.settings.popupSide"), systemImage: "macwindow.and.ipad.arrow.left")
+                                .padding(.leading, 12)
+                            Spacer()
+                            Picker("", selection: $appState.popupSharedImagesOnLeft) {
+                                Text(Localizer.shared.text("quickshare.settings.side.left")).tag(true)
+                                Text(Localizer.shared.text("quickshare.settings.side.right")).tag(false)
+                            }
+                            .pickerStyle(.segmented)
+                        }
                     }
+                }
+                .padding()
+                .glassBoxIfAvailable(radius: 18)
+
+                SettingsHeaderView(title: "Summon", icon: "iphone.pattern.diagonalline.on.rectangle.portrait.dashed")
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Label("Screenshot shortcut", systemImage: "keyboard")
+                        Spacer()
+                        KeyboardShortcuts.Recorder("", name: .summonScreenshot)
+                    }
+
+                    Text("Copy what's on your Android screen.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding()
                 .glassBoxIfAvailable(radius: 18)

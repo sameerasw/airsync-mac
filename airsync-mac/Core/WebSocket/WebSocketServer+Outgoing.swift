@@ -136,8 +136,7 @@ extension WebSocketServer {
                 BLECentralManager.shared.writeChunked(characteristicUUID: BLEConstants.charMediaControl, payload: payload)
             }
         case "disconnectRequest":
-            // Maybe handle disconnect?
-            break
+            BLECentralManager.shared.writeChunked(characteristicUUID: BLEConstants.charMediaControl, payload: "manual_disconnect")
         default:
             print("[ble] No BLE mapping for type: \(type)")
         }

@@ -32,6 +32,8 @@ extension UserDefaults {
         static let popupSharedImages = "popupSharedImages"
         static let sharedImagePopupsLimit = "sharedImagePopupsLimit"
         static let popupSharedImagesOnLeft = "popupSharedImagesOnLeft"
+        static let showSummonedFiles = "showSummonedFiles"
+        static let isManuallyDisconnected = "isManuallyDisconnected"
 
         static let notificationStacks = "notificationStacks"
         static let trialToken = "trialToken"
@@ -167,6 +169,16 @@ extension UserDefaults {
     var popupSharedImagesOnLeft: Bool {
         get { bool(forKey: Keys.popupSharedImagesOnLeft) }
         set { set(newValue, forKey: Keys.popupSharedImagesOnLeft) }
+    }
+
+    var showSummonedFiles: Bool {
+        get { object(forKey: Keys.showSummonedFiles) == nil ? true : bool(forKey: Keys.showSummonedFiles) }
+        set { set(newValue, forKey: Keys.showSummonedFiles) }
+    }
+
+    var isManuallyDisconnected: Bool {
+        get { bool(forKey: Keys.isManuallyDisconnected) }
+        set { set(newValue, forKey: Keys.isManuallyDisconnected) }
     }
 
     var trialToken: String? {

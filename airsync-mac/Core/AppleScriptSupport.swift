@@ -19,7 +19,7 @@ class AirSyncDisconnectCommand: NSScriptCommand {
         if let device = appState.device {
             let deviceName = device.name
             DispatchQueue.main.async {
-                appState.disconnectDevice()
+                appState.disconnectDevice(manual: true)
             }
             return "Disconnected from \(deviceName)"
         } else {

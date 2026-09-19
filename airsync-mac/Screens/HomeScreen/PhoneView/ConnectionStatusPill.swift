@@ -229,7 +229,7 @@ struct ConnectionPillPopover: View {
                         iconOnly: false,
                         primary: true,
                         action: {
-                            appState.disconnectDevice()
+                            appState.disconnectDevice(manual: true)
                             if appState.isPlus {
                                 ADBConnector.disconnectADB()
                             }
