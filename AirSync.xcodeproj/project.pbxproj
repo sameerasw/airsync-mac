@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A17000000000000000000001 /* AirSyncShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A17000000000000000000004 /* AirSyncShareExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		B94971602F62509A00F59BC9 /* BigInt in Frameworks */ = {isa = PBXBuildFile; productRef = B949715F2F62509A00F59BC9 /* BigInt */; };
 		B94971632F6250DE00F59BC9 /* ASN1 in Frameworks */ = {isa = PBXBuildFile; productRef = B94971622F6250DE00F59BC9 /* ASN1 */; };
 		B94971662F62514500F59BC9 /* SwiftECC in Frameworks */ = {isa = PBXBuildFile; productRef = B94971652F62514500F59BC9 /* SwiftECC */; };
@@ -26,6 +27,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		A17000000000000000000002 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B9673B4F2E35A2A1006D284A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A17000000000000000000008;
+			remoteInfo = AirSyncShareExtension;
+		};
 		B99D64073059A795003D951A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = B9673B4F2E35A2A1006D284A /* Project object */;
@@ -43,6 +51,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				B99D64093059A795003D951A /* AirSyncWidgetExtension.appex in Embed Foundation Extensions */,
+				A17000000000000000000001 /* AirSyncShareExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -50,6 +59,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A17000000000000000000004 /* AirSyncShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AirSyncShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A17000000000000000000010 /* AirSyncShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AirSyncShareExtension.entitlements; sourceTree = "<group>"; };
 		B9673B572E35A2A1006D284A /* AirSync.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AirSync.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B99B04C52F641E1400FF3E2D /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		B99D63F83059A794003D951A /* AirSyncWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AirSyncWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -61,6 +72,13 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A17000000000000000000005 /* Exceptions for "AirSyncShareExtension" folder in "AirSyncShareExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A17000000000000000000008 /* AirSyncShareExtension */;
+		};
 		B933ED362E3BEC21007393CB /* Exceptions for "airsync-mac" folder in "AirSync" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -90,6 +108,14 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		A17000000000000000000006 /* AirSyncShareExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A17000000000000000000005 /* Exceptions for "AirSyncShareExtension" folder in "AirSyncShareExtension" target */,
+			);
+			path = AirSyncShareExtension;
+			sourceTree = "<group>";
+		};
 		B9673B592E35A2A1006D284A /* airsync-mac */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -109,6 +135,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		A17000000000000000000007 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B9673B542E35A2A1006D284A /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -142,10 +175,12 @@
 		B9673B4E2E35A2A1006D284A = {
 			isa = PBXGroup;
 			children = (
+				A17000000000000000000010 /* AirSyncShareExtension.entitlements */,
 				B99D64153059A9FC003D951A /* AirSyncWidgetExtension.entitlements */,
 				B99D64143059A9B3003D951A /* AirSync.entitlements */,
 				B9673B592E35A2A1006D284A /* airsync-mac */,
 				B99D63FD3059A794003D951A /* AirSyncWidget */,
+				A17000000000000000000006 /* AirSyncShareExtension */,
 				B9D263192F60D97900628704 /* Frameworks */,
 				B9673B582E35A2A1006D284A /* Products */,
 				B99B04C52F641E1400FF3E2D /* AppIcon.icon */,
@@ -158,6 +193,7 @@
 			children = (
 				B9673B572E35A2A1006D284A /* AirSync.app */,
 				B99D63F83059A794003D951A /* AirSyncWidgetExtension.appex */,
+				A17000000000000000000004 /* AirSyncShareExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -174,6 +210,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		A17000000000000000000008 /* AirSyncShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1700000000000000000000F /* Build configuration list for PBXNativeTarget "AirSyncShareExtension" */;
+			buildPhases = (
+				A1700000000000000000000A /* Sources */,
+				A17000000000000000000007 /* Frameworks */,
+				A17000000000000000000009 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A17000000000000000000006 /* AirSyncShareExtension */,
+			);
+			name = AirSyncShareExtension;
+			packageProductDependencies = (
+			);
+			productName = AirSyncShareExtension;
+			productReference = A17000000000000000000004 /* AirSyncShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		B9673B562E35A2A1006D284A /* AirSync */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = B9673B622E35A2A3006D284A /* Build configuration list for PBXNativeTarget "AirSync" */;
@@ -187,6 +245,7 @@
 			);
 			dependencies = (
 				B99D64083059A795003D951A /* PBXTargetDependency */,
+				A1700000000000000000000B /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				B9673B592E35A2A1006D284A /* airsync-mac */,
@@ -241,6 +300,9 @@
 				LastSwiftUpdateCheck = 2700;
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
+					A17000000000000000000008 = {
+						CreatedOnToolsVersion = 27.0;
+					};
 					B9673B562E35A2A1006D284A = {
 						CreatedOnToolsVersion = 26.0;
 					};
@@ -277,11 +339,19 @@
 			targets = (
 				B9673B562E35A2A1006D284A /* AirSync */,
 				B99D63F73059A794003D951A /* AirSyncWidgetExtension */,
+				A17000000000000000000008 /* AirSyncShareExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		A17000000000000000000009 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B9673B552E35A2A1006D284A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -301,6 +371,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		A1700000000000000000000A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B9673B532E35A2A1006D284A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -318,6 +395,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		A1700000000000000000000B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A17000000000000000000008 /* AirSyncShareExtension */;
+			targetProxy = A17000000000000000000002 /* PBXContainerItemProxy */;
+		};
 		B99D64083059A795003D951A /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = B99D63F73059A794003D951A /* AirSyncWidgetExtension */;
@@ -326,6 +408,85 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		A1700000000000000000000C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = AirSyncShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 32;
+				DEVELOPMENT_TEAM = WCB4HTANA6;
+				ENABLE_APP_SANDBOX = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = AirSyncShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = AirSync;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.5;
+				MARKETING_VERSION = 4.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "sameerasw.airsync-mac.share";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A1700000000000000000000D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = AirSyncShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 32;
+				DEVELOPMENT_TEAM = WCB4HTANA6;
+				ENABLE_APP_SANDBOX = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = AirSyncShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = AirSync;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.5;
+				MARKETING_VERSION = 4.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "sameerasw.airsync-mac.share";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		A1700000000000000000000E /* Self Compiled */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = AirSyncShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 32;
+				DEVELOPMENT_TEAM = WCB4HTANA6;
+				ENABLE_APP_SANDBOX = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = AirSyncShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = AirSync;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.5;
+				MARKETING_VERSION = 4.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "sameerasw.airsync-mac.share";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = "Self Compiled";
+		};
 		11F6093B2EA2A88900AB6BDC /* Self Compiled */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReferenceAnchor = B9673B592E35A2A1006D284A /* airsync-mac */;
@@ -780,6 +941,16 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		A1700000000000000000000F /* Build configuration list for PBXNativeTarget "AirSyncShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1700000000000000000000C /* Debug */,
+				A1700000000000000000000D /* Release */,
+				A1700000000000000000000E /* Self Compiled */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		B9673B522E35A2A1006D284A /* Build configuration list for PBXProject "AirSync" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
