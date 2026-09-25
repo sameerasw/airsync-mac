@@ -54,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
         if !urls.isEmpty {
             QuickShareManager.shared.transferURLs = urls
-            QuickShareManager.shared.startDiscovery(autoTargetName: nil)
+            QuickShareManager.shared.startDiscovery(autoTargetName: AppState.shared.device?.name)
             AppState.shared.showingQuickShareTransfer = true
         }
     }
