@@ -1,9 +1,9 @@
 {
-  "app.name": "AirSync",
+  "app.name": "Airsync",
   "menu.mirror": "Mirror",
   "menu.browseFiles": "Browse Files",
   "menu.about": "About AirSync",
-  "menu.checkUpdates": "Check for Updates…",
+  "menu.checkUpdates": "Check for Updates...",
   "menu.quit": "Quit",
   "button.connect": "Connect",
   "home.title": "AirSync",
