@@ -1,14 +1,13 @@
 import AppKit
+import SwiftUI
 
 final class ShareViewController: NSViewController {
-    private lazy var detail = NSTextField(wrappingLabelWithString: "AirSync will send this to your connected device or let you pick one.")
-    private lazy var sendButton = NSButton(title: "Send with AirSync", target: self, action: #selector(send))
-    private lazy var cancelButton = NSButton(title: "Cancel", target: self, action: #selector(cancel))
+    private let model = ShareModel()
     private var sendTask: Task<Void, Never>?
 
     init() {
         super.init(nibName: nil, bundle: nil)
-        preferredContentSize = NSSize(width: 360, height: 150)
+        preferredContentSize = NSSize(width: 380, height: 215)
     }
 
     @available(*, unavailable)
@@ -17,36 +16,56 @@ final class ShareViewController: NSViewController {
     }
 
     override func loadView() {
-        let title = NSTextField(wrappingLabelWithString: "Send with AirSync")
-        title.font = .systemFont(ofSize: 17, weight: .semibold)
-        detail.textColor = .secondaryLabelColor
-        sendButton.keyEquivalent = "\r"
-        cancelButton.keyEquivalent = "\u{1b}"
-
-        let buttons = NSStackView(views: [sendButton, cancelButton])
-        buttons.orientation = .horizontal
-        buttons.spacing = 8
-
-        let stack = NSStackView(views: [title, detail, buttons])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 12
-        stack.translatesAutoresizingMaskIntoConstraints = false
-
-        let content = NSView(frame: NSRect(origin: .zero, size: preferredContentSize))
-        content.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
-            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -20),
-            stack.centerYAnchor.constraint(equalTo: content.centerYAnchor),
-        ])
-        view = content
+        let host = NSHostingView(rootView: ShareView(
+            model: model,
+            cancel: { [weak self] in self?.cancel() }
+        ))
+        host.translatesAutoresizingMaskIntoConstraints = false
+        let container = NSView(frame: NSRect(origin: .zero, size: preferredContentSize))
+        if #available(macOS 26, *) {
+            let glass = NSGlassEffectView()
+            glass.contentView = host
+            glass.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(glass)
+            NSLayoutConstraint.activate([
+                glass.topAnchor.constraint(equalTo: container.topAnchor),
+                glass.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+                glass.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                glass.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            ])
+        } else {
+            container.addSubview(host)
+            NSLayoutConstraint.activate([
+                host.topAnchor.constraint(equalTo: container.topAnchor),
+                host.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+                host.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                host.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            ])
+        }
+        view = container
     }
 
-    @objc private func send() {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        guard let items = extensionContext?.inputItems as? [NSExtensionItem] else {
+            model.isLoadingPreview = false
+            return
+        }
+        send()
+        Task { @MainActor in
+            model.items = await SharePreviewLoader().load(items)
+            model.isLoadingPreview = false
+            resizeToFit()
+        }
+    }
+
+    private func resizeToFit() {
+        preferredContentSize = NSSize(width: 380, height: model.totalHeight)
+    }
+
+    private func send() {
         guard sendTask == nil else { return }
-        sendButton.isEnabled = false
-        detail.stringValue = "Preparing this share for AirSync..."
+        model.phase = .working("Preparing this share for AirSync…")
         sendTask = Task { @MainActor in
             await handOff()
         }
@@ -66,7 +85,7 @@ final class ShareViewController: NSViewController {
         do {
             let urls = try await loader.prepare(items)
             try Task.checkCancellation()
-            detail.stringValue = "Opening AirSync..."
+            model.phase = .working("Opening AirSync…")
             let appURL = Bundle.main.bundleURL
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
@@ -90,14 +109,11 @@ final class ShareViewController: NSViewController {
     }
 
     private func showError(_ message: String) {
-        detail.stringValue = message
-        sendButton.isEnabled = true
-        cancelButton.isEnabled = true
+        model.phase = .failed(message)
         sendTask = nil
     }
 
-    @objc private func cancel() {
-        guard cancelButton.isEnabled else { return }
+    private func cancel() {
         sendTask?.cancel()
         extensionContext?.cancelRequest(
             withError: NSError(domain: NSCocoaErrorDomain, code: NSUserCancelledError)
