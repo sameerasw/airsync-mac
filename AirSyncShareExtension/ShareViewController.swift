@@ -72,6 +72,7 @@ final class ShareViewController: NSViewController {
     }
 
     private func handOff() async {
+        defer { sendTask = nil }
         guard let items = extensionContext?.inputItems as? [NSExtensionItem],
               let group = FileManager.default.containerURL(
                 forSecurityApplicationGroupIdentifier: "group.sameerasw.airsync-mac.widget"
@@ -90,6 +91,9 @@ final class ShareViewController: NSViewController {
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
+            guard appURL.pathExtension == "app" else {
+                throw CocoaError(.fileNoSuchFile)
+            }
             let configuration = NSWorkspace.OpenConfiguration()
             configuration.allowsRunningApplicationSubstitution = false
             openingStarted = true

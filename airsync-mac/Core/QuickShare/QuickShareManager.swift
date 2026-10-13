@@ -126,7 +126,14 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
         }
     }
 
+    private func removeStagedShareFiles() {
+        for url in transferURLs where url.pathComponents.contains("AirSyncShares") {
+            try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+        }
+    }
+
     public func cancelActiveTransfer() {
+        removeStagedShareFiles()
         switch transferState {
         case .connecting(let id), .awaitingPin(_, let id), .sending(let id):
             NearbyConnectionManager.shared.cancelOutgoingTransfer(id: id)
@@ -333,6 +340,7 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     
     public func connectionFailed(with error: Error) {
         transferState = .failed(error.localizedDescription)
+        removeStagedShareFiles()
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             AppState.shared.showingQuickShareTransfer = false
             self.transferState = .idle
@@ -351,6 +359,7 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     
     public func transferFinished() {
         transferState = .finished
+        removeStagedShareFiles()
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             AppState.shared.showingQuickShareTransfer = false
             self.transferState = .idle
