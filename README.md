@@ -26,6 +26,13 @@
 ## Building Locally
 In XCode, select the `AirSync Self Compiled` Scheme. Then at the menu bar, select `Product -> Archive`. Once this process is finished, the organizer window will pop up. Select `Distribute`, then `Custom`. Select `Copy App`, then select the folder for output. `AirSync.app` will be located in that folder.
 
+## Share menu
+The macOS Share extension hands files to AirSync's existing Quick Share transfer. It uses the connected device when one is available, or opens device selection otherwise. Images and videos supplied as temporary data are copied to the existing app group's cache first. Text and web links are sent as text files. Cached copies older than 24 hours are removed on a later share.
+
+The current file sender does not support folders. macOS and each sharing app control menu placement, so AirSync cannot force a position above AirDrop or appear for every item.
+
+For release signing, enable the existing `group.sameerasw.airsync-mac.widget` app group for the new Share extension identifier in the Apple Developer account. Sign the app and its extensions with the same team.
+
 ## Contributors <3
 
 <a href="https://github.com/sameerasw/airsync-mac/graphs/contributors">
