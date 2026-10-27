@@ -408,6 +408,85 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		A1700000000000000000000C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = AirSyncShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 32;
+				DEVELOPMENT_TEAM = WCB4HTANA6;
+				ENABLE_APP_SANDBOX = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = AirSyncShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = AirSync;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.5;
+				MARKETING_VERSION = 4.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "sameerasw.airsync-mac.share";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A1700000000000000000000D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = AirSyncShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 32;
+				DEVELOPMENT_TEAM = WCB4HTANA6;
+				ENABLE_APP_SANDBOX = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = AirSyncShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = AirSync;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.5;
+				MARKETING_VERSION = 4.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "sameerasw.airsync-mac.share";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		A1700000000000000000000E /* Self Compiled */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = AirSyncShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 32;
+				DEVELOPMENT_TEAM = WCB4HTANA6;
+				ENABLE_APP_SANDBOX = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = AirSyncShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = AirSync;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.5;
+				MARKETING_VERSION = 4.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "sameerasw.airsync-mac.share";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = "Self Compiled";
+		};
 		11F6093B2EA2A88900AB6BDC /* Self Compiled */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReferenceAnchor = B9673B592E35A2A1006D284A /* airsync-mac */;
