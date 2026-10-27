@@ -171,6 +171,12 @@ struct SyncSettingsView: View {
                                     .disabled(!appState.isClipboardSyncEnabled)
                             }
                             .opacity(appState.isClipboardSyncEnabled ? 1.0 : 0.5)
+
+                            SettingsToggleView(name: L("settings.otpAutofill"), icon: "key.fill", isOn: $appState.isOtpAutofillEnabled)
+                            Text(L("settings.otpAutofill.hint"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .padding()
                         .glassBoxIfAvailable(radius: 18)
