@@ -87,15 +87,16 @@ final class ShareViewController: NSViewController {
             let urls = try await loader.prepare(items)
             try Task.checkCancellation()
             model.phase = .working("Opening AirSync…")
-            let appURL = Bundle.main.bundleURL
+            let containingAppURL = Bundle.main.bundleURL
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
-            guard appURL.pathExtension == "app" else {
+            guard containingAppURL.pathExtension == "app" else {
                 throw CocoaError(.fileNoSuchFile)
             }
+            let appURL = runningAppURL(matching: containingAppURL) ?? containingAppURL
             let configuration = NSWorkspace.OpenConfiguration()
-            configuration.allowsRunningApplicationSubstitution = false
+            configuration.allowsRunningApplicationSubstitution = true
             openingStarted = true
             _ = try await NSWorkspace.shared.open(
                 urls,
@@ -110,6 +111,13 @@ final class ShareViewController: NSViewController {
             if !openingStarted { loader.discard() }
             if !Task.isCancelled { showError(error.localizedDescription) }
         }
+    }
+
+    private func runningAppURL(matching containingAppURL: URL) -> URL? {
+        guard let bundleID = Bundle(url: containingAppURL)?.bundleIdentifier else { return nil }
+        return NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            .first { !$0.isTerminated }?
+            .bundleURL
     }
 
     private func showError(_ message: String) {
