@@ -66,6 +66,12 @@ public class OutboundNearbyConnection:NearbyConnection{
 		try? sendDisconnectionAndDisconnect()
 	}
 	
+	override var openTimeout:TimeInterval? { 5 }
+
+	override func connectionDidFailToOpen() {
+		delegate?.outboundConnection(connection: self, failedWithError: lastError ?? NearbyError.inputOutput)
+	}
+
 	override func connectionReady() {
 		super.connectionReady()
 		do{

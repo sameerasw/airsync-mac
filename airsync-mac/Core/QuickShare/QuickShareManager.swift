@@ -49,6 +49,13 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     }
     
     private var activeIncomingTransfers: [String: QuickShareTransferInfo] = [:]
+
+    // Android advertises a fresh endpoint each session and stale mDNS records can linger,
+    // so one phone may show up under several endpoint IDs. Newest is last.
+    private var endpointsByName: [String: [RemoteDeviceInfo]] = [:]
+    private var sendTargetName: String?
+    private var triedEndpointIDs: Set<String> = []
+    private var autoTargetTask: Task<Void, Never>?
     
     override private init() {
         super.init()
@@ -103,6 +110,10 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     
     public func startDiscovery(autoTargetName: String? = nil) {
         discoveredDevices.removeAll()
+        endpointsByName.removeAll()
+        resetSendTarget()
+        autoTargetTask?.cancel()
+        autoTargetTask = nil
         self.autoTargetDeviceName = autoTargetName
         transferState = .discovering
         NearbyConnectionManager.shared.addShareExtensionDelegate(self)
@@ -116,6 +127,10 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
         NearbyConnectionManager.shared.stopDeviceDiscovery()
         NearbyConnectionManager.shared.removeShareExtensionDelegate(self)
         discoveredDevices.removeAll()
+        endpointsByName.removeAll()
+        resetSendTarget()
+        autoTargetTask?.cancel()
+        autoTargetTask = nil
         self.autoTargetDeviceName = nil
         
         switch transferState {
@@ -133,6 +148,7 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     }
 
     public func cancelActiveTransfer() {
+        resetSendTarget()
         removeStagedShareFiles()
         switch transferState {
         case .connecting(let id), .awaitingPin(_, let id), .sending(let id):
@@ -156,18 +172,32 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     }
 
     public func sendFiles(urls: [URL], to device: RemoteDeviceInfo) {
-        guard let deviceID = device.id else { return }
-        transferState = .connecting(deviceID)
+        autoTargetTask?.cancel()
+        autoTargetTask = nil
+        sendTargetName = device.name
+        triedEndpointIDs = []
+        transferURLs = urls
         transferProgress = 0
-        
-        // Trigger Quick Share mode on Android if it's the connected device
-        if let connectedDevice = AppState.shared.device,
-           connectedDevice.name == device.name {
-            print("[quickshare] Target device matches connected device, sending WebSocket trigger")
-            WebSocketServer.shared.sendQuickShareTrigger()
-        }
-        
-        NearbyConnectionManager.shared.startOutgoingTransfer(deviceID: deviceID, delegate: self, urls: urls)
+        connect(to: device)
+    }
+
+    private func resetSendTarget() {
+        sendTargetName = nil
+        triedEndpointIDs = []
+    }
+
+    /// Endpoints can appear mid-attempt (the phone re-advertises after our trigger), so look them up fresh.
+    private func nextUntriedEndpoint() -> RemoteDeviceInfo? {
+        guard let name = sendTargetName else { return nil }
+        return endpointsByName[name]?.last { $0.id.map { !triedEndpointIDs.contains($0) } ?? false }
+    }
+
+    private func connect(to device: RemoteDeviceInfo) {
+        guard let deviceID = device.id else { return }
+        triedEndpointIDs.insert(deviceID)
+        print("[quickshare] Connecting to '\(device.name)' via endpoint \(deviceID)")
+        transferState = .connecting(deviceID)
+        NearbyConnectionManager.shared.startOutgoingTransfer(deviceID: deviceID, delegate: self, urls: transferURLs)
     }
     
     public func generateQrCodeKey() -> String {
@@ -303,20 +333,47 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     // MARK: - ShareExtensionDelegate (Outgoing)
     
     public func addDevice(device: RemoteDeviceInfo) {
-        if !discoveredDevices.contains(where: { $0.id == device.id }) {
-            discoveredDevices.append(device)
-            
-            // If auto-targeting is active and name matches, start transfer
-            if let targetName = autoTargetDeviceName, device.name == targetName {
-                print("[quickshare] Auto-targeting found device '\(device.name)', starting transfer")
-                self.autoTargetDeviceName = nil // Clear so it doesn't trigger again
-                sendFiles(urls: self.transferURLs, to: device)
+        var endpoints = endpointsByName[device.name] ?? []
+        endpoints.removeAll { $0.id == device.id }
+        endpoints.append(device)
+        endpointsByName[device.name] = endpoints
+        showNewestEndpoint(named: device.name)
+
+        // Wait briefly so a stale cached record doesn't win over the live one
+        if let targetName = autoTargetDeviceName, device.name == targetName, autoTargetTask == nil {
+            print("[quickshare] Auto-targeting found device '\(device.name)', starting transfer")
+            autoTargetTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                guard let self, !Task.isCancelled, self.transferState == .discovering,
+                      let newest = self.endpointsByName[targetName]?.last else { return }
+                self.autoTargetDeviceName = nil
+                self.autoTargetTask = nil
+                self.sendFiles(urls: self.transferURLs, to: newest)
             }
         }
     }
-    
+
     public func removeDevice(id: String) {
-        discoveredDevices.removeAll(where: { $0.id == id })
+        guard let name = endpointsByName.first(where: { $0.value.contains { $0.id == id } })?.key else { return }
+        endpointsByName[name]?.removeAll { $0.id == id }
+        if endpointsByName[name]?.isEmpty == true {
+            endpointsByName[name] = nil
+        }
+        showNewestEndpoint(named: name)
+    }
+
+    private func showNewestEndpoint(named name: String) {
+        let index = discoveredDevices.firstIndex { $0.name == name }
+        switch (index, endpointsByName[name]?.last) {
+        case let (index?, newest?):
+            discoveredDevices[index] = newest
+        case let (nil, newest?):
+            discoveredDevices.append(newest)
+        case let (index?, nil):
+            discoveredDevices.remove(at: index)
+        case (nil, nil):
+            break
+        }
     }
     
     public func startTransferWithQrCode(device: RemoteDeviceInfo) {
@@ -339,6 +396,12 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     }
     
     public func connectionFailed(with error: Error) {
+        if case .connecting(let failedID) = transferState, let next = nextUntriedEndpoint() {
+            print("[quickshare] Endpoint \(failedID) unreachable, trying \(next.id ?? "?")")
+            connect(to: next)
+            return
+        }
+        resetSendTarget()
         transferState = .failed(error.localizedDescription)
         removeStagedShareFiles()
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
