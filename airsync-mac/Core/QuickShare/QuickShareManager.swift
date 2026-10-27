@@ -56,6 +56,9 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     private var sendTargetName: String?
     private var triedEndpointIDs: Set<String> = []
     private var autoTargetTask: Task<Void, Never>?
+    // Kept across sends: a stale record keeps getting replayed from the mDNS cache until it expires
+    private var lastGoodEndpointByName: [String: String] = [:]
+    private var unreachableEndpointIDs: Set<String> = []
     
     override private init() {
         super.init()
@@ -189,7 +192,21 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     /// Endpoints can appear mid-attempt (the phone re-advertises after our trigger), so look them up fresh.
     private func nextUntriedEndpoint() -> RemoteDeviceInfo? {
         guard let name = sendTargetName else { return nil }
-        return endpointsByName[name]?.last { $0.id.map { !triedEndpointIDs.contains($0) } ?? false }
+        let untried = (endpointsByName[name] ?? []).filter { $0.id.map { !triedEndpointIDs.contains($0) } ?? false }
+        return preferredEndpoint(in: untried, named: name) ?? untried.last
+    }
+
+    /// The endpoint that last worked, else the newest one not known to be dead.
+    private func preferredEndpoint(in endpoints: [RemoteDeviceInfo], named name: String) -> RemoteDeviceInfo? {
+        if let good = lastGoodEndpointByName[name], let match = endpoints.first(where: { $0.id == good }) {
+            return match
+        }
+        return endpoints.last { $0.id.map { !unreachableEndpointIDs.contains($0) } ?? false }
+    }
+
+    private func bestEndpoint(named name: String) -> RemoteDeviceInfo? {
+        let endpoints = endpointsByName[name] ?? []
+        return preferredEndpoint(in: endpoints, named: name) ?? endpoints.last
     }
 
     private func connect(to device: RemoteDeviceInfo) {
@@ -337,18 +354,25 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
         endpoints.removeAll { $0.id == device.id }
         endpoints.append(device)
         endpointsByName[device.name] = endpoints
-        showNewestEndpoint(named: device.name)
+        showBestEndpoint(named: device.name)
 
         // Wait briefly so a stale cached record doesn't win over the live one
         if let targetName = autoTargetDeviceName, device.name == targetName, autoTargetTask == nil {
             print("[quickshare] Auto-targeting found device '\(device.name)', starting transfer")
             autoTargetTask = Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: 1_200_000_000)
+                // If only known-dead records are visible so far, give the live one a few seconds to show up
+                var waited = 0
+                while let self, !Task.isCancelled, waited < 16,
+                      self.preferredEndpoint(in: self.endpointsByName[targetName] ?? [], named: targetName) == nil {
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    waited += 1
+                }
                 guard let self, !Task.isCancelled, self.transferState == .discovering,
-                      let newest = self.endpointsByName[targetName]?.last else { return }
+                      let target = self.bestEndpoint(named: targetName) else { return }
                 self.autoTargetDeviceName = nil
                 self.autoTargetTask = nil
-                self.sendFiles(urls: self.transferURLs, to: newest)
+                self.sendFiles(urls: self.transferURLs, to: target)
             }
         }
     }
@@ -359,12 +383,12 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
         if endpointsByName[name]?.isEmpty == true {
             endpointsByName[name] = nil
         }
-        showNewestEndpoint(named: name)
+        showBestEndpoint(named: name)
     }
 
-    private func showNewestEndpoint(named name: String) {
+    private func showBestEndpoint(named name: String) {
         let index = discoveredDevices.firstIndex { $0.name == name }
-        switch (index, endpointsByName[name]?.last) {
+        switch (index, bestEndpoint(named: name)) {
         case let (index?, newest?):
             discoveredDevices[index] = newest
         case let (nil, newest?):
@@ -382,6 +406,10 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     
     public func connectionWasEstablished(pinCode: String) {
         let deviceID = caseDiscoveryID() ?? "unknown"
+        if let name = sendTargetName {
+            lastGoodEndpointByName[name] = deviceID
+            unreachableEndpointIDs.remove(deviceID)
+        }
         lastPinCode = pinCode
         transferState = .awaitingPin(pinCode, deviceID)
     }
@@ -396,6 +424,13 @@ public class QuickShareManager: NSObject, ObservableObject, MainAppDelegate, Sha
     }
     
     public func connectionFailed(with error: Error) {
+        if case .connecting(let failedID) = transferState {
+            unreachableEndpointIDs.insert(failedID)
+            if let name = sendTargetName, lastGoodEndpointByName[name] == failedID {
+                lastGoodEndpointByName[name] = nil
+            }
+            showBestEndpoint(named: sendTargetName ?? "")
+        }
         if case .connecting(let failedID) = transferState, let next = nextUntriedEndpoint() {
             print("[quickshare] Endpoint \(failedID) unreachable, trying \(next.id ?? "?")")
             connect(to: next)
