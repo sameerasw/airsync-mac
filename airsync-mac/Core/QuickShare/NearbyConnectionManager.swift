@@ -470,7 +470,10 @@ public class NearbyConnectionManager : NSObject, NetServiceDelegate, InboundNear
 	}
 	
 	public func startOutgoingTransfer(deviceID:String, delegate:ShareExtensionDelegate, urls:[URL]){
-		guard let info=foundServices[deviceID] else {return}
+		guard let info=foundServices[deviceID] else {
+			delegate.connectionFailed(with: NearbyError.protocolError("Device is no longer available"))
+			return
+		}
 		let tcp=NWProtocolTCP.Options.init()
 		tcp.noDelay=true
 		let nwconn=NWConnection(to: info.service.endpoint, using: NWParameters(tls: .none, tcp: tcp))

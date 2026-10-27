@@ -185,6 +185,7 @@ class WebSocketServer: ObservableObject {
 
                 do {
                     let message = try self.jsonDecoder.decode(Message.self, from: data)
+                    if message.type == .pong { return }
                     if message.type == .status {
                         // Pong / keepalive check
                         if let dict = message.data.value as? [String: Any],

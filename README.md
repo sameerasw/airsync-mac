@@ -10,13 +10,6 @@
 <!--   <img src="https://github.com/user-attachments/assets/8abdd977-6f8b-4037-b277-9457e65a6255" width="80%" /> -->
 </p>
 
-## Installation
-- You can install AirSync mac app from either [GitHub releases](https://github.com/sameerasw/airsync-mac/releases/latest) or from [homebrew](https://brew.sh/) from the following command.
-  
-  ```
-  brew install airsync
-  ```
-
 ## Requirements
 - Min : macOS 14.5
 - Opt: scrcpy, adb & media-control installed from brew
@@ -25,6 +18,13 @@
 
 ## Building Locally
 In XCode, select the `AirSync Self Compiled` Scheme. Then at the menu bar, select `Product -> Archive`. Once this process is finished, the organizer window will pop up. Select `Distribute`, then `Custom`. Select `Copy App`, then select the folder for output. `AirSync.app` will be located in that folder.
+
+## Share menu
+The macOS Share extension hands files to AirSync's existing Quick Share transfer. It uses the connected device when one is available, or opens device selection otherwise. Images and videos supplied as temporary data are copied to the existing app group's cache first. Text and web links are sent as text files. Cached copies older than 24 hours are removed on a later share.
+
+The current file sender does not support folders. Enable the extension in System Settings → Extensions → Sharing. macOS and each sharing app control where AirSync appears in the Share menu, so its position cannot be forced.
+
+For release signing, enable the existing `group.sameerasw.airsync-mac.widget` app group for the new Share extension identifier in the Apple Developer account. Sign the app and its extensions with the same team.
 
 ## Contributors <3
 

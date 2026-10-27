@@ -68,7 +68,7 @@ extension WebSocketServer {
             handleBrowseData(message)
         case .userDisconnected:
             handleUserDisconnected()
-        case .volumeControl, .macVolume, .toggleAppNotif, .browseLs, .wakeUpRequest, .macMediaControlResponse, .macInfo, .callControl:
+        case .volumeControl, .macVolume, .toggleAppNotif, .browseLs, .wakeUpRequest, .macMediaControlResponse, .macInfo, .callControl, .pong:
             // Outgoing or unexpected messages
             break
         }

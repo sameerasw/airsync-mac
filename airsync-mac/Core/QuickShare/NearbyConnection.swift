@@ -55,24 +55,59 @@ public class NearbyConnection{
 	
 	nonisolated deinit {}
 	
+	private var socketReady=false
+
+	/// Outbound connections fail instead of waiting forever on a stale endpoint.
+	internal var openTimeout:TimeInterval? { nil }
+
 	func start(){
 		print("[nearby] Starting connection to \(connection.endpoint)")
 		connection.stateUpdateHandler={ [weak self] state in
 			Task { @MainActor in
 				guard let self=self else { return }
-				if case .ready = state {
+				switch state {
+				case .ready:
+					self.socketReady=true
 					self.connectionReady()
 					self.receiveFrameAsync()
-				} else if case .failed(let err) = state {
-					self.lastError=err
-					print("[nearby] Error opening socket: \(err)")
-					self.handleConnectionClosure()
+				case .waiting(let err) where self.openTimeout != nil && !self.socketReady:
+					self.failToOpen(err)
+				case .failed(let err):
+					if self.socketReady {
+						self.lastError=err
+						print("[nearby] Socket failed: \(err)")
+						self.handleConnectionClosure()
+					} else {
+						self.failToOpen(err)
+					}
+				default:
+					break
 				}
 			}
 		}
 		connection.start(queue: NearbyConnection.dispatchQueue)
+		if let timeout=openTimeout {
+			Task { @MainActor [weak self] in
+				try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+				guard let self=self, !self.socketReady else { return }
+				self.failToOpen(NWError.posix(.ETIMEDOUT))
+			}
+		}
 	}
-	
+
+	private func failToOpen(_ error:Error){
+		guard !connectionClosed else { return }
+		connectionClosed=true
+		lastError=error
+		print("[nearby] Error opening socket: \(error)")
+		connection.cancel()
+		connectionDidFailToOpen()
+	}
+
+	internal func connectionDidFailToOpen(){
+		handleConnectionClosure()
+	}
+
 	func connectionReady(){}
 	
 	internal func handleConnectionClosure(){
