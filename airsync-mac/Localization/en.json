@@ -65,6 +65,8 @@
   "media.pause": "Pause",
   "settings.wiredAdb": "Wired ADB support",
   "settings.alwaysKillAdbBeforeConnect": "Always kill-server before connect",
+  "settings.otpAutofill": "Auto-fill verification codes",
+  "settings.otpAutofill.hint": "Copy OTP codes from Android notifications to the Mac clipboard for quick pasting.",
   "quickshare.title": "Quick Share",
   "quickshare.button": "Quick Share",
   "quickshare.settings.title": "Quick Share Settings",
