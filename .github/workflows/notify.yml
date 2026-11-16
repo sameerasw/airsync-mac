@@ -15,6 +15,14 @@ jobs:
     steps:
       - name: Gather and Clean Data
         id: info
+        env:
+          RELEASE_BODY: ${{ github.event.release.body }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
           CHAT_ID="${{ secrets.TELEGRAM_CHAT_ID }}"
           TOPIC_ID="${{ secrets.TELEGRAM_TOPIC_ID }}"
@@ -31,9 +39,9 @@ jobs:
               TAG=$(echo "$DATA" | jq -r .tag_name)
               URL=$(echo "$DATA" | jq -r .html_url)
             else
-              RAW_BODY="${{ github.event.release.body }}"
-              TAG="${{ github.event.release.tag_name }}"
-              URL="${{ github.event.release.html_url }}"
+              RAW_BODY="$RELEASE_BODY"
+              TAG="$RELEASE_TAG"
+              URL="$RELEASE_URL"
             fi
             
             CLEAN_BODY=$(echo "$RAW_BODY" | \
@@ -59,7 +67,7 @@ jobs:
             {
               echo "full_message<<EOF"
               echo "<b>$STATUS: $REPO</b>"
-              echo "<a href='${{ github.event.issue.html_url }}'>Issue: ${{ github.event.issue.title }}</a>"
+              echo "<a href='$ISSUE_URL'>Issue: $ISSUE_TITLE</a>"
               echo "EOF"
             } >> "$GITHUB_OUTPUT"
 
@@ -69,7 +77,7 @@ jobs:
             {
               echo "full_message<<EOF"
               echo "<b>$STATUS: $REPO</b>"
-              echo "<a href='${{ github.event.pull_request.html_url }}'>PR: ${{ github.event.pull_request.title }}</a>"
+              echo "<a href='$PR_URL'>PR: $PR_TITLE</a>"
               echo "EOF"
             } >> "$GITHUB_OUTPUT"
           fi
